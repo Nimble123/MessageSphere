@@ -8653,9 +8653,11 @@ function computeSmsMetrics(text) {
   }
   let parts = 1;
   if (isUnicode) {
-    if (effectiveLen > 70) parts = Math.ceil(effectiveLen / 67);
+    // Unicode: 75 characters per part (1-75 = 1 credit, 76-150 = 2 credits, 151-225 = 3 credits, etc.)
+    parts = Math.ceil(effectiveLen / 75) || 1;
   } else {
-    if (effectiveLen > 160) parts = Math.ceil(effectiveLen / 153);
+    // GSM-7: 160 characters per part (1-160 = 1 credit, 161-320 = 2 credits, 321-480 = 3 credits, etc.)
+    parts = Math.ceil(effectiveLen / 160) || 1;
   }
   let warning = null;
   if (parts >= 5) warning = `⚠️ ${parts} parts per number — carriers may throttle messages over 4 parts.`;

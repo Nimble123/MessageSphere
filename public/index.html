@@ -3642,27 +3642,16 @@
                     <input type="text" id="sms-title" class="form-input" placeholder="e.g. Festive Flash Sale - VIP Members" required maxlength="120" style="font-size: 0.9rem; padding: 10px 14px; border-radius: 8px;">
                   </div>
 
-                  <!-- Target Destination Cards -->
-                  <div class="form-group" style="margin-bottom: 18px;">
-                    <label style="font-weight: 600; font-size: 0.85rem; color: #1e293b; margin-bottom: 6px; display: block;">
-                      Target Destination Route <span style="color: #dc2626;">*</span>
-                    </label>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                      <label id="sms-dest-opt-dom" style="border: 2px solid #6366f1; background: #eef2ff; padding: 12px 14px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: all 0.2s;">
-                        <input type="radio" name="sms-dest-choice" value="domestic" checked onchange="onSmsDestChange('domestic')" style="accent-color: #4f46e5; width: 17px; height: 17px;">
-                        <div>
-                          <strong style="display: block; font-size: 0.88rem; color: #3730a3;">🇮🇳 Domestic (India +91)</strong>
-                          <span style="font-size: 0.72rem; color: #6366f1;">Direct Indian GSM carrier route</span>
-                        </div>
-                      </label>
-                      <label id="sms-dest-opt-intl" style="border: 1.5px solid #cbd5e1; background: #ffffff; padding: 12px 14px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: all 0.2s;">
-                        <input type="radio" name="sms-dest-choice" value="international" onchange="onSmsDestChange('international')" style="accent-color: #0284c7; width: 17px; height: 17px;">
-                        <div>
-                          <strong style="display: block; font-size: 0.88rem; color: #334155;">🌐 International (Global)</strong>
-                          <span style="font-size: 0.72rem; color: #64748b;">Cross-border global carrier route</span>
-                        </div>
-                      </label>
+                  <!-- Route Info Badge (Domestic GSM Only - International Removed) -->
+                  <div style="display: flex; align-items: center; justify-content: space-between; background: #f0fdf4; border: 1.5px solid #bbf7d0; padding: 10px 16px; border-radius: 10px; margin-bottom: 18px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <i data-lucide="shield-check" style="width: 20px; height: 20px; color: #16a34a;"></i>
+                      <div>
+                        <strong style="font-size: 0.85rem; color: #166534;">🇮🇳 Domestic GSM Direct Route (India +91)</strong>
+                        <div style="font-size: 0.72rem; color: #15803d;">Instant high-speed mobile delivery • Direct Telecom Gateway</div>
+                      </div>
                     </div>
+                    <span style="background: #16a34a; color: #fff; font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 20px;">DOMESTIC ONLY</span>
                     <input type="hidden" id="sms-destination" value="domestic">
                   </div>
 
@@ -3685,6 +3674,10 @@
                         <span>Credits/SMS: <strong id="sms-cred-per-num" style="color: #4f46e5; font-weight: 700;">1</strong></span>
                       </div>
                       <div id="sms-carrier-warning" style="display: none; color: #b45309; font-weight: 700; font-size: 0.75rem;"></div>
+                    </div>
+                    <div style="font-size: 0.72rem; color: #64748b; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+                      <i data-lucide="info" style="width: 12px; height: 12px; color: #6366f1;"></i>
+                      <strong>Billing Rule:</strong> 1-160 chars = 1 credit &bull; >160 chars = 2 credits &bull; >320 chars = 3 credits &bull; Unicode (Hindi/Emojis) = 75 chars/credit
                     </div>
                   </div>
 

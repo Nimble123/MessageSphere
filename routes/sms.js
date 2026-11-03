@@ -71,19 +71,15 @@ function calculateSmsMetrics(text) {
 
   if (isUnicode) {
     effectiveCharCount = rawGlyphCount;
-    // Unicode: single part ≤ 70 chars; multi-part = 67 chars/part
-    if (effectiveCharCount > 70) {
-      partsCount = Math.ceil(effectiveCharCount / 67);
-    }
+    // Unicode rule: 75 characters per part (1-75 = 1 credit, 76-150 = 2 credits, 151-225 = 3 credits, etc.)
+    partsCount = Math.ceil(effectiveCharCount / 75) || 1;
   } else {
     // GSM-7: extended chars count as 2
     for (const ch of content) {
       effectiveCharCount += GSM_7_EXTENDED_CHARS.has(ch) ? 2 : 1;
     }
-    // GSM-7: single part ≤ 160 chars; multi-part = 153 chars/part
-    if (effectiveCharCount > 160) {
-      partsCount = Math.ceil(effectiveCharCount / 153);
-    }
+    // GSM-7 rule: 160 characters per part (1-160 = 1 credit, 161-320 = 2 credits, 321-480 = 3 credits, etc.)
+    partsCount = Math.ceil(effectiveCharCount / 160) || 1;
   }
 
   let carrierWarning = null;
@@ -342,8 +338,9 @@ router.post('/', authenticate, async (req, res) => {
   // ------------------------------------------------------------------
   // Parse recipients: CSV file takes precedence over body field
   // ------------------------------------------------------------------
-  const isIntl = destination === 'international';
-  const campaignDest = isIntl ? 'international' : 'domestic';
+  // GSM Bulk SMS is exclusively Domestic
+  const isIntl = false;
+  const campaignDest = 'domestic';
 
   let rawNumberList = [];
 
