@@ -8667,7 +8667,37 @@ let smsCampaignsData = [];
 let smsFileNumbers = []; // numbers loaded from CSV/TXT file
 
 // --- Composer Open/Close ---
+window.onSmsDestChange = function(dest) {
+  const destInput = document.getElementById('sms-destination');
+  if (destInput) destInput.value = dest;
+  const domLabel = document.getElementById('sms-dest-opt-dom');
+  const intlLabel = document.getElementById('sms-dest-opt-intl');
+  if (dest === 'domestic') {
+    if (domLabel) {
+      domLabel.style.border = '2px solid #6366f1';
+      domLabel.style.background = '#eef2ff';
+    }
+    if (intlLabel) {
+      intlLabel.style.border = '1.5px solid #cbd5e1';
+      intlLabel.style.background = '#ffffff';
+    }
+  } else {
+    if (intlLabel) {
+      intlLabel.style.border = '2px solid #0284c7';
+      intlLabel.style.background = '#f0f9ff';
+    }
+    if (domLabel) {
+      domLabel.style.border = '1.5px solid #cbd5e1';
+      domLabel.style.background = '#ffffff';
+    }
+  }
+  updateSmsCreditsPreview();
+};
+
 window.openSmsComposer = function() {
+  smsFileNumbers = [];
+  document.getElementById('form-compose-sms').reset();
+  if (window.onSmsDestChange) window.onSmsDestChange('domestic');
   smsFileNumbers = [];
   document.getElementById('form-compose-sms').reset();
   document.getElementById('sms-form-error').style.display = 'none';
