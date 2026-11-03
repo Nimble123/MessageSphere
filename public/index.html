@@ -4268,12 +4268,15 @@
 
   <!-- MODAL: CREATE TEMPLATE -->
   <div id="modal-create-template" class="modal-overlay">
-    <div class="modal-card" style="max-width:560px;">
+    <div class="modal-card" style="max-width: 600px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; border-radius: 14px; overflow: hidden; background: #ffffff;">
       <div class="modal-header-saas">
-        <h3>Create Message Template</h3>
+        <div>
+          <h3 style="margin:0;">Create Message Template</h3>
+          <p style="margin:2px 0 0;font-size:0.75rem;color:var(--slate-500);">Select WhatsApp (Rich Media) or SMS GSM (GSM-7 & Unicode)</p>
+        </div>
         <button class="btn-modal-close" data-close="modal-create-template">&times;</button>
       </div>
-      <div class="modal-body-saas">
+      <div class="modal-body-saas" style="padding: 20px 24px; overflow-y: auto; flex: 1;">
         <!-- Master Channel Selector -->
         <div class="form-group" style="margin-bottom:14px;">
           <label style="font-weight:700;">Master Channel <span style="color:#ef4444;">*</span></label>
@@ -4282,14 +4285,14 @@
               <input type="radio" name="tpl-create-channel" value="whatsapp" checked onchange="onTemplateChannelChange('create')" style="accent-color:#10b981;">
               <div>
                 <strong style="display:flex;align-items:center;gap:5px;color:#065f46;"><i data-lucide="message-circle" style="width:16px;height:16px;color:#10b981;"></i> WhatsApp</strong>
-                <div style="font-size:0.7rem;color:#047857;">Rich text, emojis, 1 credit</div>
+                <div style="font-size:0.7rem;color:#047857;">Rich text, images, emojis, 1 credit</div>
               </div>
             </label>
             <label id="tpl-create-opt-sms" style="border:1px solid #cbd5e1;background:#f8fafc;padding:10px 14px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:10px;transition:all 0.2s;">
               <input type="radio" name="tpl-create-channel" value="sms" onchange="onTemplateChannelChange('create')" style="accent-color:#2563eb;">
               <div>
                 <strong style="display:flex;align-items:center;gap:5px;color:#1e3a8a;"><i data-lucide="smartphone" style="width:16px;height:16px;color:#2563eb;"></i> SMS (GSM)</strong>
-                <div style="font-size:0.7rem;color:#1d4ed8;">GSM-7 (160) & Unicode (70)</div>
+                <div style="font-size:0.7rem;color:#1d4ed8;">GSM-7 (160) & Unicode (75)</div>
               </div>
             </label>
           </div>
@@ -4577,12 +4580,15 @@
 
   <!-- MODAL: EDIT TEMPLATE -->
   <div id="modal-edit-template" class="modal-overlay">
-    <div class="modal-card" style="max-width:560px;">
+    <div class="modal-card" style="max-width: 600px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; border-radius: 14px; overflow: hidden; background: #ffffff;">
       <div class="modal-header-saas">
-        <h3>Edit Message Template</h3>
+        <div>
+          <h3 style="margin:0;">Edit Message Template</h3>
+          <p style="margin:2px 0 0;font-size:0.75rem;color:var(--slate-500);">Modify content, channel, or attachments</p>
+        </div>
         <button class="btn-modal-close" data-close="modal-edit-template">&times;</button>
       </div>
-      <div class="modal-body-saas">
+      <div class="modal-body-saas" style="padding: 20px 24px; overflow-y: auto; flex: 1;">
         <input type="hidden" id="modal-edit-tpl-id">
 
         <!-- Master Channel Selector -->
@@ -4600,7 +4606,7 @@
               <input type="radio" name="tpl-edit-channel" value="sms" onchange="onTemplateChannelChange('edit')" style="accent-color:#2563eb;">
               <div>
                 <strong style="display:flex;align-items:center;gap:5px;color:#1e3a8a;"><i data-lucide="smartphone" style="width:16px;height:16px;color:#2563eb;"></i> SMS (GSM)</strong>
-                <div style="font-size:0.7rem;color:#1d4ed8;">GSM-7 (160) & Unicode (70)</div>
+                <div style="font-size:0.7rem;color:#1d4ed8;">GSM-7 (160) & Unicode (75)</div>
               </div>
             </label>
           </div>

@@ -6420,7 +6420,7 @@ if (modalTemplateBody) {
     }
 
     if (gsmStrip) gsmStrip.style.display = (selChannel === 'sms') ? 'block' : 'none';
-    if (gsmInfo) gsmInfo.innerHTML = `<strong style="color:${metrics.isUnicode ? '#b45309' : '#2563eb'};">${metrics.isUnicode ? 'Unicode (Emojis/Hindi)' : 'GSM-7 (Standard Latin)'}</strong> • ${metrics.charCount <= (metrics.isUnicode ? 70 : 160) ? `Single: up to ${metrics.isUnicode ? 70 : 160} chars` : `Multi-part: ${metrics.isUnicode ? 67 : 153} chars/part`}`;
+    if (gsmInfo) gsmInfo.innerHTML = `<strong style="color:${metrics.isUnicode ? '#b45309' : '#16a34a'};">${metrics.isUnicode ? '🟡 Unicode (Hindi / Emojis Detected)' : '🟢 GSM-7 (Standard Latin)'}</strong> • ${metrics.isUnicode ? '75 chars/credit' : '160 chars/credit'}`;
     if (gsmParts) gsmParts.textContent = `${metrics.parts} Part${metrics.parts > 1 ? 's' : ''}`;
 
     if (warnBox && warnText) {
@@ -6468,7 +6468,7 @@ if (modalEditTplBody) {
     }
 
     if (gsmStrip) gsmStrip.style.display = (selChannel === 'sms') ? 'block' : 'none';
-    if (gsmInfo) gsmInfo.innerHTML = `<strong style="color:${metrics.isUnicode ? '#b45309' : '#2563eb'};">${metrics.isUnicode ? 'Unicode (Emojis/Hindi)' : 'GSM-7 (Standard Latin)'}</strong> • ${metrics.charCount <= (metrics.isUnicode ? 70 : 160) ? `Single: up to ${metrics.isUnicode ? 70 : 160} chars` : `Multi-part: ${metrics.isUnicode ? 67 : 153} chars/part`}`;
+    if (gsmInfo) gsmInfo.innerHTML = `<strong style="color:${metrics.isUnicode ? '#b45309' : '#16a34a'};">${metrics.isUnicode ? '🟡 Unicode (Hindi / Emojis Detected)' : '🟢 GSM-7 (Standard Latin)'}</strong> • ${metrics.isUnicode ? '75 chars/credit' : '160 chars/credit'}`;
     if (gsmParts) gsmParts.textContent = `${metrics.parts} Part${metrics.parts > 1 ? 's' : ''}`;
 
     if (warnBox && warnText) {
@@ -6533,7 +6533,11 @@ if (btnCreateTemplateModal) {
       }
     }
 
-    if (modalCreateTemplate) modalCreateTemplate.style.display = 'flex';
+    if (modalCreateTemplate) {
+      modalCreateTemplate.style.display = 'flex';
+      const mb = modalCreateTemplate.querySelector('.modal-body-saas');
+      if (mb) mb.scrollTop = 0;
+    }
   });
 }
 
@@ -7271,7 +7275,11 @@ window.openEditTemplateModal = function(templateId) {
   if (callNum) callNum.value = cta?.call_number || '';
 
   if (modalEditTplCat) modalEditTplCat.value = 'MARKETING';
-  if (modalEditTemplate) modalEditTemplate.style.display = 'flex';
+  if (modalEditTemplate) {
+    modalEditTemplate.style.display = 'flex';
+    const mb = modalEditTemplate.querySelector('.modal-body-saas');
+    if (mb) mb.scrollTop = 0;
+  }
   if (window.lucide) lucide.createIcons({ root: modalEditTemplate });
 };
 
