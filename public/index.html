@@ -2962,10 +2962,14 @@
                 <i data-lucide="map-pin" style="width:18px;height:18px;color:#4f46e5;"></i> Domestic Channels (India)
               </h4>
               <div class="metrics-grid" style="margin-bottom:30px;">
-                <div class="metric-card">
+                <div class="metric-card" style="border: 2px solid #6366f1; background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);">
                   <div class="metric-data">
-                    <h4>Normal (Text)</h4>
-                    <div class="metric-value" id="wallet-dom-normal">0</div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+                      <h4 style="color:#4f46e5;font-weight:700;">Normal (Bulk SMS & Text)</h4>
+                      <span style="background:#4f46e5;color:#fff;font-size:0.68rem;padding:2px 7px;border-radius:12px;font-weight:700;">GSM SMS</span>
+                    </div>
+                    <div class="metric-value" id="wallet-dom-normal" style="color:#4f46e5;">0</div>
+                    <div style="font-size:0.75rem;color:#4f46e5;font-weight:600;margin-top:4px;">📱 GSM Bulk SMS & Plain WhatsApp</div>
                   </div>
                 </div>
                 <div class="metric-card">
@@ -2998,10 +3002,14 @@
                 <i data-lucide="globe-2" style="width:18px;height:18px;color:#0ea5e9;"></i> International Channels
               </h4>
               <div class="metrics-grid">
-                <div class="metric-card">
+                <div class="metric-card" style="border: 2px solid #0ea5e9; background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);">
                   <div class="metric-data">
-                    <h4>Normal Intl (Text)</h4>
-                    <div class="metric-value" id="wallet-intl-normal">0</div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+                      <h4 style="color:#0284c7;font-weight:700;">Normal Intl (Bulk SMS & Text)</h4>
+                      <span style="background:#0284c7;color:#fff;font-size:0.68rem;padding:2px 7px;border-radius:12px;font-weight:700;">Intl SMS</span>
+                    </div>
+                    <div class="metric-value" id="wallet-intl-normal" style="color:#0284c7;">0</div>
+                    <div style="font-size:0.75rem;color:#0284c7;font-weight:600;margin-top:4px;">🌐 International Bulk SMS & Text</div>
                   </div>
                 </div>
                 <div class="metric-card">
@@ -3467,7 +3475,16 @@
           </div>
 
           <!-- KPI Strip -->
-          <div class="metrics-grid" style="margin-bottom:20px;">
+          <div class="metrics-grid" style="margin-bottom:20px;grid-template-columns:repeat(auto-fit, minmax(210px, 1fr));">
+            <div class="metric-card" style="border:2px solid #6366f1;background:linear-gradient(135deg,#f5f3ff,#ede9fe);">
+              <div class="metric-icon" style="background:linear-gradient(135deg,#4f46e5,#6366f1);">
+                <i data-lucide="wallet" style="width:22px;height:22px;color:#fff;"></i>
+              </div>
+              <div class="metric-content">
+                <div class="metric-value" id="sms-kpi-balance" style="color:#4f46e5;">0</div>
+                <div class="metric-label" style="font-weight:700;color:#4f46e5;">Available SMS Balance</div>
+              </div>
+            </div>
             <div class="metric-card">
               <div class="metric-icon" style="background:linear-gradient(135deg,#7c3aed,#a855f7);">
                 <i data-lucide="message-square-text" style="width:22px;height:22px;color:#fff;"></i>
@@ -3835,7 +3852,7 @@
         </h4>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
           <div>
-            <label style="font-size:0.8rem;">Normal:</label>
+            <label style="font-size:0.8rem;font-weight:700;color:#4f46e5;">📱 Normal (GSM Bulk SMS & Text):</label>
             <input type="number" id="alloc-normal-domestic" class="form-input" placeholder="0" min="0">
           </div>
           <div>
@@ -3861,7 +3878,7 @@
         </h4>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div>
-            <label style="font-size:0.8rem;">Normal Intl:</label>
+            <label style="font-size:0.8rem;font-weight:700;color:#0ea5e9;">🌐 Normal Intl (Bulk SMS & Text):</label>
             <input type="number" id="alloc-normal-international" class="form-input" placeholder="0" min="0">
           </div>
           <div>
@@ -4865,7 +4882,7 @@
         <div class="form-group">
           <label>Channel / Credit Type</label>
           <select id="modal-order-type" class="form-input">
-            <option value="normal">Normal (Text / Basic)</option>
+            <option value="normal">📱 Normal (GSM Bulk SMS & WhatsApp Text)</option>
             <option value="dp">DP (Media / Graphic)</option>
             <option value="cta">CTA (Interactive Buttons)</option>
             <option value="dp_cta">DP + CTA (Media + Buttons)</option>

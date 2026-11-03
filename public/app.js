@@ -4070,7 +4070,7 @@ function renderUsersTable() {
     const domTotal = (u.credits_normal_domestic||0) + (u.credits_dp_domestic||0) + (u.credits_cta_domestic||0) + (u.credits_dp_cta_domestic||0) + (u.credits_own_number_domestic||0);
     const intlTotal = (u.credits_normal_international||0) + (u.credits_dp_international||0) + (u.credits_cta_international||0) + (u.credits_dp_cta_international||0) + (u.credits_own_number_international||0);
 
-    const domBreakdown = `Normal: ${(u.credits_normal_domestic||0).toLocaleString()} • DP: ${(u.credits_dp_domestic||0).toLocaleString()} • CTA: ${(u.credits_cta_domestic||0).toLocaleString()} • Own: ${(u.credits_own_number_domestic||0).toLocaleString()}`;
+    const domBreakdown = `SMS/Text: ${(u.credits_normal_domestic||0).toLocaleString()} • DP: ${(u.credits_dp_domestic||0).toLocaleString()} • CTA: ${(u.credits_cta_domestic||0).toLocaleString()} • Own: ${(u.credits_own_number_domestic||0).toLocaleString()}`;
     const intlBreakdown = `Normal: ${(u.credits_normal_international||0).toLocaleString()} • DP: ${(u.credits_dp_international||0).toLocaleString()} • CTA: ${(u.credits_cta_international||0).toLocaleString()} • Own: ${(u.credits_own_number_international||0).toLocaleString()}`;
 
     return `
@@ -8514,7 +8514,7 @@ window.openUser360Modal = async function(userId, evt) {
 
     // Tab 1: Credit Portfolio Table
     const channels = [
-      { key: 'normal', name: 'Standard / Normal Message' },
+      { key: 'normal', name: '📱 Normal (GSM Bulk SMS & WhatsApp Text)' },
       { key: 'dp', name: 'Profile / Display Picture (DP)' },
       { key: 'cta', name: 'Call-to-Action (CTA Buttons)' },
       { key: 'dp_cta', name: 'Combo (DP + CTA)' },
@@ -8761,6 +8761,17 @@ window.updateSmsCreditsPreview = function() {
   document.getElementById('sms-est-numbers').textContent = numCount.toLocaleString();
   document.getElementById('sms-est-parts').textContent = parts;
   document.getElementById('sms-est-total-credits').textContent = totalCost.toLocaleString();
+
+  const dest = document.getElementById('sms-destination') ? document.getElementById('sms-destination').value : 'domestic';
+  const userBal = window.currentUser ? (dest === 'international' ? (window.currentUser.credits_normal_international || 0) : (window.currentUser.credits_normal_domestic || 0)) : 0;
+  const balCheckEl = document.getElementById('sms-est-balance-check');
+  if (balCheckEl) {
+    if (userBal >= totalCost) {
+      balCheckEl.innerHTML = `<span style="color:#059669;font-weight:700;margin-left:8px;">✅ Available: ${userBal.toLocaleString()} credits</span>`;
+    } else {
+      balCheckEl.innerHTML = `<span style="color:#dc2626;font-weight:700;margin-left:8px;">❌ Insufficient: You have ${userBal.toLocaleString()} credits (need ${totalCost.toLocaleString()})</span>`;
+    }
+  }
 };
 
 // --- Submit ---
@@ -8837,6 +8848,12 @@ window.loadSmsCampaigns = async function() {
     document.getElementById('sms-kpi-numbers').textContent = totalNumbers.toLocaleString();
     document.getElementById('sms-kpi-credits').textContent = totalCredits.toLocaleString();
     document.getElementById('sms-kpi-completed').textContent = completed.toLocaleString();
+
+    const balEl = document.getElementById('sms-kpi-balance');
+    if (balEl && window.currentUser) {
+      const smsBal = (window.currentUser.credits_normal_domestic || 0);
+      balEl.textContent = smsBal.toLocaleString();
+    }
 
     if (smsCampaignsData.length === 0) {
       tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-muted);">No SMS campaigns yet. Click <strong>New SMS Campaign</strong> to get started.</td></tr>';
