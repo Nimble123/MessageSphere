@@ -1,0 +1,528 @@
+const express = require('express');
+const router = express.Router();
+const bcrypt = require('bcryptjs');
+const { query, getClient, initializeUserCredits, CREDIT_TYPES, DESTINATIONS } = require('../db');
+const { authenticate, requireRoles } = require('../middleware/auth');
+const { logAudit } = require('../services/audit');
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// GET /api/users - List users
+router.get('/', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  try {
+    let usersQuery = '';
+    let params = [];
+
+    if (req.user.role === 'admin') {
+      usersQuery = `
+        SELECT u.id, u.email, u.role, u.is_blocked, u.reseller_id, u.full_name, u.company_name, u.phone, u.business_address, u.gstin, u.created_at
+        FROM users u
+        WHERE u.id != $1
+        ORDER BY u.created_at DESC
+      `;
+      params = [req.user.id];
+    } else {
+      usersQuery = `
+        SELECT u.id, u.email, u.role, u.is_blocked, u.reseller_id, u.full_name, u.company_name, u.phone, u.business_address, u.gstin, u.created_at
+        FROM users u
+        WHERE u.reseller_id = $1
+        ORDER BY u.created_at DESC
+      `;
+      params = [req.user.id];
+    }
+
+    const usersResult = await query(usersQuery, params);
+    const userList = usersResult.rows;
+
+    if (userList.length === 0) {
+      return res.json([]);
+    }
+
+    // Fetch credits for these users
+    const userIds = userList.map(u => u.id);
+    const creditsResult = await query(
+      `SELECT user_id, credit_type, destination, balance FROM user_credits WHERE user_id = ANY($1::int[])`,
+      [userIds]
+    );
+
+    const creditsMap = {};
+    creditsResult.rows.forEach(r => {
+      if (!creditsMap[r.user_id]) creditsMap[r.user_id] = {};
+      creditsMap[r.user_id][`credits_${r.credit_type}_${r.destination}`] = parseInt(r.balance, 10);
+    });
+
+    const response = userList.map(u => ({
+      id: u.id,
+      email: u.email,
+      role: u.role,
+      isBlocked: u.is_blocked,
+      resellerId: u.reseller_id,
+      fullName: u.full_name,
+      companyName: u.company_name,
+      phone: u.phone,
+      businessAddress: u.business_address,
+      gstin: u.gstin,
+      createdAt: u.created_at,
+      ...(creditsMap[u.id] || {})
+    }));
+
+    return res.json(response);
+  } catch (err) {
+    console.error('List users error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/users/:id/360 - Comprehensive User 360 Profile
+router.get('/:id/360', authenticate, async (req, res) => {
+  try {
+    const rawId = req.params.id;
+    const targetId = rawId === 'me' ? req.user.id : parseInt(rawId, 10);
+    if (isNaN(targetId)) return res.status(400).json({ error: 'Invalid user ID' });
+
+    // Authorization:
+    // admin: can view anyone
+    // reseller: can view self or users under their reseller_id
+    // user: can only view self
+    if (req.user.role === 'user' && targetId !== req.user.id) {
+      return res.status(403).json({ error: 'Permission denied: You can only view your own 360 profile.' });
+    }
+
+    if (req.user.role === 'reseller' && targetId !== req.user.id) {
+      const parentCheck = await query('SELECT reseller_id FROM users WHERE id = $1', [targetId]);
+      if (!parentCheck.rows.length || parentCheck.rows[0].reseller_id !== req.user.id) {
+        return res.status(403).json({ error: 'Permission denied: This user is not under your reseller account.' });
+      }
+    }
+
+    // 1. User base profile & managing reseller
+    const userResult = await query(`
+      SELECT u.id, u.email, u.role, u.is_blocked, u.reseller_id, u.full_name, u.company_name, u.phone, u.business_address, u.gstin, u.created_at,
+             r.email AS reseller_email, r.full_name AS reseller_name
+      FROM users u
+      LEFT JOIN users r ON u.reseller_id = r.id
+      WHERE u.id = $1
+    `, [targetId]);
+
+    if (!userResult.rows.length) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const user = userResult.rows[0];
+
+    // 2. Credits breakdown
+    const creditsResult = await query(`
+      SELECT credit_type, destination, balance
+      FROM user_credits
+      WHERE user_id = $1
+      ORDER BY destination, credit_type
+    `, [targetId]);
+
+    let totalDomestic = 0;
+    let totalInternational = 0;
+    const creditBalances = {};
+    creditsResult.rows.forEach(r => {
+      const bal = parseInt(r.balance, 10) || 0;
+      creditBalances[`${r.credit_type}_${r.destination}`] = bal;
+      if (r.destination === 'domestic') totalDomestic += bal;
+      else if (r.destination === 'international') totalInternational += bal;
+    });
+
+    // 3. Campaign Performance Stats
+    const campaignStatsResult = await query(`
+      SELECT 
+        COUNT(*)::int AS total_campaigns,
+        COALESCE(SUM(total_numbers), 0)::bigint AS total_numbers,
+        COALESCE(SUM(delivered_count), 0)::bigint AS delivered_count,
+        COALESCE(SUM(failed_count), 0)::bigint AS failed_count,
+        COUNT(CASE WHEN status = 'Submitted' THEN 1 END)::int AS pending_count,
+        COUNT(CASE WHEN status = 'Approved' THEN 1 END)::int AS approved_count,
+        COUNT(CASE WHEN status = 'Completed' THEN 1 END)::int AS completed_count,
+        COUNT(CASE WHEN status = 'Report Updated' THEN 1 END)::int AS reported_count,
+        COUNT(CASE WHEN status = 'Rejected' THEN 1 END)::int AS rejected_count
+      FROM campaigns
+      WHERE user_id = $1
+    `, [targetId]);
+    const campaignStats = campaignStatsResult.rows[0] || {};
+    const totalDelivered = Number(campaignStats.delivered_count || 0);
+    const totalSent = Number(campaignStats.total_numbers || 0);
+    const deliveryRate = totalSent > 0 ? Math.round((totalDelivered / totalSent) * 100) : 0;
+
+    // 4. Recent Campaigns (up to 8)
+    const recentCampaignsResult = await query(`
+      SELECT id, title, campaign_type, destination, total_numbers, status, delivered_count, failed_count, created_at
+      FROM campaigns
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+      LIMIT 8
+    `, [targetId]);
+
+    // 5. Recent Credit Transactions (up to 15)
+    const transactionsResult = await query(`
+      SELECT ct.id, ct.from_user_id, ct.to_user_id, ct.credit_type, ct.destination, ct.amount, ct.reason, ct.created_at,
+             fu.email AS from_email, tu.email AS to_email
+      FROM credit_transactions ct
+      LEFT JOIN users fu ON ct.from_user_id = fu.id
+      LEFT JOIN users tu ON ct.to_user_id = tu.id
+      WHERE ct.to_user_id = $1 OR ct.from_user_id = $1
+      ORDER BY ct.created_at DESC
+      LIMIT 15
+    `, [targetId]);
+
+    // 6. Audience & Assets summary
+    const assetsResult = await query(`
+      SELECT 
+        (SELECT COUNT(*)::int FROM contact_groups WHERE user_id = $1) AS total_groups,
+        (SELECT COUNT(*)::int FROM contacts WHERE user_id = $1) AS total_contacts,
+        (SELECT COUNT(*)::int FROM templates WHERE user_id = $1) AS total_templates,
+        (SELECT COUNT(*)::int FROM templates WHERE user_id = $1 AND is_approved = TRUE) AS approved_templates,
+        (SELECT COUNT(*)::int FROM blacklist WHERE user_id = $1) AS blacklisted_count
+    `, [targetId]);
+    const assets = assetsResult.rows[0] || {};
+
+    return res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        isBlocked: user.is_blocked,
+        resellerId: user.reseller_id,
+        resellerEmail: user.reseller_email,
+        resellerName: user.reseller_name,
+        fullName: user.full_name,
+        companyName: user.company_name,
+        phone: user.phone,
+        businessAddress: user.business_address,
+        gstin: user.gstin,
+        createdAt: user.created_at
+      },
+      credits: {
+        balances: creditBalances,
+        totalDomestic,
+        totalInternational,
+        totalBalance: totalDomestic + totalInternational
+      },
+      campaignStats: {
+        totalCampaigns: Number(campaignStats.total_campaigns || 0),
+        totalNumbers: totalSent,
+        deliveredCount: totalDelivered,
+        failedCount: Number(campaignStats.failed_count || 0),
+        pendingCount: Number(campaignStats.pending_count || 0),
+        approvedCount: Number(campaignStats.approved_count || 0),
+        completedCount: Number(campaignStats.completed_count || 0),
+        reportedCount: Number(campaignStats.reported_count || 0),
+        rejectedCount: Number(campaignStats.rejected_count || 0),
+        deliveryRate
+      },
+      recentCampaigns: recentCampaignsResult.rows,
+      recentTransactions: transactionsResult.rows,
+      assets: {
+        totalGroups: Number(assets.total_groups || 0),
+        totalContacts: Number(assets.total_contacts || 0),
+        totalTemplates: Number(assets.total_templates || 0),
+        approvedTemplates: Number(assets.approved_templates || 0),
+        blacklistedCount: Number(assets.blacklisted_count || 0)
+      }
+    });
+  } catch (err) {
+    console.error('User 360 profile error:', err);
+    return res.status(500).json({ error: 'Failed to load user 360 profile' });
+  }
+});
+
+// POST /api/users - Create a new user
+router.post('/', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  const { email, password, role, full_name, company_name, phone, business_address, gstin, reseller_id } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+  if (!EMAIL_PATTERN.test(email.trim())) {
+    return res.status(400).json({ error: 'A valid email address is required' });
+  }
+  if (!full_name || !String(full_name).trim()) {
+    return res.status(400).json({ error: 'Full name is required' });
+  }
+  if (!phone || String(phone).replace(/\D/g, '').length < 10) {
+    return res.status(400).json({ error: 'A valid contact phone number is required' });
+  }
+
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+  }
+
+  const assignedRole = role || 'user';
+  if (req.user.role === 'reseller' && assignedRole === 'reseller') {
+    return res.status(403).json({ error: 'Resellers can only create Users.' });
+  }
+  if (req.user.role === 'reseller' && role && role !== 'user') {
+    return res.status(403).json({ error: 'Resellers can only create Users.' });
+  }
+
+  if (!['user', 'reseller'].includes(assignedRole)) {
+    return res.status(400).json({ error: 'Invalid role specified' });
+  }
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    // Check if email already exists
+    const existing = await client.query('SELECT id FROM users WHERE email = $1', [email.trim().toLowerCase()]);
+    if (existing.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'User with this email already exists' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    let resellerId = req.user.role === 'reseller' ? req.user.id : null;
+    if (req.user.role === 'admin' && assignedRole === 'user' && reseller_id) {
+      const resellerCheck = await client.query(`SELECT id FROM users WHERE id = $1 AND role = 'reseller'`, [parseInt(reseller_id, 10)]);
+      if (!resellerCheck.rows.length) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Selected reseller account is invalid' });
+      }
+      resellerId = resellerCheck.rows[0].id;
+    }
+
+    const insertResult = await client.query(`
+      INSERT INTO users (email, password_hash, role, reseller_id, full_name, company_name, phone, business_address, gstin)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING id, email, role, is_blocked, reseller_id, full_name, company_name, phone, business_address, gstin, created_at
+    `, [email.trim().toLowerCase(), passwordHash, assignedRole, resellerId, String(full_name).trim().slice(0, 120), String(company_name || '').trim().slice(0, 160) || null, String(phone).trim().slice(0, 30), String(business_address || '').trim().slice(0, 2000) || null, String(gstin || '').trim().toUpperCase().slice(0, 20) || null]);
+
+    const newUser = insertResult.rows[0];
+    await initializeUserCredits(client, newUser.id);
+    if (newUser.role === 'reseller') {
+      const defaultBrand = newUser.company_name || newUser.email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+      await client.query(`INSERT INTO reseller_profiles (reseller_id, brand_name) VALUES ($1, $2)`, [newUser.id, defaultBrand || 'Reseller Portal']);
+    }
+    await logAudit(client, { actorId: req.user.id, entityType: 'user', entityId: newUser.id, action: 'user_created', details: { role: newUser.role, resellerId: newUser.reseller_id } });
+
+    await client.query('COMMIT');
+    return res.status(201).json({ message: 'User created successfully', user: newUser });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Create user error:', err);
+    return res.status(500).json({ error: 'Failed to create user' });
+  } finally {
+    client.release();
+  }
+});
+
+// PATCH /api/users/:id/block - Toggle block/unblock
+router.patch('/:id/block', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  const targetId = parseInt(req.params.id, 10);
+  if (isNaN(targetId)) return res.status(400).json({ error: 'Invalid user ID' });
+
+  if (targetId === req.user.id) {
+    return res.status(400).json({ error: 'You cannot block yourself' });
+  }
+
+  try {
+    const userCheck = await query('SELECT id, reseller_id, is_blocked FROM users WHERE id = $1', [targetId]);
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const targetUser = userCheck.rows[0];
+    const targetRole = await query('SELECT role FROM users WHERE id = $1', [targetId]);
+    if (targetRole.rows[0] && targetRole.rows[0].role === 'admin') {
+      return res.status(403).json({ error: 'Administrator accounts cannot be modified here' });
+    }
+    if (req.user.role === 'reseller' && targetUser.reseller_id !== req.user.id) {
+      return res.status(403).json({ error: 'Permission denied: Cannot modify users from other accounts' });
+    }
+
+    const newBlockedState = !targetUser.is_blocked;
+    await query('UPDATE users SET is_blocked = $1 WHERE id = $2', [newBlockedState, targetId]);
+
+    return res.json({ message: `User ${newBlockedState ? 'blocked' : 'unblocked'} successfully`, isBlocked: newBlockedState });
+  } catch (err) {
+    console.error('Block user error:', err);
+    return res.status(500).json({ error: 'Failed to update user block status' });
+  }
+});
+
+// POST /api/users/:id/credits - Add/allot credits
+router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  const targetId = parseInt(req.params.id, 10);
+  if (isNaN(targetId)) return res.status(400).json({ error: 'Invalid user ID' });
+
+  const { updates, reason } = req.body;
+  // updates is expected as an object: { 'normal_domestic': 500, 'dp_international': 100, ... }
+  if (!updates || typeof updates !== 'object' || Object.keys(updates).length === 0) {
+    return res.status(400).json({ error: 'Please specify credits to add' });
+  }
+  if (!reason || !String(reason).trim()) {
+    return res.status(400).json({ error: 'A reason is required for manual credit allocation' });
+  }
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    // Verify target user exists
+    const targetCheck = await client.query('SELECT id, email, reseller_id FROM users WHERE id = $1', [targetId]);
+    if (targetCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Target user not found' });
+    }
+    const targetUser = targetCheck.rows[0];
+
+    // Check permissions
+    if (req.user.role === 'reseller' && targetUser.reseller_id !== req.user.id) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Permission denied: Reseller can only allocate credits to own users' });
+    }
+
+    // Process each credit update
+    for (const [key, rawVal] of Object.entries(updates)) {
+      const amount = parseInt(rawVal, 10);
+      if (isNaN(amount) || amount <= 0) continue;
+
+      // Extract credit_type and destination from key (e.g., normal_domestic, dp_cta_domestic, etc.)
+      let destination = '';
+      let creditType = '';
+      if (key.endsWith('_domestic')) {
+        destination = 'domestic';
+        creditType = key.replace(/_domestic$/, '');
+      } else if (key.endsWith('_international')) {
+        destination = 'international';
+        creditType = key.replace(/_international$/, '');
+      } else {
+        continue;
+      }
+
+      if (!CREDIT_TYPES.includes(creditType) || !DESTINATIONS.includes(destination)) {
+        continue;
+      }
+
+      // If reseller, deduct from reseller balance first
+      if (req.user.role === 'reseller') {
+        const resellerCredit = await client.query(
+          `SELECT balance FROM user_credits WHERE user_id = $1 AND credit_type = $2 AND destination = $3 FOR UPDATE`,
+          [req.user.id, creditType, destination]
+        );
+        const currentBal = resellerCredit.rows.length > 0 ? parseInt(resellerCredit.rows[0].balance, 10) : 0;
+        if (currentBal < amount) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({
+            error: `Insufficient balance in your account for ${creditType} (${destination}). Available: ${currentBal}, Needed: ${amount}`
+          });
+        }
+
+        // Deduct from reseller
+        await client.query(
+          `UPDATE user_credits SET balance = balance - $1 WHERE user_id = $2 AND credit_type = $3 AND destination = $4`,
+          [amount, req.user.id, creditType, destination]
+        );
+      }
+
+      // Add to target user
+      await client.query(`
+        INSERT INTO user_credits (user_id, credit_type, destination, balance)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (user_id, credit_type, destination)
+        DO UPDATE SET balance = user_credits.balance + EXCLUDED.balance
+      `, [targetId, creditType, destination, amount]);
+
+      // Record audit log
+      await client.query(`
+        INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason)
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `, [req.user.id, targetId, creditType, destination, amount, `Allotted by ${req.user.role} (${req.user.email}): ${String(reason).trim().slice(0, 180)}`]);
+
+      await logAudit(client, { actorId: req.user.id, entityType: 'user', entityId: targetId, action: 'credits_allocated', details: { creditType, destination, amount, reason: String(reason).trim().slice(0, 1000) } });
+    }
+
+    await client.query('COMMIT');
+    return res.json({ message: 'Credits updated successfully!' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Update credits error:', err);
+    return res.status(500).json({ error: 'Failed to update credits' });
+  } finally {
+    client.release();
+  }
+});
+
+// PATCH /api/users/:id/reset-password - Admin or Reseller resets user password
+router.patch('/:id/reset-password', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  const targetId = parseInt(req.params.id, 10);
+  const { newPassword, reset_request_id } = req.body;
+
+  if (isNaN(targetId)) return res.status(400).json({ error: 'Invalid user ID' });
+  if (!newPassword || newPassword.length < 8) {
+    return res.status(400).json({ error: 'New password must be at least 8 characters long' });
+  }
+
+  try {
+    const userCheck = await query('SELECT id, email, reseller_id FROM users WHERE id = $1', [targetId]);
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const targetUser = userCheck.rows[0];
+    const targetRole = await query('SELECT role FROM users WHERE id = $1', [targetId]);
+    if (targetRole.rows[0] && targetRole.rows[0].role === 'admin') {
+      return res.status(403).json({ error: 'Administrator accounts cannot be modified here' });
+    }
+    if (req.user.role === 'reseller' && targetUser.reseller_id !== req.user.id) {
+      return res.status(403).json({ error: 'Permission denied: Cannot modify users from other accounts' });
+    }
+
+    const hash = await bcrypt.hash(newPassword, 10);
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      await client.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, targetId]);
+      if (reset_request_id && req.user.role === 'admin') {
+        await client.query(`UPDATE password_reset_requests SET status = 'Resolved', resolved_at = NOW(), resolved_by = $1, resolution_note = 'Password reset completed by administrator' WHERE id = $2 AND user_id = $3 AND status = 'Pending'`, [req.user.id, parseInt(reset_request_id, 10), targetId]);
+      }
+      await logAudit(client, { actorId: req.user.id, entityType: 'user', entityId: targetId, action: 'password_reset_completed', details: { resetRequestId: reset_request_id || null } });
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally { client.release(); }
+
+    return res.json({ message: `Password for ${targetUser.email} has been reset successfully.` });
+  } catch (err) {
+    console.error('Reset password error:', err);
+    return res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
+// DELETE /api/users/:id - Admin or Reseller deletes user
+router.delete('/:id', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  const targetId = parseInt(req.params.id, 10);
+  if (isNaN(targetId)) return res.status(400).json({ error: 'Invalid user ID' });
+
+  if (targetId === req.user.id) {
+    return res.status(400).json({ error: 'You cannot delete your own account' });
+  }
+
+  try {
+    const userCheck = await query('SELECT id, email, reseller_id FROM users WHERE id = $1', [targetId]);
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const targetUser = userCheck.rows[0];
+    const targetRole = await query('SELECT role FROM users WHERE id = $1', [targetId]);
+    if (targetRole.rows[0] && targetRole.rows[0].role === 'admin') {
+      return res.status(403).json({ error: 'Administrator accounts cannot be deleted' });
+    }
+    if (req.user.role === 'reseller' && targetUser.reseller_id !== req.user.id) {
+      return res.status(403).json({ error: 'Permission denied: Cannot delete users from other accounts' });
+    }
+
+    await query('DELETE FROM users WHERE id = $1', [targetId]);
+    return res.json({ message: `User ${targetUser.email} deleted successfully.` });
+  } catch (err) {
+    console.error('Delete user error:', err);
+    return res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+module.exports = router;

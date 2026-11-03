@@ -1,0 +1,9 @@
+{
+  "name": "functions",
+  "description": "Retired Firebase function placeholder; use the root Node.js service.",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "index.js",
+  "private": true
+}
