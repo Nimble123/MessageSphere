@@ -324,7 +324,8 @@ window.switchView = function(viewId) {
     'view-operations': { title: 'Operations Audit & Controls', breadcrumb: 'MessageSphere / Administration / Operations Audit' },
     'view-resellers': { title: 'Reseller Network', breadcrumb: 'MessageSphere / Administration / Resellers' },
     'view-branding': { title: 'White-label Brand', breadcrumb: 'MessageSphere / Reseller / Brand' },
-    'view-settings': { title: 'Account Settings', breadcrumb: 'MessageSphere / Settings / Profile' }
+    'view-settings': { title: 'Account Settings', breadcrumb: 'MessageSphere / Settings / Profile' },
+    'view-sms': { title: 'GSM Bulk SMS Campaigns', breadcrumb: 'MessageSphere / SMS / Campaigns' }
   };
 
   if (titles[viewId]) {
@@ -351,6 +352,7 @@ window.switchView = function(viewId) {
   if (viewId === 'view-operations') loadOperationsAudit();
   if (viewId === 'view-resellers') loadResellerNetwork();
   if (viewId === 'view-branding') loadMyBrandProfile();
+  if (viewId === 'view-sms') loadSmsCampaigns();
 
   if (window.lucide) {
     setTimeout(() => lucide.createIcons(), 50);
@@ -8631,3 +8633,275 @@ window.openUser360Modal = async function(userId, evt) {
 
 // INITIALIZE APP SESSION
 checkSession();
+
+// ============================================================
+// GSM BULK SMS MODULE
+// ============================================================
+
+// --- GSM-7 Engine (mirrors backend calculateTemplateMetrics) ---
+const GSM7_EXTENDED = new Set(['^', '{', '}', '\\', '[', '~', ']', '|', '€']);
+const GSM7_REGEX = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#$%&'()*+,\-./:;<=>?¡¿\^{}\[~\]|€]*$/;
+
+function computeSmsMetrics(text) {
+  const content = String(text || '');
+  const isUnicode = !GSM7_REGEX.test(content);
+  let effectiveLen = 0;
+  if (isUnicode) {
+    effectiveLen = Array.from(content).length;
+  } else {
+    for (const ch of content) effectiveLen += GSM7_EXTENDED.has(ch) ? 2 : 1;
+  }
+  let parts = 1;
+  if (isUnicode) {
+    if (effectiveLen > 70) parts = Math.ceil(effectiveLen / 67);
+  } else {
+    if (effectiveLen > 160) parts = Math.ceil(effectiveLen / 153);
+  }
+  let warning = null;
+  if (parts >= 5) warning = `⚠️ ${parts} parts per number — carriers may throttle messages over 4 parts.`;
+  return { effectiveLen, isUnicode, parts, warning };
+}
+
+// --- State ---
+let smsCampaignsData = [];
+let smsFileNumbers = []; // numbers loaded from CSV/TXT file
+
+// --- Composer Open/Close ---
+window.openSmsComposer = function() {
+  smsFileNumbers = [];
+  document.getElementById('form-compose-sms').reset();
+  document.getElementById('sms-form-error').style.display = 'none';
+  document.getElementById('sms-file-preview').textContent = '';
+  document.getElementById('sms-carrier-warning').style.display = 'none';
+  onSmsMessageInput();
+  updateSmsCreditsPreview();
+
+  // Admin: populate user selector
+  const tug = document.getElementById('sms-target-user-group');
+  if (window.currentUser && window.currentUser.role === 'admin') {
+    tug.style.display = 'block';
+    populateSmsUserSelector();
+  } else {
+    tug.style.display = 'none';
+  }
+
+  document.getElementById('modal-compose-sms').style.display = 'flex';
+  if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
+};
+
+window.closeSmsComposer = function() {
+  document.getElementById('modal-compose-sms').style.display = 'none';
+};
+
+async function populateSmsUserSelector() {
+  const sel = document.getElementById('sms-target-user');
+  sel.innerHTML = '<option value="">— Select target user —</option>';
+  try {
+    const res = await apiFetch('/api/users?limit=200');
+    const data = await res.json();
+    const users = data.users || data || [];
+    users.forEach(u => {
+      const opt = document.createElement('option');
+      opt.value = u.id;
+      opt.textContent = `${u.email} (${u.role})`;
+      sel.appendChild(opt);
+    });
+  } catch(e) { /* ignore */ }
+}
+
+// --- Live GSM counter ---
+window.onSmsMessageInput = function() {
+  const msg = document.getElementById('sms-message').value;
+  const { effectiveLen, isUnicode, parts, warning } = computeSmsMetrics(msg);
+  document.getElementById('sms-char-count').textContent = effectiveLen;
+  const encLabel = document.getElementById('sms-encoding-label');
+  encLabel.textContent = isUnicode ? 'Unicode (UCS-2)' : 'GSM-7';
+  encLabel.style.color = isUnicode ? '#f59e0b' : '#10b981';
+  document.getElementById('sms-parts-count').textContent = parts;
+  document.getElementById('sms-cred-per-num').textContent = parts;
+  const warnEl = document.getElementById('sms-carrier-warning');
+  if (warning) { warnEl.textContent = warning; warnEl.style.display = 'inline'; }
+  else { warnEl.style.display = 'none'; }
+  updateSmsCreditsPreview();
+};
+
+// --- Parse numbers from textarea ---
+function parseSmsNumbers(raw) {
+  return [...new Set(
+    raw.split(/[\n,]+/)
+      .map(n => n.trim().replace(/\s+/g, ''))
+      .filter(n => n.length >= 7 && /\d{7,}/.test(n))
+  )];
+}
+
+// --- File select handler ---
+window.onSmsFileSelect = function() {
+  const fileInput = document.getElementById('sms-numbers-file');
+  const preview = document.getElementById('sms-file-preview');
+  smsFileNumbers = [];
+  if (!fileInput.files || !fileInput.files[0]) { preview.textContent = ''; updateSmsCreditsPreview(); return; }
+  const file = fileInput.files[0];
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const raw = e.target.result;
+    smsFileNumbers = parseSmsNumbers(raw);
+    preview.textContent = `📁 File loaded: ${smsFileNumbers.length.toLocaleString()} numbers found`;
+    updateSmsCreditsPreview();
+  };
+  reader.readAsText(file);
+};
+
+// --- Credit estimate ---
+window.updateSmsCreditsPreview = function() {
+  const parts = parseInt(document.getElementById('sms-parts-count').textContent) || 1;
+  const textNumbers = parseSmsNumbers(document.getElementById('sms-numbers').value || '');
+  const allNumbers = smsFileNumbers.length > 0 ? smsFileNumbers : textNumbers;
+  const numCount = allNumbers.length;
+  const totalCost = numCount * parts;
+  document.getElementById('sms-est-numbers').textContent = numCount.toLocaleString();
+  document.getElementById('sms-est-parts').textContent = parts;
+  document.getElementById('sms-est-total-credits').textContent = totalCost.toLocaleString();
+};
+
+// --- Submit ---
+window.submitSmsCampaign = async function(e) {
+  e.preventDefault();
+  const errEl = document.getElementById('sms-form-error');
+  const btn = document.getElementById('sms-submit-btn');
+  errEl.style.display = 'none';
+
+  const title = document.getElementById('sms-title').value.trim();
+  const destination = document.getElementById('sms-destination').value;
+  const message = document.getElementById('sms-message').value.trim();
+  const scheduledAt = document.getElementById('sms-scheduled-at').value;
+  const targetUserId = document.getElementById('sms-target-user').value;
+
+  const textNumbers = parseSmsNumbers(document.getElementById('sms-numbers').value || '');
+  const allNumbers = smsFileNumbers.length > 0 ? smsFileNumbers : textNumbers;
+
+  if (!title) { errEl.textContent = 'Campaign title required.'; errEl.style.display = 'block'; return; }
+  if (!message) { errEl.textContent = 'Message text required.'; errEl.style.display = 'block'; return; }
+  if (allNumbers.length === 0) { errEl.textContent = 'At least one valid phone number required.'; errEl.style.display = 'block'; return; }
+  if (window.currentUser && window.currentUser.role === 'admin' && !targetUserId) {
+    errEl.textContent = 'Admin must select a target user account.'; errEl.style.display = 'block'; return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<i data-lucide="loader-2" style="width:15px;height:15px;animation:spin 1s linear infinite;"></i> Submitting...';
+  if (window.lucide) lucide.createIcons();
+
+  try {
+    const payload = {
+      title,
+      destination,
+      message,
+      numbers: allNumbers.join('\n'),
+    };
+    if (scheduledAt) payload.scheduled_at = scheduledAt;
+    if (targetUserId) payload.target_user_id = targetUserId;
+
+    const res = await apiFetch('/api/sms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to submit SMS campaign');
+
+    closeSmsComposer();
+    showToast(`✅ SMS Campaign "${title}" submitted! ${data.total_numbers?.toLocaleString() || ''} numbers queued.`, 'success');
+    loadSmsCampaigns();
+  } catch(err) {
+    errEl.textContent = err.message;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i data-lucide="send" style="width:15px;height:15px;"></i> Submit SMS Campaign';
+    if (window.lucide) lucide.createIcons();
+  }
+};
+
+// --- Load SMS Campaigns ---
+window.loadSmsCampaigns = async function() {
+  const tbody = document.getElementById('sms-campaigns-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--text-muted);">Loading...</td></tr>';
+
+  try {
+    const res = await apiFetch('/api/sms');
+    const data = await res.json();
+    smsCampaignsData = Array.isArray(data) ? data : (data.campaigns || []);
+
+    // Update KPIs
+    const total = smsCampaignsData.length;
+    const totalNumbers = smsCampaignsData.reduce((s, c) => s + (parseInt(c.total_numbers) || 0), 0);
+    const totalCredits = smsCampaignsData.reduce((s, c) => s + (parseInt(c.credits_used) || 0), 0);
+    const completed = smsCampaignsData.filter(c => c.status === 'Completed' || c.status === 'Report Updated').length;
+    document.getElementById('sms-kpi-total').textContent = total.toLocaleString();
+    document.getElementById('sms-kpi-numbers').textContent = totalNumbers.toLocaleString();
+    document.getElementById('sms-kpi-credits').textContent = totalCredits.toLocaleString();
+    document.getElementById('sms-kpi-completed').textContent = completed.toLocaleString();
+
+    if (smsCampaignsData.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-muted);">No SMS campaigns yet. Click <strong>New SMS Campaign</strong> to get started.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = smsCampaignsData.map(c => {
+      const statusColors = {
+        'Submitted': 'var(--warning)',
+        'Approved': 'var(--primary)',
+        'Completed': 'var(--success)',
+        'Report Updated': 'var(--success)',
+        'Rejected': 'var(--danger)',
+        'Cancelled': 'var(--text-muted)'
+      };
+      const statusColor = statusColors[c.status] || 'var(--text-muted)';
+      const scheduledDisplay = c.scheduled_at ? new Date(c.scheduled_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+      const createdDisplay = c.created_at ? new Date(c.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+      const parts = c.sms_parts || 1;
+      const creditsUsed = (parseInt(c.total_numbers) || 0) * parts;
+      const canDelete = c.status === 'Submitted';
+
+      return `<tr>
+        <td><span style="font-family:monospace;font-size:0.78rem;color:var(--text-muted);">#${c.id}</span></td>
+        <td style="font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(c.title || '')}">${escHtml(c.title || '—')}</td>
+        <td><span style="text-transform:capitalize;">${c.destination || '—'}</span></td>
+        <td style="text-align:right;">${(parseInt(c.total_numbers) || 0).toLocaleString()}</td>
+        <td style="text-align:center;">${parts}</td>
+        <td style="text-align:right;">${creditsUsed.toLocaleString()}</td>
+        <td style="font-size:0.78rem;">${scheduledDisplay}</td>
+        <td><span style="background:${statusColor}22;color:${statusColor};padding:2px 8px;border-radius:20px;font-size:0.75rem;font-weight:700;white-space:nowrap;">${c.status}</span></td>
+        <td style="font-size:0.78rem;color:var(--text-muted);">${createdDisplay}</td>
+        <td>
+          <div style="display:flex;gap:4px;">
+            ${canDelete ? `<button type="button" class="btn-action" onclick="deleteSmsCanpaign(${c.id})" style="padding:3px 8px;font-size:0.75rem;background:var(--danger);color:#fff;border-color:var(--danger);" title="Cancel Campaign"><i data-lucide="trash-2" style="width:13px;height:13px;"></i></button>` : ''}
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+
+    if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
+  } catch(err) {
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--danger);">Error: ${escHtml(err.message)}</td></tr>`;
+  }
+};
+
+// --- Delete/Cancel ---
+window.deleteSmsCanpaign = async function(id) {
+  if (!confirm('Cancel this SMS campaign and refund credits?')) return;
+  try {
+    const res = await apiFetch(`/api/sms/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Delete failed');
+    showToast('SMS campaign cancelled and credits refunded.', 'success');
+    loadSmsCampaigns();
+  } catch(err) {
+    showToast(`Error: ${err.message}`, 'error');
+  }
+};
+
+// Helper to escape HTML
+function escHtml(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}

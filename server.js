@@ -63,6 +63,7 @@ app.use('/api/headers', require('./routes/headers'));
 app.use('/api/audit', require('./routes/audit'));
 app.use('/api/resellers', require('./routes/resellers'));
 app.use('/api/reports', require('./routes/reports'));
+app.use('/api/sms', require('./routes/sms'));
 
 // Global error handler
 app.use((err, req, res, next) => {

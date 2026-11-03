@@ -1847,6 +1847,10 @@
           <span class="nav-icon"><i data-lucide="file-text" style="width:18px;height:18px;"></i></span>
           <span class="nav-text">Templates</span>
         </div>
+        <div class="nav-item" data-view="view-sms">
+          <span class="nav-icon"><i data-lucide="message-square-text" style="width:18px;height:18px;"></i></span>
+          <span class="nav-text">Bulk SMS</span>
+        </div>
 
         <div class="nav-category">Billing & Credits</div>
         <div class="nav-item" data-view="view-wallet">
@@ -3450,6 +3454,180 @@
             </div>
           </div>
         </section>
+
+        <!-- ==================== VIEW: BULK GSM SMS ==================== -->
+        <section id="view-sms" class="app-view">
+          <div class="view-header">
+            <h2 class="view-title">GSM Bulk SMS Campaigns</h2>
+            <div style="display:flex;gap:10px;align-items:center;">
+              <button type="button" class="btn-action btn-action-primary" onclick="openSmsComposer()">
+                <i data-lucide="plus" style="width:16px;height:16px;"></i> New SMS Campaign
+              </button>
+            </div>
+          </div>
+
+          <!-- KPI Strip -->
+          <div class="metrics-grid" style="margin-bottom:20px;">
+            <div class="metric-card">
+              <div class="metric-icon" style="background:linear-gradient(135deg,#7c3aed,#a855f7);">
+                <i data-lucide="message-square-text" style="width:22px;height:22px;color:#fff;"></i>
+              </div>
+              <div class="metric-content">
+                <div class="metric-value" id="sms-kpi-total">—</div>
+                <div class="metric-label">Total SMS Campaigns</div>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon" style="background:linear-gradient(135deg,#0ea5e9,#38bdf8);">
+                <i data-lucide="users" style="width:22px;height:22px;color:#fff;"></i>
+              </div>
+              <div class="metric-content">
+                <div class="metric-value" id="sms-kpi-numbers">—</div>
+                <div class="metric-label">Total Numbers Targeted</div>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon" style="background:linear-gradient(135deg,#10b981,#34d399);">
+                <i data-lucide="coins" style="width:22px;height:22px;color:#fff;"></i>
+              </div>
+              <div class="metric-content">
+                <div class="metric-value" id="sms-kpi-credits">—</div>
+                <div class="metric-label">Credits Consumed</div>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon" style="background:linear-gradient(135deg,#f59e0b,#fbbf24);">
+                <i data-lucide="check-circle-2" style="width:22px;height:22px;color:#fff;"></i>
+              </div>
+              <div class="metric-content">
+                <div class="metric-value" id="sms-kpi-completed">—</div>
+                <div class="metric-label">Completed Campaigns</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SMS Campaigns Table -->
+          <div class="card">
+            <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <i data-lucide="list" style="width:18px;height:18px;color:var(--primary);"></i>
+                <span style="font-weight:700;font-size:1rem;">SMS Campaign History</span>
+              </div>
+              <button type="button" class="btn-action" onclick="loadSmsCampaigns()" style="gap:5px;">
+                <i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Refresh
+              </button>
+            </div>
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>#ID</th>
+                    <th>Campaign Title</th>
+                    <th>Destination</th>
+                    <th>Numbers</th>
+                    <th>Parts/SMS</th>
+                    <th>Credits Used</th>
+                    <th>Scheduled At</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="sms-campaigns-tbody">
+                  <tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-muted);">
+                    <i data-lucide="loader-2" style="width:20px;height:20px;animation:spin 1s linear infinite;"></i>
+                    Loading SMS campaigns...
+                  </td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Compose SMS Modal -->
+          <div id="modal-compose-sms" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeSmsComposer()">
+            <div class="modal-dialog" style="max-width:680px;width:95%;">
+              <div class="modal-header">
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <i data-lucide="message-square-text" style="width:20px;height:20px;color:var(--primary);"></i>
+                  <h3 class="modal-title">New GSM Bulk SMS Campaign</h3>
+                </div>
+                <button type="button" class="modal-close" onclick="closeSmsComposer()">&times;</button>
+              </div>
+              <div class="modal-body" style="padding:24px;">
+                <form id="form-compose-sms" onsubmit="submitSmsCampaign(event)">
+
+                  <!-- Title -->
+                  <div class="form-group" style="margin-bottom:16px;">
+                    <label class="form-label">Campaign Title <span style="color:var(--danger);">*</span></label>
+                    <input type="text" id="sms-title" class="form-input" placeholder="e.g. Diwali Sale 2026 — GSM SMS" required maxlength="120">
+                  </div>
+
+                  <!-- Destination -->
+                  <div class="form-group" style="margin-bottom:16px;">
+                    <label class="form-label">Destination <span style="color:var(--danger);">*</span></label>
+                    <select id="sms-destination" class="form-input" required onchange="updateSmsCreditsPreview()">
+                      <option value="domestic">🇮🇳 Domestic (India)</option>
+                      <option value="international">🌐 International</option>
+                    </select>
+                  </div>
+
+                  <!-- Message Textarea with live counter -->
+                  <div class="form-group" style="margin-bottom:8px;">
+                    <label class="form-label">SMS Message <span style="color:var(--danger);">*</span></label>
+                    <textarea id="sms-message" class="form-input" rows="5" placeholder="Type your SMS marketing message here..." required maxlength="1600" oninput="onSmsMessageInput()" style="font-family:monospace;resize:vertical;"></textarea>
+                  </div>
+                  <!-- Live GSM Metrics Bar -->
+                  <div id="sms-gsm-metrics" style="background:var(--bg-secondary,#f8fafc);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:0.82rem;">
+                    <span>Chars: <strong id="sms-char-count">0</strong></span>
+                    <span>Encoding: <strong id="sms-encoding-label" style="color:var(--success);">GSM-7</strong></span>
+                    <span>Parts: <strong id="sms-parts-count">1</strong></span>
+                    <span>Credits/Number: <strong id="sms-cred-per-num">1</strong></span>
+                    <span id="sms-carrier-warning" style="color:var(--danger);display:none;font-weight:600;"></span>
+                  </div>
+
+                  <!-- Recipient Numbers -->
+                  <div class="form-group" style="margin-bottom:12px;">
+                    <label class="form-label">Recipient Phone Numbers <span style="color:var(--danger);">*</span></label>
+                    <textarea id="sms-numbers" class="form-input" rows="5" placeholder="One number per line or comma-separated&#10;e.g.&#10;9876543210&#10;9123456789&#10;+918888888888" oninput="updateSmsCreditsPreview()" style="font-family:monospace;resize:vertical;"></textarea>
+                    <div style="margin-top:6px;font-size:0.78rem;color:var(--text-muted);">Or upload a CSV / TXT file with one number per line:</div>
+                    <input type="file" id="sms-numbers-file" accept=".csv,.txt" onchange="onSmsFileSelect()" style="margin-top:6px;">
+                    <div id="sms-file-preview" style="font-size:0.78rem;margin-top:4px;color:var(--text-muted);"></div>
+                  </div>
+
+                  <!-- Numbers count + credit estimate -->
+                  <div id="sms-credit-estimate" style="background:linear-gradient(135deg,#ede9fe,#f0f9ff);border:1px solid #c4b5fd;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:0.83rem;">
+                    <strong>💡 Estimate:</strong> <span id="sms-est-numbers">0</span> numbers × <span id="sms-est-parts">1</span> part = <strong id="sms-est-total-credits">0</strong> normal credits
+                    <span id="sms-est-balance-check" style="margin-left:8px;"></span>
+                  </div>
+
+                  <!-- Schedule -->
+                  <div class="form-group" style="margin-bottom:16px;">
+                    <label class="form-label">Schedule (optional — leave blank for immediate)</label>
+                    <input type="datetime-local" id="sms-scheduled-at" class="form-input">
+                  </div>
+
+                  <!-- Admin: target user selector -->
+                  <div id="sms-target-user-group" class="form-group" style="margin-bottom:16px;display:none;">
+                    <label class="form-label">Target Account <span style="color:var(--danger);">*</span></label>
+                    <select id="sms-target-user" class="form-input">
+                      <option value="">— Select target user —</option>
+                    </select>
+                  </div>
+
+                  <div id="sms-form-error" style="color:var(--danger);font-size:0.83rem;margin-bottom:10px;display:none;"></div>
+
+                  <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+                    <button type="button" class="btn-action" onclick="closeSmsComposer()">Cancel</button>
+                    <button type="submit" id="sms-submit-btn" class="btn-action btn-action-primary">
+                      <i data-lucide="send" style="width:15px;height:15px;"></i> Submit SMS Campaign
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </section>
+        <!-- ==================== END VIEW: BULK GSM SMS ==================== -->
 
       </div>
     </main>
