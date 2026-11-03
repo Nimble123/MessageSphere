@@ -222,6 +222,7 @@ router.post('/groups/merge', authenticate, async (req, res) => {
     return res.json({
       message: `Successfully merged ${toInsert.length} contacts into "${tgtCheck.name}"!`,
       mergedCount: toInsert.length,
+      contactsMerged: toInsert.length,
       duplicatesSkipped,
       targetGroupId: tgtId,
       sourceDeleted: Boolean(delete_source)
@@ -729,10 +730,29 @@ router.delete('/blacklist/:target', authenticate, async (req, res) => {
   const target = req.params.target;
   try {
     const isSmallId = /^\d+$/.test(target) && target.length <= 9;
-    if (isSmallId) {
-      await query(`DELETE FROM blacklist WHERE (id = $1 OR phone_number = $2) AND (user_id = $3 OR $4 = 'admin')`, [parseInt(target, 10), target, req.user.id, req.user.role]);
+    const norm = normalizePhone(target);
+    const isSuperAdmin = req.user.role === 'admin';
+    const isReseller = req.user.role === 'reseller';
+
+    let authCondition = '';
+    let params = [];
+
+    if (isSuperAdmin) {
+      authCondition = '1=1';
+      params = [target, norm];
+    } else if (isReseller) {
+      authCondition = `(user_id = $3 OR user_id IN (SELECT id FROM users WHERE reseller_id = $3))`;
+      params = [target, norm, req.user.id];
     } else {
-      await query(`DELETE FROM blacklist WHERE phone_number = $1 AND (user_id = $2 OR $3 = 'admin')`, [target, req.user.id, req.user.role]);
+      authCondition = `user_id = $3`;
+      params = [target, norm, req.user.id];
+    }
+
+    if (isSmallId) {
+      const idVal = parseInt(target, 10);
+      await query(`DELETE FROM blacklist WHERE (id = ${idVal} OR phone_number = $1 OR phone_number = $2) AND ${authCondition}`, params);
+    } else {
+      await query(`DELETE FROM blacklist WHERE (phone_number = $1 OR phone_number = $2) AND ${authCondition}`, params);
     }
     return res.json({ message: 'Number removed from blacklist' });
   } catch (err) {

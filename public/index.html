@@ -3265,7 +3265,7 @@
                 <input type="text" id="blacklist-search" class="search-input" placeholder="Search blocked numbers..." style="width:200px;">
                 <select id="blacklist-user-filter" class="form-input" style="display:none;width:180px;font-size:0.8rem;padding:6px 10px;">
                   <option value="">All Scopes & Accounts</option>
-                  <option value="global">Global Platform DND</option>
+                  <option value="__global__">Global Platform DND</option>
                 </select>
                 <button type="button" id="btn-export-blacklist-csv" class="btn-action btn-action-secondary" style="display:inline-flex;align-items:center;gap:6px;">
                   <i data-lucide="download" style="width:14px;height:14px;"></i> Export DND (.CSV)
@@ -3689,6 +3689,17 @@
                       </label>
                       <span style="font-size: 0.75rem; color: #64748b;">1 number per line or comma separated</span>
                     </div>
+
+                    <!-- Phonebook Contact Group Selector -->
+                    <div style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+                      <select id="sms-contact-group-select" class="form-input" style="flex: 1; font-size: 0.82rem; padding: 7px 12px; border-radius: 8px;">
+                        <option value="">— Or select Audience Group from Phonebook —</option>
+                      </select>
+                      <button type="button" class="btn-action btn-action-secondary" onclick="insertGroupIntoSmsComposer()" style="padding: 7px 14px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; border-radius: 8px;">
+                        <i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i> Insert Group
+                      </button>
+                    </div>
+
                     <textarea id="sms-numbers" class="form-input" rows="4" placeholder="9876543210&#10;+919123456789&#10;9988776655" oninput="updateSmsCreditsPreview()" style="font-family: monospace; font-size: 0.85rem; padding: 10px 14px; border-radius: 8px; resize: vertical;"></textarea>
                     
                     <!-- File Upload Option Box -->

@@ -124,6 +124,7 @@ async function initDB() {
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_contact_groups_user ON contact_groups(user_id, created_at DESC);`);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS contacts (

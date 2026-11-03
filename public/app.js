@@ -5035,7 +5035,7 @@ if (btnModalSubmitMerge) {
           delete_source: deleteSource
         })
       });
-      showToast('success', 'Groups Merged', `Successfully merged! ${res.contactsMerged} contacts added to target (${res.duplicatesSkipped} duplicates skipped).`);
+      showToast('success', 'Groups Merged', `Successfully merged! ${res.contactsMerged ?? res.mergedCount ?? 0} contacts added to target (${res.duplicatesSkipped || 0} duplicates skipped).`);
       if (modalMergeGroups) modalMergeGroups.style.display = 'none';
       loadContactGroups();
       populateComposerSelectors();
@@ -5147,8 +5147,11 @@ function renderContactGroupsTable() {
         </td>
         <td>
           <div style="display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap;">
-            <button type="button" class="btn-action" onclick="useGroupForCampaign(${g.id})" style="background:#10b981;color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;padding:5px 8px;font-size:0.8rem;font-weight:600;" title="Launch Campaign with this Audience Group">
-              <i data-lucide="send" style="width:12px;height:12px;"></i> Campaign
+            <button type="button" class="btn-action" onclick="useGroupForCampaign(${g.id})" style="background:#10b981;color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;padding:5px 8px;font-size:0.8rem;font-weight:600;" title="Launch WhatsApp Campaign with this Group">
+              <i data-lucide="message-circle" style="width:12px;height:12px;"></i> WhatsApp
+            </button>
+            <button type="button" class="btn-action" onclick="useGroupForSmsCampaign(${g.id})" style="background:#6366f1;color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;padding:5px 8px;font-size:0.8rem;font-weight:600;" title="Launch Bulk SMS Campaign with this Group">
+              <i data-lucide="smartphone" style="width:12px;height:12px;"></i> SMS
             </button>
             <button type="button" class="btn-action btn-action-secondary" onclick="openEditGroupModal(${g.id})" style="display:inline-flex;align-items:center;gap:4px;padding:5px 8px;font-size:0.8rem;" title="Edit Group Name">
               <i data-lucide="edit-2" style="width:13px;height:13px;"></i> Edit
@@ -5180,6 +5183,20 @@ window.useGroupForCampaign = function(groupId) {
       if (btnInsert) btnInsert.click();
     }
   }, 100);
+};
+
+window.useGroupForSmsCampaign = function(groupId) {
+  switchView('view-sms');
+  if (typeof openSmsComposer === 'function') openSmsComposer();
+  setTimeout(async () => {
+    const groupSelect = document.getElementById('sms-contact-group-select');
+    if (groupSelect) {
+      groupSelect.value = String(groupId);
+      if (typeof insertGroupIntoSmsComposer === 'function') {
+        await insertGroupIntoSmsComposer();
+      }
+    }
+  }, 200);
 };
 
 window.exportGroupCsvDirect = async function(groupId, groupName) {
@@ -5397,6 +5414,17 @@ if (btnDrawerAddContact) {
       populateComposerSelectors();
     } catch (err) {
       showToast('error', 'Add Failed', err.message);
+    }
+  });
+
+  [drawerAddPhone, drawerAddName].forEach(inp => {
+    if (inp) {
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (btnDrawerAddContact) btnDrawerAddContact.click();
+        }
+      });
     }
   });
 }
@@ -7977,6 +8005,18 @@ async function populateComposerSelectors() {
         groupSelect.value = prevVal;
       }
     }
+
+    // 4. SMS Composer Contact Groups
+    const smsGroupSelect = document.getElementById('sms-contact-group-select');
+    if (smsGroupSelect) {
+      const groups = await apiFetch('/contacts/groups').catch(() => []);
+      const prevSmsVal = smsGroupSelect.value;
+      smsGroupSelect.innerHTML = '<option value="">— Or select Audience Group from Phonebook —</option>' +
+        groups.map(g => `<option value="${g.id}">${escapeHtml(g.name)} (${(parseInt(g.total_contacts || g.contact_count, 10) || 0).toLocaleString()} numbers)${g.owner_email && (currentUser && (currentUser.role === 'admin' || currentUser.role === 'reseller')) ? ' — ' + escapeHtml(g.owner_email) : ''}</option>`).join('');
+      if (prevSmsVal && groups.some(g => String(g.id) === String(prevSmsVal))) {
+        smsGroupSelect.value = prevSmsVal;
+      }
+    }
   } catch (e) {
     console.error('Error populating composer selectors:', e);
   }
@@ -8031,6 +8071,35 @@ if (btnInsertGroupNumbers) {
     }
   });
 }
+
+window.insertGroupIntoSmsComposer = async function() {
+  const groupSelect = document.getElementById('sms-contact-group-select');
+  if (!groupSelect || !groupSelect.value) {
+    showToast('warning', 'Select Group', 'Please select a contact group from the dropdown.');
+    return;
+  }
+  const groupId = groupSelect.value;
+  try {
+    const data = await apiFetch(`/contacts/groups/${groupId}/all-numbers`);
+    const numbersList = data.numbers || [];
+    if (!numbersList.length) {
+      showToast('warning', 'Empty Group', 'This contact group has no numbers.');
+      return;
+    }
+    const numbersBox = document.getElementById('sms-numbers');
+    if (!numbersBox) return;
+    const numbersText = numbersList.join('\n');
+    if (numbersBox.value.trim()) {
+      numbersBox.value += '\n' + numbersText;
+    } else {
+      numbersBox.value = numbersText;
+    }
+    if (typeof updateSmsCreditsPreview === 'function') updateSmsCreditsPreview();
+    showToast('success', 'Contacts Loaded', `Loaded ${numbersList.length.toLocaleString()} numbers from "${data.group ? data.group.name : 'Group'}" into SMS Campaign.`);
+  } catch (err) {
+    showToast('error', 'Error Loading Group', err.message);
+  }
+};
 
 // ----------------------------------------------------
 // OPERATOR BULK DISPATCH QUEUE & 1-CLICK EXPORT
@@ -8707,6 +8776,9 @@ window.openSmsComposer = function() {
   document.getElementById('sms-carrier-warning').style.display = 'none';
   onSmsMessageInput();
   updateSmsCreditsPreview();
+  if (typeof populateComposerSelectors === 'function') {
+    populateComposerSelectors();
+  }
 
   // Admin: populate user selector
   const tug = document.getElementById('sms-target-user-group');

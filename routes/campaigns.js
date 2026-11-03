@@ -304,10 +304,13 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
     }
   });
 
-  // Query DND blacklist for user and exclude (includes global & admin-level blacklists + effective user)
+  // Query DND blacklist for user and exclude (includes global & admin-level blacklists + effective user + user's reseller)
   const blacklistedRes = await query(`
     SELECT phone_number FROM blacklist 
-    WHERE user_id IN ($1, $2) OR user_id IS NULL OR user_id IN (SELECT id FROM users WHERE role = 'admin')
+    WHERE user_id IN ($1, $2) 
+       OR user_id IS NULL 
+       OR user_id IN (SELECT id FROM users WHERE role = 'admin')
+       OR user_id IN (SELECT reseller_id FROM users WHERE id IN ($1, $2) AND reseller_id IS NOT NULL)
   `, [req.user.id, effectiveUserId]);
   const blacklistedSet = new Set(blacklistedRes.rows.map(r => r.phone_number));
   
