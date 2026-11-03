@@ -375,11 +375,13 @@ if (btnDashViewAll) {
 }
 
 // --- AUTHENTICATION FLOW ---
-btnAutoFillAdmin.addEventListener('click', () => {
-  loginEmailInput.value = 'admin@messagesphere.com';
-  loginPasswordInput.value = 'admin123';
-  if (authErrorBox) authErrorBox.style.display = 'none';
-});
+if (btnAutoFillAdmin) {
+  btnAutoFillAdmin.addEventListener('click', () => {
+    loginEmailInput.value = 'admin@messagesphere.com';
+    loginPasswordInput.value = 'admin123';
+    if (authErrorBox) authErrorBox.style.display = 'none';
+  });
+}
 
 authForm.addEventListener('submit', async (e) => {
   e.preventDefault();

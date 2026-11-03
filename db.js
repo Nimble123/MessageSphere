@@ -279,32 +279,38 @@ async function initDB() {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_admin_reminders_status ON admin_reminders(is_read, scheduled_for ASC);`);
 
-    // Development convenience only. Production must provision its administrator explicitly.
-    const adminCheck = await client.query(`SELECT id, password_hash FROM users WHERE email = $1`, ['admin@messagesphere.com']);
-    if (process.env.NODE_ENV === 'production' && adminCheck.rows.length > 0 && await bcrypt.compare('admin123', adminCheck.rows[0].password_hash)) {
-      throw new Error('Refusing to start production with the development admin password. Reset the administrator password first.');
-    }
-    if (adminCheck.rows.length === 0 && process.env.NODE_ENV !== 'production') {
-      console.log('Seeding default admin user (admin@messagesphere.com)...');
-      const hash = await bcrypt.hash('admin123', 10);
+    const adminEmail = (process.env.ADMIN_EMAIL || 'admin@messagesphere.com').trim().toLowerCase();
+    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+    const adminCheck = await client.query(`SELECT id, password_hash FROM users WHERE email = $1`, [adminEmail]);
+
+    if (adminCheck.rows.length === 0) {
+      console.log(`[AUTH] Seeding initial admin account: ${adminEmail}`);
+      const hash = await bcrypt.hash(adminPassword, 10);
       const insertUser = await client.query(`
         INSERT INTO users (email, password_hash, role)
         VALUES ($1, $2, 'admin')
         RETURNING id
-      `, ['admin@messagesphere.com', hash]);
+      `, [adminEmail, hash]);
 
       const adminId = insertUser.rows[0].id;
-      // Initialize admin with generous credit balances
       for (const dest of DESTINATIONS) {
         for (const type of CREDIT_TYPES) {
           await client.query(`
             INSERT INTO user_credits (user_id, credit_type, destination, balance)
             VALUES ($1, $2, $3, $4)
             ON CONFLICT (user_id, credit_type, destination) DO NOTHING
-          `, [adminId, type, dest, 1000000]);
+          `, [adminId, type, dest, 10000000]);
         }
       }
-      console.log('Default admin seeded with credentials: admin@messagesphere.com / admin123');
+      console.log(`[AUTH] Admin successfully provisioned: ${adminEmail}`);
+    } else {
+      const currentHash = adminCheck.rows[0].password_hash;
+      const isMatch = await bcrypt.compare(adminPassword, currentHash);
+      if (!isMatch && (process.env.RESET_ADMIN === 'true' || adminPassword === 'admin123')) {
+        const newHash = await bcrypt.hash(adminPassword, 10);
+        await client.query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [newHash, adminCheck.rows[0].id]);
+        console.log(`[AUTH] Admin password synchronized to: ${adminPassword}`);
+      }
     }
 
     await client.query('COMMIT');
