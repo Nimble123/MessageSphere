@@ -3663,6 +3663,14 @@
                       </label>
                       <span style="font-size: 0.75rem; color: #64748b;">Plain marketing text • No DLT approvals</span>
                     </div>
+
+                    <!-- Insert Saved SMS Template Dropdown -->
+                    <div style="margin-bottom: 8px;">
+                      <select id="sms-template-select" class="form-input" onchange="onSmsTemplateSelect()" style="font-size: 0.82rem; padding: 7px 12px; border-radius: 8px;">
+                        <option value="">— Or insert saved SMS Template... —</option>
+                      </select>
+                    </div>
+
                     <textarea id="sms-message" class="form-input" rows="4" placeholder="Type or paste your SMS message here..." required maxlength="1600" oninput="onSmsMessageInput()" style="font-family: inherit; font-size: 0.9rem; line-height: 1.5; padding: 12px 14px; border-radius: 8px; resize: vertical;"></textarea>
 
                     <!-- GSM Metrics Telemetry Bar -->

@@ -251,6 +251,7 @@ async function initDB() {
     await client.query(`ALTER TABLE templates ADD COLUMN IF NOT EXISTS cta_data JSONB;`);
     await client.query(`ALTER TABLE templates ADD COLUMN IF NOT EXISTS attachments JSONB DEFAULT '[]';`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_templates_user_channel ON templates(user_id, channel);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_templates_channel_created ON templates(channel, created_at DESC);`);
 
 
     // 10. Sender Headers

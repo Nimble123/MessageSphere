@@ -51,19 +51,15 @@ function calculateTemplateMetrics(text, channel = 'whatsapp') {
 
   if (isUnicode) {
     effectiveCharCount = rawGlyphCount;
-    // Unicode Rule: Single = 70 chars; Multi-part = 67 chars per part
-    if (effectiveCharCount > 70) {
-      partsCount = Math.ceil(effectiveCharCount / 67);
-    }
+    // System Bulk SMS Rule: 75 chars per part (1-75 = 1 credit, 76-150 = 2 credits, etc.)
+    partsCount = Math.ceil(effectiveCharCount / 75) || 1;
   } else {
     // GSM-7 Rule: basic chars count as 1, extended chars (^ { } \ [ ~ ] | €) count as 2
     for (const ch of content) {
       effectiveCharCount += GSM_7_EXTENDED_CHARS.has(ch) ? 2 : 1;
     }
-    // GSM-7 Rule: Single = 160 chars; Multi-part = 153 chars per part
-    if (effectiveCharCount > 160) {
-      partsCount = Math.ceil(effectiveCharCount / 153);
-    }
+    // System Bulk SMS Rule: 160 chars per part (1-160 = 1 credit, 161-320 = 2 credits, etc.)
+    partsCount = Math.ceil(effectiveCharCount / 160) || 1;
   }
 
   let carrierWarning = null;
@@ -367,13 +363,21 @@ router.post('/', authenticate, upload.any(), async (req, res) => {
           mimetype: file.mimetype
         });
       });
+    } else if (req.body.attachment_url) {
+      attachments.push({
+        slot: 'primary',
+        type: req.body.media_type || 'image',
+        url: req.body.attachment_url,
+        filename: req.body.attachment_name || 'starter_media.jpg',
+        size: 0
+      });
     }
   }
 
   const primary = attachments[0] || null;
-  const cleanAttachment = primary ? primary.url : null;
-  const cleanMediaType = primary ? primary.type : 'none';
-  const cleanAttachmentName = primary ? primary.filename : null;
+  const cleanAttachment = primary ? primary.url : (req.body.attachment_url || null);
+  const cleanMediaType = primary ? primary.type : (req.body.media_type || (cleanAttachment ? 'image' : 'none'));
+  const cleanAttachmentName = primary ? primary.filename : (req.body.attachment_name || (cleanAttachment ? 'starter_media.jpg' : null));
   const cleanAttachmentSize = primary ? primary.size : 0;
 
   let cleanCta = null;
@@ -429,6 +433,34 @@ router.post('/', authenticate, upload.any(), async (req, res) => {
   } catch (err) {
     console.error('Create template error:', err);
     return res.status(500).json({ error: 'Failed to create template' });
+  }
+});
+
+// GET /api/templates/:id - Fetch single template by ID
+router.get('/:id', authenticate, async (req, res) => {
+  const templateId = parseInt(req.params.id, 10);
+  if (isNaN(templateId)) return res.status(400).json({ error: 'Invalid template ID' });
+
+  try {
+    let sql = 'SELECT t.*, u.email as owner_email, u.role as owner_role FROM templates t JOIN users u ON t.user_id = u.id WHERE t.id = $1';
+    let params = [templateId];
+
+    if (req.user.role !== 'admin') {
+      if (req.user.role === 'reseller') {
+        sql += ' AND (t.user_id = $2 OR t.user_id IN (SELECT id FROM users WHERE reseller_id = $2) OR t.user_id IN (SELECT id FROM users WHERE role = \'admin\'))';
+        params.push(req.user.id);
+      } else {
+        sql += ' AND (t.user_id = $2 OR t.user_id IN (SELECT id FROM users WHERE role = \'admin\'))';
+        params.push(req.user.id);
+      }
+    }
+
+    const result = await query(sql, params);
+    if (!result.rows[0]) return res.status(404).json({ error: 'Template not found or unauthorized' });
+    return res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Get template error:', err);
+    return res.status(500).json({ error: 'Failed to fetch template' });
   }
 });
 
@@ -566,7 +598,21 @@ router.post('/:id/duplicate', authenticate, async (req, res) => {
   if (isNaN(templateId)) return res.status(400).json({ error: 'Invalid template ID' });
 
   try {
-    const existing = await checkTemplateAccess(templateId, req.user);
+    let sql = 'SELECT * FROM templates WHERE id = $1';
+    let params = [templateId];
+
+    if (req.user.role !== 'admin') {
+      if (req.user.role === 'reseller') {
+        sql += ' AND (user_id = $2 OR user_id IN (SELECT id FROM users WHERE reseller_id = $2) OR user_id IN (SELECT id FROM users WHERE role = \'admin\'))';
+        params.push(req.user.id);
+      } else {
+        sql += ' AND (user_id = $2 OR user_id IN (SELECT id FROM users WHERE role = \'admin\'))';
+        params.push(req.user.id);
+      }
+    }
+
+    const check = await query(sql, params);
+    const existing = check.rows[0];
     if (!existing) return res.status(404).json({ error: 'Template not found or unauthorized' });
 
     const newTitle = `${existing.title} (Copy)`.slice(0, 255);

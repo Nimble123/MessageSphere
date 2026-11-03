@@ -6258,26 +6258,26 @@ function computeGsmMetrics(text, channel = 'whatsapp') {
 
   if (isUnicode) {
     effectiveCharCount = rawGlyphCount;
-    // Unicode Rule: Single = 70 chars; Multi-part = 67 chars per part
-    if (effectiveCharCount <= 70) {
+    // System Bulk SMS Rule: 75 chars per part (1-75 = 1 credit, 76-150 = 2 credits, etc.)
+    if (effectiveCharCount <= 75) {
       parts = effectiveCharCount === 0 ? 0 : 1;
-      charsLeft = 70 - effectiveCharCount;
+      charsLeft = 75 - effectiveCharCount;
     } else {
-      parts = Math.ceil(effectiveCharCount / 67);
-      charsLeft = (parts * 67) - effectiveCharCount;
+      parts = Math.ceil(effectiveCharCount / 75);
+      charsLeft = (parts * 75) - effectiveCharCount;
     }
   } else {
     // GSM-7 Rule: basic chars = 1, extended chars (^ { } \ [ ~ ] | €) = 2
     for (const ch of str) {
       effectiveCharCount += GSM_7_EXTENDED_CHARS.has(ch) ? 2 : 1;
     }
-    // Single = 160 chars; Multi-part = 153 chars per part
+    // System Bulk SMS Rule: 160 chars per part (1-160 = 1 credit, 161-320 = 2 credits, etc.)
     if (effectiveCharCount <= 160) {
       parts = effectiveCharCount === 0 ? 0 : 1;
       charsLeft = 160 - effectiveCharCount;
     } else {
-      parts = Math.ceil(effectiveCharCount / 153);
-      charsLeft = (parts * 153) - effectiveCharCount;
+      parts = Math.ceil(effectiveCharCount / 160);
+      charsLeft = (parts * 160) - effectiveCharCount;
     }
   }
 
@@ -6292,8 +6292,8 @@ function computeGsmMetrics(text, channel = 'whatsapp') {
     charsLeft,
     carrierWarning,
     infoText: isUnicode 
-      ? `⚠️ Unicode (Emojis/Hindi) • ${parts || 1} Part(s) (${effectiveCharCount <= 70 ? '70 limit' : '67 chars/part multi'}) • ${charsLeft} left`
-      : `GSM-7 Latin • ${parts || 1} Part(s) (${effectiveCharCount <= 160 ? '160 limit' : '153 chars/part multi'}) • ${charsLeft} left`,
+      ? `⚠️ Unicode (Emojis/Hindi) • ${parts || 1} Part(s) (75 chars/part) • ${charsLeft} left in part`
+      : `GSM-7 Latin • ${parts || 1} Part(s) (160 chars/part) • ${charsLeft} left in part`,
     badgeText: isUnicode 
       ? `${effectiveCharCount} chars • ${parts || 1} SMS Part${parts > 1 ? 's' : ''} (Unicode)`
       : `${effectiveCharCount} chars • ${parts || 1} SMS Part${parts > 1 ? 's' : ''} (GSM-7)`
@@ -6867,6 +6867,19 @@ function renderTemplatesTable() {
       ? `<span class="status-badge" style="background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;font-size:0.72rem;" title="Has media attachment"><i data-lucide="paperclip" style="width:11px;height:11px;"></i> Media</span>`
       : '';
 
+    const isOwner = (currentUser && Number(t.user_id) === Number(currentUser.id));
+    const isAdmin = (currentUser && currentUser.role === 'admin');
+    const isResellerOfOwner = (currentUser && currentUser.role === 'reseller' && t.owner_role !== 'admin');
+    const canManage = isOwner || isAdmin || isResellerOfOwner;
+
+    const campaignBtn = isSms
+      ? `<button type="button" class="btn-action" onclick="useTemplateForCampaign(${t.id})" style="background:#6366f1;color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;padding:4px 8px;font-size:0.78rem;font-weight:600;" title="Launch Bulk SMS Campaign with this Template">
+          <i data-lucide="smartphone" style="width:12px;height:12px;"></i> SMS
+        </button>`
+      : `<button type="button" class="btn-action" onclick="useTemplateForCampaign(${t.id})" style="background:#10b981;color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;padding:4px 8px;font-size:0.78rem;font-weight:600;" title="Launch WhatsApp Campaign with this Template">
+          <i data-lucide="message-circle" style="width:12px;height:12px;"></i> WhatsApp
+        </button>`;
+
     return `
       <tr>
         <td>
@@ -6909,21 +6922,23 @@ function renderTemplatesTable() {
         </td>
         <td>
           <div style="display:flex;justify-content:flex-end;gap:5px;flex-wrap:wrap;">
-            <button type="button" class="btn-action" onclick="useTemplateForCampaign(${t.id})" style="background:#10b981;color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;padding:4px 8px;font-size:0.78rem;font-weight:600;" title="Use this Template in Campaign Composer">
-              <i data-lucide="send" style="width:12px;height:12px;"></i> Campaign
-            </button>
+            ${campaignBtn}
             <button type="button" class="btn-action btn-action-secondary" onclick="copyTemplateContent(${t.id})" style="display:inline-flex;align-items:center;gap:4px;padding:4px 7px;font-size:0.78rem;" title="Copy Content">
               <i data-lucide="clipboard-copy" style="width:12px;height:12px;"></i>
             </button>
-            <button type="button" class="btn-action btn-action-secondary" onclick="openEditTemplateModal(${t.id})" style="display:inline-flex;align-items:center;gap:4px;padding:4px 7px;font-size:0.78rem;" title="Edit Template">
-              <i data-lucide="edit-2" style="width:12px;height:12px;"></i>
-            </button>
-            <button type="button" class="btn-action btn-action-secondary" onclick="duplicateTemplate(${t.id})" style="display:inline-flex;align-items:center;gap:4px;padding:4px 7px;font-size:0.78rem;" title="Duplicate / Clone Template">
+            ${canManage ? `
+              <button type="button" class="btn-action btn-action-secondary" onclick="openEditTemplateModal(${t.id})" style="display:inline-flex;align-items:center;gap:4px;padding:4px 7px;font-size:0.78rem;" title="Edit Template">
+                <i data-lucide="edit-2" style="width:12px;height:12px;"></i>
+              </button>
+            ` : ''}
+            <button type="button" class="btn-action btn-action-secondary" onclick="duplicateTemplate(${t.id})" style="display:inline-flex;align-items:center;gap:4px;padding:4px 7px;font-size:0.78rem;" title="Duplicate / Clone Template into My Library">
               <i data-lucide="copy" style="width:12px;height:12px;"></i>
             </button>
-            <button type="button" class="btn-action btn-action-danger" onclick="deleteTemplate(${t.id})" style="display:inline-flex;align-items:center;gap:4px;padding:4px 7px;font-size:0.78rem;" title="Delete Template">
-              <i data-lucide="trash-2" style="width:12px;height:12px;"></i>
-            </button>
+            ${canManage ? `
+              <button type="button" class="btn-action btn-action-danger" onclick="deleteTemplate(${t.id})" style="display:inline-flex;align-items:center;gap:4px;padding:4px 7px;font-size:0.78rem;" title="Delete Template">
+                <i data-lucide="trash-2" style="width:12px;height:12px;"></i>
+              </button>
+            ` : ''}
           </div>
         </td>
       </tr>
@@ -6974,10 +6989,33 @@ window.useTemplateForCampaign = function(templateId) {
   const t = userTemplates.find(item => Number(item.id) === Number(templateId));
   if (!t) return;
 
+  const isSms = (t.channel === 'sms');
+
+  if (isSms) {
+    switchView('view-sms');
+    if (typeof openSmsComposer === 'function') openSmsComposer();
+    setTimeout(() => {
+      const msgBox = document.getElementById('sms-message');
+      const titleBox = document.getElementById('sms-title');
+      if (msgBox) {
+        msgBox.value = t.content || t.body || '';
+        if (typeof onSmsMessageInput === 'function') onSmsMessageInput();
+      }
+      if (titleBox && !titleBox.value.trim()) {
+        titleBox.value = t.title || '';
+      }
+      const tplSel = document.getElementById('sms-template-select');
+      if (tplSel) {
+        tplSel.value = encodeURIComponent(t.content || t.body || '');
+      }
+      showToast('info', 'Template Loaded', `Loaded SMS template "${t.title}" into GSM SMS Composer.`);
+    }, 150);
+    return;
+  }
+
   switchView('view-new-campaign');
   setTimeout(() => {
-    const isSms = (t.channel === 'sms');
-    const isCta = (!isSms && t.template_type === 'cta');
+    const isCta = (t.template_type === 'cta');
 
     // Parse all attachments (images, video, pdf)
     let attList = [];
@@ -7401,6 +7439,10 @@ window.openPreviewTemplateModal = function(templateId) {
   }
 
   if (btnUse) {
+    btnUse.innerHTML = isSms 
+      ? '<i data-lucide="smartphone" style="width:12px;height:12px;"></i> Use in Bulk SMS' 
+      : '<i data-lucide="send" style="width:12px;height:12px;"></i> Use in WhatsApp Campaign';
+    btnUse.style.background = isSms ? '#6366f1' : '#10b981';
     btnUse.onclick = () => {
       modalPreviewTemplate.style.display = 'none';
       useTemplateForCampaign(t.id);
@@ -8017,6 +8059,17 @@ async function populateComposerSelectors() {
         smsGroupSelect.value = prevSmsVal;
       }
     }
+
+    // 5. Bulk SMS Composer Templates
+    const smsTemplateSelect = document.getElementById('sms-template-select');
+    if (smsTemplateSelect) {
+      const templates = await apiFetch('/templates').catch(() => []);
+      const smsTemplates = templates.filter(t => t.channel === 'sms');
+      const prevTplVal = smsTemplateSelect.value;
+      smsTemplateSelect.innerHTML = '<option value="">— Or insert saved SMS Template... —</option>' +
+        smsTemplates.map(t => `<option value="${encodeURIComponent(t.content || t.body)}" data-title="${escapeHtml(t.title)}">📱 ${escapeHtml(t.title)} (${t.parts_count || 1} Part${(t.parts_count || 1) > 1 ? 's' : ''})</option>`).join('');
+      if (prevTplVal) smsTemplateSelect.value = prevTplVal;
+    }
   } catch (e) {
     console.error('Error populating composer selectors:', e);
   }
@@ -8099,6 +8152,24 @@ window.insertGroupIntoSmsComposer = async function() {
   } catch (err) {
     showToast('error', 'Error Loading Group', err.message);
   }
+};
+
+window.onSmsTemplateSelect = function() {
+  const sel = document.getElementById('sms-template-select');
+  if (!sel || !sel.value) return;
+  const content = decodeURIComponent(sel.value);
+  const msgBox = document.getElementById('sms-message');
+  if (msgBox) {
+    msgBox.value = content;
+    if (typeof onSmsMessageInput === 'function') onSmsMessageInput();
+  }
+  const selectedOpt = sel.options[sel.selectedIndex];
+  const title = selectedOpt ? selectedOpt.dataset.title : '';
+  const titleBox = document.getElementById('sms-title');
+  if (titleBox && !titleBox.value.trim() && title) {
+    titleBox.value = title;
+  }
+  showToast('info', 'Template Inserted', 'Inserted template content into SMS composer.');
 };
 
 // ----------------------------------------------------
