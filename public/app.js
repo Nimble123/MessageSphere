@@ -1206,8 +1206,28 @@ async function loadLedgerTransactions() {
       const amountBg = isCredit ? '#ecfdf5' : '#fef2f2';
       const amountBorder = isCredit ? '#bbf7d0' : '#fecaca';
       const amountSign = isCredit ? '+' : '-';
-      const cleanType = (tx.credit_type || 'normal').toUpperCase();
-      const channelLabel = cleanType === 'NORMAL' ? 'Normal / Bulk SMS' : cleanType;
+      const rawType = (tx.credit_type || 'normal').toLowerCase();
+      const rawReason = String(tx.reason || 'Manual Adjustment');
+      let channelLabel = 'WA Text & GSM SMS';
+      if (rawType === 'normal') {
+        if (/sms\b/i.test(rawReason)) {
+          channelLabel = '📱 GSM Bulk SMS';
+        } else if (/whatsapp\b/i.test(rawReason)) {
+          channelLabel = '💬 WhatsApp Plain Text';
+        } else {
+          channelLabel = '💬 WA Text & GSM SMS';
+        }
+      } else if (rawType === 'dp') {
+        channelLabel = '🖼️ WhatsApp DP Media';
+      } else if (rawType === 'cta') {
+        channelLabel = '🔘 WhatsApp CTA Buttons';
+      } else if (rawType === 'dp_cta') {
+        channelLabel = '✨ WhatsApp DP + CTA';
+      } else if (rawType === 'own_number') {
+        channelLabel = '📱 WhatsApp Own SIM';
+      } else {
+        channelLabel = rawType.toUpperCase();
+      }
       const destLabel = tx.destination === 'international' ? '🌐 International' : '🇮🇳 Domestic';
 
       // Parse campaign #ID in reason to make it clickable
