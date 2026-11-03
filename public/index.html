@@ -2948,203 +2948,236 @@
         <!-- 5. CREDIT WALLET & PASSBOOK LEDGER VIEW -->
         <section id="view-wallet" class="app-view">
           
-          <!-- View Header with Actions -->
-          <div class="view-header" style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
-            <div>
-              <h2 class="view-title" style="display: flex; align-items: center; gap: 10px; margin: 0;">
-                <span style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 8px; background: linear-gradient(135deg, #4f46e5, #6366f1); color: #fff;">
-                  <i data-lucide="wallet" style="width: 18px; height: 18px;"></i>
-                </span>
-                Credit Wallets & Live Ledger Statement
-              </h2>
-              <div class="view-desc" style="font-size: 0.82rem; color: var(--slate-500); margin-top: 4px;">
-                Real-time multi-channel telecom credit balances, passbook ledger statement, and audit reconciliation
-              </div>
-            </div>
-            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-              <button type="button" class="btn-action btn-action-secondary" onclick="openCreditTopupModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; font-size: 0.84rem; font-weight: 600;">
-                <i data-lucide="plus-circle" style="width: 15px; height: 15px; color: #4f46e5;"></i> Request Top-Up
-              </button>
-              <button type="button" id="btn-wallet-allot-credits" class="btn-action btn-action-primary" onclick="openWalletAllotCreditsModal()" style="display: none; background: linear-gradient(135deg, #4f46e5, #6366f1); align-items: center; gap: 6px; padding: 8px 16px; font-size: 0.84rem; font-weight: 600; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);">
-                <i data-lucide="arrow-right-left" style="width: 15px; height: 15px;"></i> Allot / Transfer Credits
-              </button>
-            </div>
-          </div>
+          <!-- Master Fintech Vault Hero Card -->
+          <div style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 55%, #312e81 100%); border-radius: 18px; padding: 26px 30px; color: #ffffff; margin-bottom: 24px; box-shadow: 0 20px 45px -15px rgba(15, 23, 42, 0.45); border: 1px solid rgba(255, 255, 255, 0.1); position: relative; overflow: hidden;">
+            <!-- Subtle background decorative pattern -->
+            <div style="position: absolute; right: -40px; top: -40px; width: 220px; height: 220px; border-radius: 50%; background: radial-gradient(circle, rgba(99, 102, 241, 0.25) 0%, rgba(99, 102, 241, 0) 70%); pointer-events: none;"></div>
 
-          <!-- Total Balance KPI Summary Cards -->
-          <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-bottom: 22px; gap: 14px;">
-            <div class="metric-card" style="padding: 16px 20px; border-left: 4px solid #4f46e5; background: #ffffff;">
-              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">Total Domestic Stock</span>
-                <div style="background: #eef2ff; color: #4f46e5; width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
-                  <i data-lucide="map-pin" style="width: 16px; height: 16px;"></i>
-                </div>
-              </div>
-              <div class="metric-data">
-                <div class="metric-value" id="wallet-summary-dom-total" style="font-size: 1.6rem; font-weight: 800; color: #4f46e5;">0</div>
-                <div style="font-size: 0.72rem; color: var(--slate-500); margin-top: 3px;">Combined all domestic channels</div>
-              </div>
-            </div>
-
-            <div class="metric-card" style="padding: 16px 20px; border-left: 4px solid #0284c7; background: #ffffff;">
-              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">Total International Stock</span>
-                <div style="background: #f0f9ff; color: #0284c7; width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
-                  <i data-lucide="globe" style="width: 16px; height: 16px;"></i>
-                </div>
-              </div>
-              <div class="metric-data">
-                <div class="metric-value" id="wallet-summary-intl-total" style="font-size: 1.6rem; font-weight: 800; color: #0284c7;">0</div>
-                <div style="font-size: 0.72rem; color: var(--slate-500); margin-top: 3px;">Combined international channels</div>
-              </div>
-            </div>
-
-            <div class="metric-card" style="padding: 16px 20px; border-left: 4px solid #16a34a; background: #ffffff;">
-              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">GSM Bulk SMS Balance</span>
-                <div style="background: #f0fdf4; color: #16a34a; width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
-                  <i data-lucide="message-square-text" style="width: 16px; height: 16px;"></i>
-                </div>
-              </div>
-              <div class="metric-data">
-                <div class="metric-value" id="wallet-summary-sms-total" style="font-size: 1.6rem; font-weight: 800; color: #16a34a;">0</div>
-                <div style="font-size: 0.72rem; color: var(--slate-500); margin-top: 3px;">Active Normal Domestic credits</div>
-              </div>
-            </div>
-
-            <div class="metric-card" style="padding: 16px 20px; border-left: 4px solid #7c3aed; background: #ffffff;">
-              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">Ledger Transactions</span>
-                <div style="background: #f5f3ff; color: #7c3aed; width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
-                  <i data-lucide="receipt" style="width: 16px; height: 16px;"></i>
-                </div>
-              </div>
-              <div class="metric-data">
-                <div class="metric-value" id="wallet-summary-tx-count" style="font-size: 1.6rem; font-weight: 800; color: #7c3aed;">0</div>
-                <div style="font-size: 0.72rem; color: var(--slate-500); margin-top: 3px;">Total passbook records on file</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Balance Breakdown by Channel Cards -->
-          <div class="card" style="margin-bottom: 22px;">
-            <div class="card-header">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; position: relative; z-index: 1;">
               <div>
-                <div class="card-title">Channel-Wise Credit Allocation Breakdown</div>
-                <div class="card-desc">Detailed balances across standard text, rich media, and interactive CTA channels.</div>
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                  <span style="font-size: 0.72rem; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; background: rgba(255, 255, 255, 0.12); color: #e0e7ff; padding: 4px 10px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.2);">
+                    <i data-lucide="shield-check" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle; margin-right: 4px;"></i> MASTER TELECOM VAULT
+                  </span>
+                  <span id="wallet-hero-health-badge" style="font-size: 0.72rem; font-weight: 700; background: #ecfdf5; color: #15803d; padding: 3px 10px; border-radius: 20px; border: 1px solid #bbf7d0;">
+                    🟢 Healthy Stock
+                  </span>
+                </div>
+
+                <div style="font-size: 0.85rem; color: #cbd5e1; margin-bottom: 4px;" id="wallet-hero-route-title">Domestic Telecom Route (India +91)</div>
+                <div style="display: flex; align-items: baseline; gap: 8px;">
+                  <div style="font-size: 2.8rem; font-weight: 900; line-height: 1; letter-spacing: -1px; color: #ffffff;" id="wallet-hero-total-balance">0</div>
+                  <span style="font-size: 1rem; color: #a5b4fc; font-weight: 600;">Credits Usable</span>
+                </div>
+                <div style="font-size: 0.76rem; color: #94a3b8; margin-top: 6px;">
+                  Real-time combined balance for instant multi-channel dispatch
+                </div>
+              </div>
+
+              <!-- Vault Route Selector Tabs & Quick Actions -->
+              <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 12px;">
+                <!-- Vault Route Segmented Tabs -->
+                <div style="background: rgba(15, 23, 42, 0.6); padding: 4px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.15); display: inline-flex; gap: 4px;">
+                  <button type="button" id="vault-tab-domestic" onclick="switchVaultRoute('domestic')" style="background: #4f46e5; color: #fff; border: none; padding: 6px 14px; border-radius: 8px; font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 6px;">
+                    🇮🇳 Domestic (India)
+                  </button>
+                  <button type="button" id="vault-tab-intl" onclick="switchVaultRoute('international')" style="background: transparent; color: #94a3b8; border: none; padding: 6px 14px; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 6px;">
+                    🌐 International
+                  </button>
+                </div>
+
+                <!-- Primary Action Buttons -->
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                  <button type="button" class="btn-action" onclick="openCreditTopupModal()" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; border: none; padding: 8px 16px; border-radius: 8px; font-size: 0.82rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);">
+                    <i data-lucide="plus-circle" style="width: 15px; height: 15px;"></i> Request Top-Up
+                  </button>
+                  <button type="button" id="btn-wallet-allot-credits" class="btn-action" onclick="openWalletAllotCreditsModal()" style="display: none; background: rgba(255, 255, 255, 0.15); color: #fff; border: 1px solid rgba(255, 255, 255, 0.25); padding: 8px 14px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer; align-items: center; gap: 6px;">
+                    <i data-lucide="arrow-right-left" style="width: 14px; height: 14px;"></i> Allot Credits
+                  </button>
+                  <button type="button" class="btn-action" onclick="exportLedgerCsv()" style="background: rgba(255, 255, 255, 0.1); color: #e2e8f0; border: 1px solid rgba(255, 255, 255, 0.2); padding: 8px 12px; border-radius: 8px; font-size: 0.82rem; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
+                    <i data-lucide="download" style="width: 14px; height: 14px;"></i> Statement
+                  </button>
+                </div>
               </div>
             </div>
-            <div class="card-body">
+
+            <!-- Live Inventory Distribution Bar -->
+            <div style="margin-top: 22px; padding-top: 18px; border-top: 1px solid rgba(255, 255, 255, 0.12);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.75rem; color: #cbd5e1;">
+                <span style="font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;">Channel Distribution Share</span>
+                <span id="wallet-dist-summary-text" style="color: #a5b4fc; font-weight: 600;">5 Channels Active</span>
+              </div>
               
-              <h4 style="margin-bottom:16px;color:var(--slate-900);display:flex;align-items:center;gap:8px;">
-                <i data-lucide="map-pin" style="width:18px;height:18px;color:#4f46e5;"></i> Domestic Channels (India)
-              </h4>
-              <div class="metrics-grid" style="margin-bottom:30px;">
-                <div class="metric-card" style="border: 2px solid #6366f1; background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);">
-                  <div class="metric-data">
-                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-                      <h4 style="color:#4f46e5;font-weight:700;">Normal (Bulk SMS & Text)</h4>
-                      <span style="background:#4f46e5;color:#fff;font-size:0.68rem;padding:2px 7px;border-radius:12px;font-weight:700;">GSM SMS</span>
-                    </div>
-                    <div class="metric-value" id="wallet-dom-normal" style="color:#4f46e5;">0</div>
-                    <div style="font-size:0.75rem;color:#4f46e5;font-weight:600;margin-top:4px;">📱 GSM Bulk SMS & Plain WhatsApp</div>
-                  </div>
-                </div>
-                <div class="metric-card">
-                  <div class="metric-data">
-                    <h4>DP (Media)</h4>
-                    <div class="metric-value" id="wallet-dom-dp">0</div>
-                  </div>
-                </div>
-                <div class="metric-card">
-                  <div class="metric-data">
-                    <h4>CTA (Buttons)</h4>
-                    <div class="metric-value" id="wallet-dom-cta">0</div>
-                  </div>
-                </div>
-                <div class="metric-card">
-                  <div class="metric-data">
-                    <h4>DP + CTA</h4>
-                    <div class="metric-value" id="wallet-dom-dpcta">0</div>
-                  </div>
-                </div>
-                <div class="metric-card">
-                  <div class="metric-data">
-                    <h4>Own Number (SIM)</h4>
-                    <div class="metric-value" id="wallet-dom-own">0</div>
-                  </div>
-                </div>
+              <!-- Multi-Segment Progress Bar -->
+              <div style="height: 10px; border-radius: 6px; background: rgba(0, 0, 0, 0.4); display: flex; overflow: hidden; margin-bottom: 12px;">
+                <div id="dist-bar-normal" style="width: 60%; background: #6366f1; transition: width 0.3s;" title="Normal / Bulk SMS"></div>
+                <div id="dist-bar-dp" style="width: 15%; background: #0284c7; transition: width 0.3s;" title="DP Media"></div>
+                <div id="dist-bar-cta" style="width: 10%; background: #d97706; transition: width 0.3s;" title="CTA Buttons"></div>
+                <div id="dist-bar-dpcta" style="width: 10%; background: #8b5cf6; transition: width 0.3s;" title="DP + CTA"></div>
+                <div id="dist-bar-own" style="width: 5%; background: #10b981; transition: width 0.3s;" title="Own Number SIM"></div>
               </div>
 
-              <h4 style="margin-bottom:16px;color:var(--slate-900);display:flex;align-items:center;gap:8px;">
-                <i data-lucide="globe-2" style="width:18px;height:18px;color:#0ea5e9;"></i> International Channels
-              </h4>
-              <div class="metrics-grid">
-                <div class="metric-card" style="border: 2px solid #0ea5e9; background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);">
-                  <div class="metric-data">
-                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-                      <h4 style="color:#0284c7;font-weight:700;">Normal Intl (Bulk SMS & Text)</h4>
-                      <span style="background:#0284c7;color:#fff;font-size:0.68rem;padding:2px 7px;border-radius:12px;font-weight:700;">Intl SMS</span>
-                    </div>
-                    <div class="metric-value" id="wallet-intl-normal" style="color:#0284c7;">0</div>
-                    <div style="font-size:0.75rem;color:#0284c7;font-weight:600;margin-top:4px;">🌐 International Bulk SMS & Text</div>
-                  </div>
-                </div>
-                <div class="metric-card">
-                  <div class="metric-data">
-                    <h4>DP Intl</h4>
-                    <div class="metric-value" id="wallet-intl-dp">0</div>
-                  </div>
-                </div>
-                <div class="metric-card">
-                  <div class="metric-data">
-                    <h4>CTA Intl</h4>
-                    <div class="metric-value" id="wallet-intl-cta">0</div>
-                  </div>
-                </div>
-                <div class="metric-card">
-                  <div class="metric-data">
-                    <h4>DP + CTA Intl</h4>
-                    <div class="metric-value" id="wallet-intl-dpcta">0</div>
-                  </div>
-                </div>
-                <div class="metric-card">
-                  <div class="metric-data">
-                    <h4>Own Number Intl</h4>
-                    <div class="metric-value" id="wallet-intl-own">0</div>
-                  </div>
-                </div>
+              <!-- Distribution Legend Pills -->
+              <div style="display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.72rem;">
+                <span style="display: inline-flex; align-items: center; gap: 5px; color: #e2e8f0;">
+                  <span style="width: 8px; height: 8px; border-radius: 50%; background: #6366f1;"></span>
+                  <strong>GSM SMS & Text:</strong> <span id="dist-val-normal">0</span>
+                </span>
+                <span style="display: inline-flex; align-items: center; gap: 5px; color: #e2e8f0;">
+                  <span style="width: 8px; height: 8px; border-radius: 50%; background: #0284c7;"></span>
+                  <strong>DP Media:</strong> <span id="dist-val-dp">0</span>
+                </span>
+                <span style="display: inline-flex; align-items: center; gap: 5px; color: #e2e8f0;">
+                  <span style="width: 8px; height: 8px; border-radius: 50%; background: #d97706;"></span>
+                  <strong>CTA Buttons:</strong> <span id="dist-val-cta">0</span>
+                </span>
+                <span style="display: inline-flex; align-items: center; gap: 5px; color: #e2e8f0;">
+                  <span style="width: 8px; height: 8px; border-radius: 50%; background: #8b5cf6;"></span>
+                  <strong>DP + CTA:</strong> <span id="dist-val-dpcta">0</span>
+                </span>
+                <span style="display: inline-flex; align-items: center; gap: 5px; color: #e2e8f0;">
+                  <span style="width: 8px; height: 8px; border-radius: 50%; background: #10b981;"></span>
+                  <strong>Own SIM:</strong> <span id="dist-val-own">0</span>
+                </span>
               </div>
-
             </div>
           </div>
 
-          <!-- Transaction Statement / Ledger Card -->
-          <div class="card" style="background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-            <div class="card-header" style="padding: 16px 20px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; background: #ffffff;">
-              <div>
-                <h3 class="card-title" style="margin: 0; font-size: 1rem; font-weight: 700; color: #0f172a;">Transaction Ledger & Credit Statement</h3>
-                <div class="card-desc" style="font-size: 0.74rem; color: #64748b; margin-top: 2px;">Chronological statement of credit additions, campaign deductions, and refunds.</div>
+          <!-- Reseller Stock Management Banner (Visible only for Resellers) -->
+          <div id="wallet-reseller-stock-card" style="display: none; background: #ffffff; border-radius: 12px; border: 1.5px solid #ddd6fe; padding: 18px 22px; margin-bottom: 22px; box-shadow: 0 2px 6px rgba(124, 58, 237, 0.08);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 40px; height: 40px; border-radius: 10px; background: #f5f3ff; color: #7c3aed; display: flex; align-items: center; justify-content: center;">
+                  <i data-lucide="store" style="width: 20px; height: 20px;"></i>
+                </div>
+                <div>
+                  <h4 style="margin: 0; font-size: 0.95rem; font-weight: 700; color: #1e1b4b;">Reseller Master Stock Inventory</h4>
+                  <div style="font-size: 0.74rem; color: #6b7280; margin-top: 2px;">Your allocated stock pool available for distributing to your customer accounts</div>
+                </div>
               </div>
+              <button type="button" class="btn-action btn-action-primary" onclick="openWalletAllotCreditsModal()" style="padding: 7px 16px; font-size: 0.82rem; background: #7c3aed;">
+                <i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i> Allot to Customer
+              </button>
+            </div>
+          </div>
+
+          <!-- Channel-Wise Credit Cards Grid (Synchronized with Active Vault Route) -->
+          <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); margin-bottom: 24px; gap: 14px;">
+            
+            <!-- Normal / GSM Bulk SMS -->
+            <div class="metric-card" style="padding: 16px 18px; border-left: 4px solid #4f46e5; background: #ffffff;">
+              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; color: #4f46e5; text-transform: uppercase;">Normal (Bulk SMS & Text)</span>
+                <span style="background: #eef2ff; color: #4f46e5; font-size: 0.68rem; padding: 2px 8px; border-radius: 12px; font-weight: 700;">GSM SMS</span>
+              </div>
+              <div class="metric-data">
+                <div class="metric-value" id="card-val-normal" style="font-size: 1.55rem; font-weight: 800; color: #0f172a;">0</div>
+                <div style="font-size: 0.72rem; color: #64748b; margin-top: 3px;">Plain SMS & WhatsApp Broadcasts</div>
+              </div>
+            </div>
+
+            <!-- DP (Media) -->
+            <div class="metric-card" style="padding: 16px 18px; border-left: 4px solid #0284c7; background: #ffffff;">
+              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; color: #0284c7; text-transform: uppercase;">DP Profile Media</span>
+                <span style="background: #f0f9ff; color: #0284c7; font-size: 0.68rem; padding: 2px 8px; border-radius: 12px; font-weight: 700;">Graphics</span>
+              </div>
+              <div class="metric-data">
+                <div class="metric-value" id="card-val-dp" style="font-size: 1.55rem; font-weight: 800; color: #0f172a;">0</div>
+                <div style="font-size: 0.72rem; color: #64748b; margin-top: 3px;">Image & Video Attachments</div>
+              </div>
+            </div>
+
+            <!-- CTA Buttons -->
+            <div class="metric-card" style="padding: 16px 18px; border-left: 4px solid #d97706; background: #ffffff;">
+              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; color: #d97706; text-transform: uppercase;">Interactive CTA</span>
+                <span style="background: #fef3c7; color: #d97706; font-size: 0.68rem; padding: 2px 8px; border-radius: 12px; font-weight: 700;">Buttons</span>
+              </div>
+              <div class="metric-data">
+                <div class="metric-value" id="card-val-cta" style="font-size: 1.55rem; font-weight: 800; color: #0f172a;">0</div>
+                <div style="font-size: 0.72rem; color: #64748b; margin-top: 3px;">Clickable URL & Call Buttons</div>
+              </div>
+            </div>
+
+            <!-- DP + CTA Combo -->
+            <div class="metric-card" style="padding: 16px 18px; border-left: 4px solid #7c3aed; background: #ffffff;">
+              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; color: #7c3aed; text-transform: uppercase;">DP + CTA Combo</span>
+                <span style="background: #f5f3ff; color: #7c3aed; font-size: 0.68rem; padding: 2px 8px; border-radius: 12px; font-weight: 700;">Full Rich</span>
+              </div>
+              <div class="metric-data">
+                <div class="metric-value" id="card-val-dpcta" style="font-size: 1.55rem; font-weight: 800; color: #0f172a;">0</div>
+                <div style="font-size: 0.72rem; color: #64748b; margin-top: 3px;">Rich Media + Interactive Action</div>
+              </div>
+            </div>
+
+            <!-- Own Number (SIM) -->
+            <div class="metric-card" style="padding: 16px 18px; border-left: 4px solid #059669; background: #ffffff;">
+              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; color: #059669; text-transform: uppercase;">Own SIM Channel</span>
+                <span style="background: #ecfdf5; color: #059669; font-size: 0.68rem; padding: 2px 8px; border-radius: 12px; font-weight: 700;">Virtual SIM</span>
+              </div>
+              <div class="metric-data">
+                <div class="metric-value" id="card-val-own" style="font-size: 1.55rem; font-weight: 800; color: #0f172a;">0</div>
+                <div style="font-size: 0.72rem; color: #64748b; margin-top: 3px;">Dedicated Mobile Sender</div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Transaction Statement / Passbook Ledger Card -->
+          <div class="card" style="background: #ffffff; border-radius: 14px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+            
+            <div class="card-header" style="padding: 18px 22px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; background: #ffffff;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 38px; height: 38px; border-radius: 10px; background: #eef2ff; color: #4f46e5; display: flex; align-items: center; justify-content: center;">
+                  <i data-lucide="receipt" style="width: 20px; height: 20px;"></i>
+                </div>
+                <div>
+                  <h3 class="card-title" style="margin: 0; font-size: 1.05rem; font-weight: 700; color: #0f172a;">Passbook Ledger & Transaction Audit</h3>
+                  <div class="card-desc" style="font-size: 0.74rem; color: #64748b; margin-top: 2px;">Chronological bank-grade statement of credit recharges, campaign burn, and refunds</div>
+                </div>
+              </div>
+              
               <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                <button type="button" class="btn-action btn-action-secondary" id="btn-export-ledger-csv" onclick="exportLedgerCsv()" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 0.8rem;">
+                <button type="button" class="btn-action btn-action-secondary" id="btn-export-ledger-csv" onclick="exportLedgerCsv()" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 0.8rem; border-radius: 8px;">
                   <i data-lucide="download" style="width: 14px; height: 14px;"></i> Export Statement (CSV)
                 </button>
-                <button type="button" class="btn-action btn-action-secondary" id="btn-refresh-ledger" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 0.8rem;">
+                <button type="button" class="btn-action btn-action-secondary" id="btn-refresh-ledger" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 0.8rem; border-radius: 8px;">
                   <i data-lucide="rotate-cw" style="width: 14px; height: 14px;"></i> Refresh
                 </button>
               </div>
             </div>
 
+            <!-- Passbook Summary Strip (Inflows vs Outflows) -->
+            <div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 12px 22px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 0.8rem;">
+              <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                <span>Total Records: <strong id="ledger-stat-count" style="color: #0f172a;">0</strong></span>
+                <span style="color: #cbd5e1;">|</span>
+                <span>Total Credited: <strong id="ledger-stat-in" style="color: #15803d; font-weight: 700;">+0</strong></span>
+                <span style="color: #cbd5e1;">|</span>
+                <span>Total Debited: <strong id="ledger-stat-out" style="color: #b91c1c; font-weight: 700;">-0</strong></span>
+              </div>
+
+              <!-- Date Range Quick Presets -->
+              <div class="tab-pills" id="ledger-date-presets" style="margin: 0;">
+                <button type="button" class="tab-pill active" onclick="setLedgerDatePreset('all', this)">All Time</button>
+                <button type="button" class="tab-pill" onclick="setLedgerDatePreset('today', this)">Today</button>
+                <button type="button" class="tab-pill" onclick="setLedgerDatePreset('7days', this)">Last 7 Days</button>
+                <button type="button" class="tab-pill" onclick="setLedgerDatePreset('month', this)">This Month</button>
+              </div>
+            </div>
+
             <!-- Ledger Filter Toolbar -->
-            <div style="padding: 12px 20px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+            <div style="padding: 12px 22px; border-bottom: 1px solid #e2e8f0; background: #ffffff; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
               <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: 1;">
                 <div style="position: relative; min-width: 220px; flex: 1; max-width: 320px;">
                   <i data-lucide="search" style="position: absolute; left: 10px; top: 9px; width: 14px; height: 14px; color: var(--slate-400);"></i>
-                  <input type="text" id="ledger-search-input" class="form-input" placeholder="Search reference, note, account..." oninput="onLedgerFilterChange()" style="padding-left: 32px; font-size: 0.82rem; height: 34px;">
+                  <input type="text" id="ledger-search-input" class="form-input" placeholder="Search reference, note, account..." oninput="onLedgerFilterChange()" style="padding-left: 32px; font-size: 0.82rem; height: 34px; border-radius: 8px;">
                 </div>
                 
-                <select id="ledger-filter-channel" class="form-input" onchange="onLedgerFilterChange()" style="font-size: 0.8rem; height: 34px; padding: 4px 10px; max-width: 170px;">
+                <select id="ledger-filter-channel" class="form-input" onchange="onLedgerFilterChange()" style="font-size: 0.8rem; height: 34px; padding: 4px 10px; max-width: 170px; border-radius: 8px;">
                   <option value="all">All Channels</option>
                   <option value="normal">Normal (SMS & Text)</option>
                   <option value="dp">DP (Media)</option>
@@ -3153,13 +3186,13 @@
                   <option value="own_number">Own Number</option>
                 </select>
 
-                <select id="ledger-filter-dest" class="form-input" onchange="onLedgerFilterChange()" style="font-size: 0.8rem; height: 34px; padding: 4px 10px; max-width: 140px;">
+                <select id="ledger-filter-dest" class="form-input" onchange="onLedgerFilterChange()" style="font-size: 0.8rem; height: 34px; padding: 4px 10px; max-width: 140px; border-radius: 8px;">
                   <option value="all">All Routes</option>
                   <option value="domestic">Domestic (India)</option>
                   <option value="international">International</option>
                 </select>
 
-                <select id="ledger-filter-flow" class="form-input" onchange="onLedgerFilterChange()" style="font-size: 0.8rem; height: 34px; padding: 4px 10px; max-width: 140px;">
+                <select id="ledger-filter-flow" class="form-input" onchange="onLedgerFilterChange()" style="font-size: 0.8rem; height: 34px; padding: 4px 10px; max-width: 140px; border-radius: 8px;">
                   <option value="all">All Flows (In & Out)</option>
                   <option value="credit">🟢 Credit In (+)</option>
                   <option value="debit">🔴 Debit Out (-)</option>
@@ -3167,29 +3200,31 @@
               </div>
 
               <div style="display: flex; align-items: center; gap: 8px;">
-                <select id="ledger-filter-user" class="form-input" onchange="onLedgerFilterChange()" style="display: none; font-size: 0.8rem; height: 34px; padding: 4px 10px; min-width: 170px;">
+                <select id="ledger-filter-user" class="form-input" onchange="onLedgerFilterChange()" style="display: none; font-size: 0.8rem; height: 34px; padding: 4px 10px; min-width: 170px; border-radius: 8px;">
                   <option value="">All Accounts</option>
                 </select>
               </div>
             </div>
 
+            <!-- Ledger Table -->
             <div class="card-body" style="padding:0;">
               <div class="table-container">
                 <table>
                   <thead>
                     <tr>
-                      <th style="width: 80px;">#ID</th>
-                      <th style="width: 150px;">Timestamp</th>
+                      <th style="width: 75px;">#ID</th>
+                      <th style="width: 140px;">Timestamp</th>
                       <th style="width: 130px;">Flow / Type</th>
-                      <th style="width: 130px;">Channel</th>
+                      <th style="width: 140px;">Channel</th>
                       <th style="width: 110px;">Route</th>
                       <th style="text-align: right; width: 110px;">Amount</th>
-                      <th>Reason / Reference</th>
-                      <th style="width: 180px;">Counterparty Account</th>
+                      <th>Reason / Reference Note</th>
+                      <th style="width: 170px;">Counterparty Account</th>
+                      <th style="width: 80px; text-align: center;">Voucher</th>
                     </tr>
                   </thead>
                   <tbody id="ledger-table-tbody">
-                    <tr><td colspan="8" style="text-align:center;padding:30px;color:var(--slate-400);">Loading ledger statement...</td></tr>
+                    <tr><td colspan="9" style="text-align:center;padding:30px;color:var(--slate-400);">Loading ledger statement...</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -5227,43 +5262,200 @@
     </div>
   </div>
 
-  <!-- MODAL: NEW BILLING TOP-UP ORDER -->
+  <!-- MODAL: NEW BILLING TOP-UP ORDER (OFFLINE UPI & BANK TRANSFER) -->
   <div id="modal-billing-order" class="modal-overlay">
-    <div class="modal-card">
-      <div class="modal-header-saas">
-        <h3>Request Credit Top-up Order</h3>
-        <button class="btn-modal-close" data-close="modal-billing-order">&times;</button>
+    <div class="modal-card" style="max-width: 640px; width: 95%;">
+      <div class="modal-header-saas" style="background: linear-gradient(135deg, #0f172a, #1e1b4b); color: #fff; padding: 18px 24px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 38px; height: 38px; border-radius: 10px; background: rgba(99, 102, 241, 0.25); border: 1px solid rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; color: #a5b4fc;">
+            <i data-lucide="coins" style="width: 20px; height: 20px;"></i>
+          </div>
+          <div>
+            <h3 style="margin: 0; font-size: 1.1rem; color: #fff;">Credit Top-Up Request</h3>
+            <div style="font-size: 0.76rem; color: #cbd5e1; margin-top: 2px;">Direct Bank / UPI Transfer • Zero Gateway Surcharge</div>
+          </div>
+        </div>
+        <button class="btn-modal-close" data-close="modal-billing-order" style="color: #cbd5e1;">&times;</button>
       </div>
-      <div class="modal-body-saas">
-        <div class="form-group">
-          <label>Destination Region</label>
-          <select id="modal-order-dest" class="form-input">
-            <option value="domestic">Domestic (India - +91)</option>
-            <option value="international">International (Global)</option>
-          </select>
+
+      <div class="modal-body-saas" style="padding: 22px 24px; max-height: calc(85vh - 130px); overflow-y: auto;">
+        
+        <!-- Step 1: Select Channel & Route -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label style="font-size: 0.78rem; font-weight: 700; color: #475569;">Destination Route</label>
+            <select id="modal-order-dest" class="form-input" onchange="calculateTopupAmount()">
+              <option value="domestic">🇮🇳 Domestic (India +91)</option>
+              <option value="international">🌐 International (Global)</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label style="font-size: 0.78rem; font-weight: 700; color: #475569;">Telecom Channel</label>
+            <select id="modal-order-type" class="form-input" onchange="calculateTopupAmount()">
+              <option value="normal">📱 Normal (GSM Bulk SMS & Text)</option>
+              <option value="dp">🖼️ DP (Media Graphic)</option>
+              <option value="cta">🔘 CTA (Interactive Buttons)</option>
+              <option value="dp_cta">⚡ DP + CTA Combo</option>
+              <option value="own_number">📲 Own Dedicated SIM</option>
+            </select>
+          </div>
         </div>
-        <div class="form-group">
-          <label>Channel / Credit Type</label>
-          <select id="modal-order-type" class="form-input">
-            <option value="normal">📱 Normal (GSM Bulk SMS & WhatsApp Text)</option>
-            <option value="dp">DP (Media / Graphic)</option>
-            <option value="cta">CTA (Interactive Buttons)</option>
-            <option value="dp_cta">DP + CTA (Media + Buttons)</option>
-            <option value="own_number">Own Number (Dedicated SIM)</option>
-          </select>
+
+        <!-- Step 2: Quick Bundle Preset Selection -->
+        <div style="margin-bottom: 18px;">
+          <label style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; font-weight: 700; color: #475569; margin-bottom: 8px;">
+            <span>Choose Credit Bundle</span>
+            <span style="font-size: 0.72rem; color: #64748b; font-weight: normal;">Click to select or type custom below</span>
+          </label>
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+            <div class="topup-bundle-card" onclick="selectTopupPreset(5000, this)" style="border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 10px; text-align: center; cursor: pointer; transition: all 0.15s; background: #f8fafc;">
+              <div style="font-size: 0.7rem; color: #64748b; font-weight: 600;">Starter</div>
+              <div style="font-size: 1.05rem; font-weight: 800; color: #0f172a; margin: 2px 0;">5,000</div>
+              <div style="font-size: 0.72rem; color: #4f46e5; font-weight: 700;">₹750</div>
+            </div>
+            <div class="topup-bundle-card" onclick="selectTopupPreset(25000, this)" style="border: 1.5px solid #6366f1; border-radius: 10px; padding: 10px; text-align: center; cursor: pointer; transition: all 0.15s; background: #eef2ff; position: relative;">
+              <span style="position: absolute; top: -7px; right: 8px; font-size: 0.6rem; font-weight: 800; background: #4f46e5; color: #fff; padding: 1px 6px; border-radius: 8px;">POPULAR</span>
+              <div style="font-size: 0.7rem; color: #4338ca; font-weight: 600;">Growth</div>
+              <div style="font-size: 1.05rem; font-weight: 800; color: #1e1b4b; margin: 2px 0;">25,000</div>
+              <div style="font-size: 0.72rem; color: #4f46e5; font-weight: 700;">₹3,250</div>
+            </div>
+            <div class="topup-bundle-card" onclick="selectTopupPreset(50000, this)" style="border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 10px; text-align: center; cursor: pointer; transition: all 0.15s; background: #f8fafc;">
+              <div style="font-size: 0.7rem; color: #64748b; font-weight: 600;">Scale</div>
+              <div style="font-size: 1.05rem; font-weight: 800; color: #0f172a; margin: 2px 0;">50,000</div>
+              <div style="font-size: 0.72rem; color: #4f46e5; font-weight: 700;">₹5,500</div>
+            </div>
+            <div class="topup-bundle-card" onclick="selectTopupPreset(100000, this)" style="border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 10px; text-align: center; cursor: pointer; transition: all 0.15s; background: #f8fafc;">
+              <div style="font-size: 0.7rem; color: #64748b; font-weight: 600;">Enterprise</div>
+              <div style="font-size: 1.05rem; font-weight: 800; color: #0f172a; margin: 2px 0;">100,000</div>
+              <div style="font-size: 0.72rem; color: #4f46e5; font-weight: 700;">₹9,000</div>
+            </div>
+          </div>
         </div>
-        <div class="form-group">
-          <label>Credit Quantity</label>
-          <input type="number" id="modal-order-credits" class="form-input" placeholder="e.g. 10000" min="100">
+
+        <!-- Custom Credit Quantity & Live Price -->
+        <div style="display: grid; grid-template-columns: 1fr 140px; gap: 12px; margin-bottom: 18px;">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label style="font-size: 0.78rem; font-weight: 700; color: #475569;">Credit Quantity</label>
+            <input type="number" id="modal-order-credits" class="form-input" placeholder="e.g. 25000" min="100" step="100" oninput="calculateTopupAmount()">
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label style="font-size: 0.78rem; font-weight: 700; color: #475569;">Estimated Total</label>
+            <div style="height: 38px; background: #f1f5f9; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; color: #0f172a; font-size: 1.05rem;" id="modal-order-calc-price">
+              ₹0
+            </div>
+          </div>
         </div>
-        <div class="form-group">
-          <label>Payment Reference / UTR / Note (Optional)</label>
-          <input type="text" id="modal-order-notes" class="form-input" placeholder="e.g. IMPS/UPI Ref: 48291049281">
+
+        <!-- Step 3: Offline Payment Instructions & Bank/UPI Details Card -->
+        <div style="background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 12px; padding: 16px; margin-bottom: 18px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="background: #10b981; color: #fff; width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 800;">✓</span>
+              <strong style="font-size: 0.85rem; color: #0f172a;">Official Company Payment Accounts</strong>
+            </div>
+            <span style="font-size: 0.7rem; background: #ecfdf5; color: #059669; font-weight: 700; padding: 2px 8px; border-radius: 6px;">Zero Gateway Fees</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 0.78rem;">
+            <!-- UPI Details -->
+            <div style="background: #ffffff; padding: 10px 12px; border-radius: 8px; border: 1px solid #e2e8f0;">
+              <div style="font-size: 0.7rem; color: #64748b; font-weight: 600; text-transform: uppercase;">UPI ID (GPay / PhonePe / Paytm)</div>
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
+                <code style="font-size: 0.82rem; font-weight: 700; color: #4f46e5;">pay@messagesphere</code>
+                <button type="button" class="btn-action" onclick="navigator.clipboard.writeText('pay@messagesphere'); showToast('success', 'Copied', 'UPI ID copied to clipboard');" style="padding: 2px 6px; font-size: 0.7rem;">Copy</button>
+              </div>
+            </div>
+
+            <!-- Bank Transfer Details -->
+            <div style="background: #ffffff; padding: 10px 12px; border-radius: 8px; border: 1px solid #e2e8f0;">
+              <div style="font-size: 0.7rem; color: #64748b; font-weight: 600; text-transform: uppercase;">NEFT / RTGS / IMPS</div>
+              <div style="font-size: 0.76rem; color: #1e293b; margin-top: 2px;"><strong>A/C:</strong> 50200088921839</div>
+              <div style="font-size: 0.76rem; color: #64748b;"><strong>IFSC:</strong> HDFC0001234 • HDFC Bank</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 4: Mandatory UTR / Transaction Reference -->
+        <div class="form-group" style="margin-bottom: 0;">
+          <label style="font-size: 0.78rem; font-weight: 700; color: #0f172a;">
+            Payment Reference / UTR Number <span style="color: #ef4444;">*</span>
+          </label>
+          <input type="text" id="modal-order-notes" class="form-input" placeholder="e.g. UPI Ref / UTR / IMPS 48291049281" style="font-family: monospace; font-size: 0.88rem; font-weight: 600;">
+          <div style="font-size: 0.72rem; color: #64748b; margin-top: 4px;">
+            Enter the 12-digit UTR or Transaction ID from your payment app for instant verification & approval.
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer-saas" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 24px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 0.72rem; color: #64748b;">
+          <i data-lucide="clock" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle;"></i> Verification TAT: 5-15 mins
+        </span>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" class="btn-action btn-action-secondary" data-close="modal-billing-order">Cancel</button>
+          <button type="button" class="btn-action btn-action-primary" id="btn-modal-save-order" style="padding: 8px 18px; font-weight: 700;">Submit Top-up Order</button>
         </div>
       </div>
-      <div class="modal-footer-saas">
-        <button class="btn-action btn-action-secondary" data-close="modal-billing-order">Cancel</button>
-        <button class="btn-action btn-action-primary" id="btn-modal-save-order">Submit Top-up Order</button>
+    </div>
+  </div>
+
+  <!-- MODAL: RECHARGE & ALLOTMENT RECEIPT VOUCHER (PRINTABLE) -->
+  <div id="modal-recharge-receipt" class="modal-overlay">
+    <div class="modal-card" style="max-width: 540px; width: 95%;">
+      <div class="modal-header-saas" style="background: #0f172a; color: #fff; padding: 16px 20px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <i data-lucide="receipt" style="width: 18px; height: 18px; color: #10b981;"></i>
+          <h3 style="margin: 0; font-size: 1rem; color: #fff;">Credit Voucher & Statement Receipt</h3>
+        </div>
+        <button class="btn-modal-close" data-close="modal-recharge-receipt" style="color: #cbd5e1;">&times;</button>
+      </div>
+
+      <div class="modal-body-saas" id="receipt-printable-area" style="padding: 24px; background: #ffffff;">
+        <div style="text-align: center; border-bottom: 2px dashed #e2e8f0; padding-bottom: 16px; margin-bottom: 16px;">
+          <div style="font-size: 1.25rem; font-weight: 900; color: #0f172a; letter-spacing: -0.5px;">MessageSphere Enterprise</div>
+          <div style="font-size: 0.74rem; color: #64748b; margin-top: 2px;">Telecom Vault Credit Allotment & Recharge Slip</div>
+          <div style="margin-top: 10px; display: inline-block; background: #ecfdf5; color: #059669; font-weight: 800; font-size: 0.72rem; padding: 3px 12px; border-radius: 20px; border: 1px solid #bbf7d0;">
+            ✓ VERIFIED & CREDITED TO VAULT
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 0.8rem; margin-bottom: 16px;">
+          <div>
+            <div style="color: #64748b; font-size: 0.72rem;">TRANSACTION ID</div>
+            <strong style="color: #0f172a; font-family: monospace;" id="receipt-tx-id">#0000</strong>
+          </div>
+          <div style="text-align: right;">
+            <div style="color: #64748b; font-size: 0.72rem;">TIMESTAMP</div>
+            <strong style="color: #0f172a;" id="receipt-timestamp">--</strong>
+          </div>
+          <div>
+            <div style="color: #64748b; font-size: 0.72rem;">ACCOUNT / BENEFICIARY</div>
+            <strong style="color: #0f172a;" id="receipt-account">--</strong>
+          </div>
+          <div style="text-align: right;">
+            <div style="color: #64748b; font-size: 0.72rem;">ROUTE & CHANNEL</div>
+            <strong style="color: #4f46e5;" id="receipt-channel">--</strong>
+          </div>
+        </div>
+
+        <div style="background: #f8fafc; border-radius: 10px; padding: 14px; text-align: center; border: 1px solid #e2e8f0; margin-bottom: 16px;">
+          <div style="font-size: 0.74rem; color: #64748b; text-transform: uppercase; font-weight: 600;">Credits Credited</div>
+          <div style="font-size: 2.2rem; font-weight: 900; color: #15803d; letter-spacing: -0.5px; line-height: 1.1; margin: 4px 0;" id="receipt-amount">+0</div>
+          <div style="font-size: 0.75rem; color: #64748b;">Direct Telecom Balance Added</div>
+        </div>
+
+        <div style="border-top: 1px solid #f1f5f9; padding-top: 12px; font-size: 0.78rem;">
+          <div style="color: #64748b; font-size: 0.72rem; margin-bottom: 3px;">REFERENCE & NOTES</div>
+          <div id="receipt-notes" style="color: #334155; font-style: italic; background: #f8fafc; padding: 8px 10px; border-radius: 6px;">--</div>
+        </div>
+      </div>
+
+      <div class="modal-footer-saas" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 12px 20px; display: flex; justify-content: space-between;">
+        <button type="button" class="btn-action btn-action-secondary" data-close="modal-recharge-receipt">Close</button>
+        <button type="button" class="btn-action btn-action-primary" onclick="printReceiptVoucher()" style="display: inline-flex; align-items: center; gap: 6px;">
+          <i data-lucide="printer" style="width: 14px; height: 14px;"></i> Print Voucher
+        </button>
       </div>
     </div>
   </div>

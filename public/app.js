@@ -673,6 +673,42 @@ function updateCreditDisplays() {
   updateWalletView();
 }
 
+let walletActiveRoute = 'domestic';
+let ledgerDatePreset = 'all';
+
+window.switchVaultRoute = function(route) {
+  walletActiveRoute = route === 'international' ? 'international' : 'domestic';
+  
+  const tabDom = document.getElementById('vault-tab-domestic');
+  const tabIntl = document.getElementById('vault-tab-intl');
+  if (tabDom && tabIntl) {
+    if (walletActiveRoute === 'domestic') {
+      tabDom.style.background = '#4f46e5';
+      tabDom.style.color = '#fff';
+      tabDom.style.fontWeight = '700';
+      tabIntl.style.background = 'transparent';
+      tabIntl.style.color = '#94a3b8';
+      tabIntl.style.fontWeight = '600';
+    } else {
+      tabIntl.style.background = '#0ea5e9';
+      tabIntl.style.color = '#fff';
+      tabIntl.style.fontWeight = '700';
+      tabDom.style.background = 'transparent';
+      tabDom.style.color = '#94a3b8';
+      tabDom.style.fontWeight = '600';
+    }
+  }
+
+  const titleEl = document.getElementById('wallet-hero-route-title');
+  if (titleEl) {
+    titleEl.textContent = walletActiveRoute === 'domestic' 
+      ? 'Domestic Telecom Route (India +91)' 
+      : 'International Telecom Route (Global)';
+  }
+
+  updateWalletView();
+};
+
 function updateWalletView() {
   if (!currentUser) return;
   const setEl = (id, val) => {
@@ -680,37 +716,110 @@ function updateWalletView() {
     if (el) el.textContent = (val || 0).toLocaleString();
   };
 
-  const domNormal = currentUser.credits_normal_domestic || 0;
-  const domDp = currentUser.credits_dp_domestic || 0;
-  const domCta = currentUser.credits_cta_domestic || 0;
-  const domDpCta = currentUser.credits_dp_cta_domestic || 0;
-  const domOwn = currentUser.credits_own_number_domestic || 0;
+  const route = walletActiveRoute || 'domestic';
+
+  const domNormal = Number(currentUser.credits_normal_domestic || 0);
+  const domDp = Number(currentUser.credits_dp_domestic || 0);
+  const domCta = Number(currentUser.credits_cta_domestic || 0);
+  const domDpCta = Number(currentUser.credits_dp_cta_domestic || 0);
+  const domOwn = Number(currentUser.credits_own_number_domestic || 0);
   const domTotal = domNormal + domDp + domCta + domDpCta + domOwn;
 
-  const intlNormal = currentUser.credits_normal_international || 0;
-  const intlDp = currentUser.credits_dp_international || 0;
-  const intlCta = currentUser.credits_cta_international || 0;
-  const intlDpCta = currentUser.credits_dp_cta_international || 0;
-  const intlOwn = currentUser.credits_own_number_international || 0;
+  const intlNormal = Number(currentUser.credits_normal_international || 0);
+  const intlDp = Number(currentUser.credits_dp_international || 0);
+  const intlCta = Number(currentUser.credits_cta_international || 0);
+  const intlDpCta = Number(currentUser.credits_dp_cta_international || 0);
+  const intlOwn = Number(currentUser.credits_own_number_international || 0);
   const intlTotal = intlNormal + intlDp + intlCta + intlDpCta + intlOwn;
 
-  // Breakdown fields
+  // Active route numbers
+  const activeNormal = route === 'domestic' ? domNormal : intlNormal;
+  const activeDp = route === 'domestic' ? domDp : intlDp;
+  const activeCta = route === 'domestic' ? domCta : intlCta;
+  const activeDpCta = route === 'domestic' ? domDpCta : intlDpCta;
+  const activeOwn = route === 'domestic' ? domOwn : intlOwn;
+  const activeTotal = route === 'domestic' ? domTotal : intlTotal;
+
+  // Master Hero Total Balance
+  setEl('wallet-hero-total-balance', activeTotal);
+
+  // Smart Health Badge
+  const healthBadge = document.getElementById('wallet-hero-health-badge');
+  if (healthBadge) {
+    if (activeTotal >= 10000) {
+      healthBadge.style.background = '#ecfdf5';
+      healthBadge.style.color = '#15803d';
+      healthBadge.style.borderColor = '#bbf7d0';
+      healthBadge.textContent = '🟢 Healthy Stock';
+    } else if (activeTotal >= 1000) {
+      healthBadge.style.background = '#fefce8';
+      healthBadge.style.color = '#a16207';
+      healthBadge.style.borderColor = '#fef08a';
+      healthBadge.textContent = '🟡 Refill Recommended';
+    } else {
+      healthBadge.style.background = '#fef2f2';
+      healthBadge.style.color = '#b91c1c';
+      healthBadge.style.borderColor = '#fecaca';
+      healthBadge.textContent = '🔴 Low Balance Alert';
+    }
+  }
+
+  // Channel Grid Cards
+  setEl('card-val-normal', activeNormal);
+  setEl('card-val-dp', activeDp);
+  setEl('card-val-cta', activeCta);
+  setEl('card-val-dpcta', activeDpCta);
+  setEl('card-val-own', activeOwn);
+
+  // Distribution legend values
+  setEl('dist-val-normal', activeNormal);
+  setEl('dist-val-dp', activeDp);
+  setEl('dist-val-cta', activeCta);
+  setEl('dist-val-dpcta', activeDpCta);
+  setEl('dist-val-own', activeOwn);
+
+  // Distribution progress bars
+  const setBarWidth = (id, val) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (activeTotal > 0) {
+      const pct = Math.max(0.5, (val / activeTotal) * 100).toFixed(1);
+      el.style.width = pct + '%';
+    } else {
+      el.style.width = '20%';
+    }
+  };
+  setBarWidth('dist-bar-normal', activeNormal);
+  setBarWidth('dist-bar-dp', activeDp);
+  setBarWidth('dist-bar-cta', activeCta);
+  setBarWidth('dist-bar-dpcta', activeDpCta);
+  setBarWidth('dist-bar-own', activeOwn);
+
+  const distSummary = document.getElementById('wallet-dist-summary-text');
+  if (distSummary) {
+    distSummary.textContent = `${activeTotal.toLocaleString()} total usable credits`;
+  }
+
+  // Backward compatibility with previous breakdown elements if present
   setEl('wallet-dom-normal', domNormal);
   setEl('wallet-dom-dp', domDp);
   setEl('wallet-dom-cta', domCta);
   setEl('wallet-dom-dpcta', domDpCta);
   setEl('wallet-dom-own', domOwn);
-
   setEl('wallet-intl-normal', intlNormal);
   setEl('wallet-intl-dp', intlDp);
   setEl('wallet-intl-cta', intlCta);
   setEl('wallet-intl-dpcta', intlDpCta);
   setEl('wallet-intl-own', intlOwn);
-
-  // High-level Top Summary KPIs
   setEl('wallet-summary-dom-total', domTotal);
   setEl('wallet-summary-intl-total', intlTotal);
   setEl('wallet-summary-sms-total', domNormal);
+
+  // Reseller Master Stock Banner
+  const resellerStockCard = document.getElementById('wallet-reseller-stock-card');
+  if (resellerStockCard) {
+    resellerStockCard.style.display = (currentUser.role === 'reseller') ? 'block' : 'none';
+  }
 
   // Show Allot / Transfer button for Admin & Reseller
   const btnAllot = document.getElementById('btn-wallet-allot-credits');
@@ -725,6 +834,16 @@ function updateWalletView() {
 
 // --- CREDIT LEDGER STATEMENT & PASSBOOK ---
 let ledgerDebounceTimer = null;
+
+window.setLedgerDatePreset = function(preset, btn) {
+  ledgerDatePreset = preset;
+  const container = document.getElementById('ledger-date-presets');
+  if (container) {
+    container.querySelectorAll('.tab-pill').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+  }
+  loadLedgerTransactions();
+};
 
 window.onLedgerFilterChange = function() {
   clearTimeout(ledgerDebounceTimer);
@@ -760,7 +879,7 @@ window.exportLedgerCsv = async function() {
 async function loadLedgerTransactions() {
   const tbody = document.getElementById('ledger-table-tbody');
   if (!tbody) return;
-  tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--slate-400);"><i data-lucide="loader-2" class="spin"></i> Loading statement...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--slate-400);"><i data-lucide="loader-2" class="spin"></i> Loading statement...</td></tr>`;
   if (window.lucide) lucide.createIcons();
 
   const search = (document.getElementById('ledger-search-input')?.value || '').trim();
@@ -780,10 +899,6 @@ async function loadLedgerTransactions() {
   try {
     allTransactions = await apiFetch(`/credits/transactions?${params.toString()}`);
     
-    // Update KPI count
-    const txCountEl = document.getElementById('wallet-summary-tx-count');
-    if (txCountEl) txCountEl.textContent = allTransactions.length.toLocaleString();
-
     // Populate user filter for Admin & Reseller if not already populated
     const userFilterEl = document.getElementById('ledger-filter-user');
     if (userFilterEl && (currentUser?.role === 'admin' || currentUser?.role === 'reseller')) {
@@ -802,12 +917,49 @@ async function loadLedgerTransactions() {
       }
     }
 
-    if (allTransactions.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:35px;color:var(--slate-400);">No transactions found matching your filters.</td></tr>`;
+    // Apply client-side Date Range Preset Filter
+    let displayedTxs = Array.isArray(allTransactions) ? allTransactions : [];
+    const now = new Date();
+    if (ledgerDatePreset === 'today') {
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      displayedTxs = displayedTxs.filter(tx => new Date(tx.created_at).getTime() >= startOfToday);
+    } else if (ledgerDatePreset === '7days') {
+      const sevenDaysAgo = now.getTime() - (7 * 24 * 60 * 60 * 1000);
+      displayedTxs = displayedTxs.filter(tx => new Date(tx.created_at).getTime() >= sevenDaysAgo);
+    } else if (ledgerDatePreset === 'month') {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+      displayedTxs = displayedTxs.filter(tx => new Date(tx.created_at).getTime() >= startOfMonth);
+    }
+
+    // Calculate Summary Strip Totals
+    let totalIn = 0;
+    let totalOut = 0;
+    displayedTxs.forEach(tx => {
+      const amt = Math.abs(Number(tx.amount) || 0);
+      if (tx.is_credit) {
+        totalIn += amt;
+      } else {
+        totalOut += amt;
+      }
+    });
+
+    const statCountEl = document.getElementById('ledger-stat-count');
+    const statInEl = document.getElementById('ledger-stat-in');
+    const statOutEl = document.getElementById('ledger-stat-out');
+    if (statCountEl) statCountEl.textContent = displayedTxs.length.toLocaleString();
+    if (statInEl) statInEl.textContent = `+${totalIn.toLocaleString()}`;
+    if (statOutEl) statOutEl.textContent = `-${totalOut.toLocaleString()}`;
+
+    // Update KPI count if present
+    const txCountEl = document.getElementById('wallet-summary-tx-count');
+    if (txCountEl) txCountEl.textContent = displayedTxs.length.toLocaleString();
+
+    if (displayedTxs.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:35px;color:var(--slate-400);">No transactions found matching your filters.</td></tr>`;
       return;
     }
 
-    tbody.innerHTML = allTransactions.map(tx => {
+    tbody.innerHTML = displayedTxs.map(tx => {
       const isCredit = tx.is_credit;
       const amountColor = isCredit ? '#15803d' : '#b91c1c';
       const amountBg = isCredit ? '#ecfdf5' : '#fef2f2';
@@ -816,6 +968,20 @@ async function loadLedgerTransactions() {
       const cleanType = (tx.credit_type || 'normal').toUpperCase();
       const channelLabel = cleanType === 'NORMAL' ? 'Normal / Bulk SMS' : cleanType;
       const destLabel = tx.destination === 'international' ? '🌐 International' : '🇮🇳 Domestic';
+
+      // Parse campaign #ID in reason to make it clickable
+      const rawReason = String(tx.reason || 'Manual Adjustment');
+      const escapedReason = escapeHtml(rawReason);
+      const linkedReason = escapedReason.replace(/(?:Campaign\s*)?#(\d+)/gi, (match, p1) => {
+        return `<a href="javascript:void(0)" onclick="openCampaignDetailModal(${p1})" style="color:#4f46e5;font-weight:700;text-decoration:underline;" title="View Campaign Details">#${p1}</a>`;
+      });
+
+      // Voucher Slip Button for credits/allotments
+      const voucherAction = isCredit ? `
+        <button type="button" class="btn-action btn-action-secondary" onclick="openRechargeReceiptModal(${tx.id})" title="View & Print Voucher Slip" style="padding: 3px 8px; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 4px; border-radius: 6px;">
+          <i data-lucide="receipt" style="width: 12px; height: 12px; color: #10b981;"></i> Slip
+        </button>
+      ` : `<span style="color:#94a3b8;font-size:0.75rem;">—</span>`;
 
       return `
         <tr>
@@ -833,12 +999,15 @@ async function loadLedgerTransactions() {
             <strong style="color:${amountColor};font-size:0.92rem;font-family:monospace;">${amountSign}${Math.abs(tx.amount).toLocaleString()}</strong>
           </td>
           <td>
-            <div style="font-size:0.83rem;color:#334155;max-width:320px;line-height:1.4;" title="${escapeHtml(tx.reason || '')}">
-              ${escapeHtml(tx.reason || 'Manual Adjustment')}
+            <div style="font-size:0.83rem;color:#334155;max-width:320px;line-height:1.4;" title="${escapedReason}">
+              ${linkedReason}
             </div>
           </td>
           <td>
             <span style="font-size:0.8rem;font-weight:600;color:var(--slate-700);">${escapeHtml(tx.counterparty_email || 'System')}</span>
+          </td>
+          <td style="text-align:center;">
+            ${voucherAction}
           </td>
         </tr>
       `;
@@ -846,7 +1015,7 @@ async function loadLedgerTransactions() {
 
     if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:red;padding:24px;">Failed to load statement: ${escapeHtml(err.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:red;padding:24px;">Failed to load statement: ${escapeHtml(err.message)}</td></tr>`;
   }
 }
 
@@ -4535,7 +4704,8 @@ document.addEventListener('click', (e) => {
   'modal-campaign-detail', 'modal-reset-password', 'modal-operator-dispatch', 'modal-bulk-confirm', 
   'modal-user-360', 'modal-action-dialog', 'modal-create-group', 'modal-edit-group', 
   'modal-merge-groups', 'modal-add-blacklist', 'modal-create-template', 'modal-edit-template',
-  'modal-preview-template', 'modal-starter-templates', 'modal-request-header', 'modal-billing-order'
+  'modal-preview-template', 'modal-starter-templates', 'modal-request-header', 'modal-billing-order',
+  'modal-recharge-receipt'
 ].forEach(setupModal);
 
 // Create User Modal
@@ -7877,13 +8047,120 @@ const modalOrderType = document.getElementById('modal-order-type');
 const modalOrderCredits = document.getElementById('modal-order-credits');
 const modalOrderNotes = document.getElementById('modal-order-notes');
 
+window.selectTopupPreset = function(credits, cardEl) {
+  if (modalOrderCredits) {
+    modalOrderCredits.value = credits;
+  }
+  document.querySelectorAll('.topup-bundle-card').forEach(c => {
+    c.style.borderColor = '#e2e8f0';
+    c.style.background = '#f8fafc';
+  });
+  if (cardEl) {
+    cardEl.style.borderColor = '#4f46e5';
+    cardEl.style.background = '#eef2ff';
+  }
+  window.calculateTopupAmount();
+};
+
+window.calculateTopupAmount = function() {
+  const credits = parseInt(modalOrderCredits?.value || 0, 10);
+  const dest = modalOrderDest?.value || 'domestic';
+  const type = modalOrderType?.value || 'normal';
+  const calcEl = document.getElementById('modal-order-calc-price');
+  if (!calcEl) return;
+
+  if (!credits || credits <= 0) {
+    calcEl.textContent = '₹0';
+    return;
+  }
+
+  let rate = 0.15;
+  if (dest === 'international') {
+    rate = 2.50;
+  } else {
+    if (type === 'normal') {
+      if (credits >= 100000) rate = 0.09;
+      else if (credits >= 50000) rate = 0.11;
+      else if (credits >= 25000) rate = 0.13;
+      else rate = 0.15;
+    } else if (type === 'dp') {
+      rate = 0.30;
+    } else if (type === 'cta') {
+      rate = 0.25;
+    } else if (type === 'dp_cta') {
+      rate = 0.40;
+    } else {
+      rate = 0.15;
+    }
+  }
+
+  const total = Math.round(credits * rate);
+  calcEl.textContent = `₹${total.toLocaleString()}`;
+};
+
 window.openCreditTopupModal = function() {
   if (modalOrderCredits) modalOrderCredits.value = '';
   if (modalOrderNotes) modalOrderNotes.value = '';
+  const calcEl = document.getElementById('modal-order-calc-price');
+  if (calcEl) calcEl.textContent = '₹0';
+  document.querySelectorAll('.topup-bundle-card').forEach(c => {
+    c.style.borderColor = '#e2e8f0';
+    c.style.background = '#f8fafc';
+  });
   if (modalBillingOrder) {
     modalBillingOrder.style.display = 'flex';
     if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
   }
+};
+
+window.openRechargeReceiptModal = function(txId) {
+  const tx = (allTransactions || []).find(t => String(t.id) === String(txId));
+  if (!tx) {
+    showToast('info', 'Receipt Slip', `Transaction #${txId} details not found in current loaded list.`);
+    return;
+  }
+  const modal = document.getElementById('modal-recharge-receipt');
+  if (!modal) return;
+
+  const setTxt = (id, txt) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = txt;
+  };
+
+  setTxt('receipt-tx-id', `#${tx.id}`);
+  setTxt('receipt-timestamp', new Date(tx.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
+  setTxt('receipt-account', tx.counterparty_email || currentUser?.email || 'MessageSphere Account');
+  setTxt('receipt-channel', `${(tx.credit_type || 'normal').toUpperCase()} (${tx.destination === 'international' ? 'International' : 'Domestic'})`);
+  setTxt('receipt-amount', `+${Math.abs(tx.amount).toLocaleString()}`);
+  setTxt('receipt-notes', tx.reason || 'Telecom credit allotment approved & verified');
+
+  modal.style.display = 'flex';
+  if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
+};
+
+window.printReceiptVoucher = function() {
+  const printContent = document.getElementById('receipt-printable-area');
+  if (!printContent) return;
+  const win = window.open('', '_blank', 'width=650,height=600');
+  win.document.write(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Credit Voucher Slip - MessageSphere</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 28px; color: #0f172a; margin: 0; }
+          @media print { body { padding: 12px; } }
+        </style>
+      </head>
+      <body>
+        ${printContent.innerHTML}
+        <script>
+          window.onload = function() { window.print(); };
+        <\/script>
+      </body>
+    </html>
+  `);
+  win.document.close();
 };
 
 if (btnNewBillingOrderModal) {
@@ -7900,19 +8177,32 @@ if (btnModalSaveOrder) {
     const notes = modalOrderNotes.value.trim();
 
     if (!credits || credits <= 0) {
-      showToast('warning', 'Invalid Credits', 'Enter a valid credit quantity.');
+      showToast('warning', 'Invalid Credits', 'Please enter or select a valid credit quantity.');
       return;
     }
+
+    if (!notes) {
+      showToast('warning', 'UTR Reference Required', 'Please enter your payment UTR / Transaction reference number so our billing team can verify and credit your vault.');
+      modalOrderNotes.focus();
+      return;
+    }
+
+    btnModalSaveOrder.disabled = true;
+    btnModalSaveOrder.textContent = 'Submitting Request...';
+
     try {
       const res = await apiFetch('/billing/requests', {
         method: 'POST',
         body: JSON.stringify({ destination, credit_type, credits, notes })
       });
-      showToast('success', 'Order Submitted', `Order #${res.request.id} created for ${credits.toLocaleString()} credits (₹${res.request.amount_inr}).`);
+      showToast('success', 'Top-up Request Submitted', `Order #${res.request.id} for ${credits.toLocaleString()} credits submitted. Verification TAT: 5-15 mins.`);
       modalBillingOrder.style.display = 'none';
-      loadBillingOrders();
+      if (typeof loadBillingOrders === 'function') loadBillingOrders();
     } catch (err) {
       showToast('error', 'Error', err.message);
+    } finally {
+      btnModalSaveOrder.disabled = false;
+      btnModalSaveOrder.textContent = 'Submit Top-up Order';
     }
   });
 }
