@@ -97,6 +97,26 @@ async function buildLedgerQuery(req, isExport = false) {
     paramIdx++;
   }
 
+  // Date range filters (from_date, to_date)
+  if (req.query.from_date && String(req.query.from_date).trim()) {
+    const fDate = new Date(req.query.from_date);
+    if (!isNaN(fDate.getTime())) {
+      whereClauses.push(`ct.created_at >= $${paramIdx}`);
+      params.push(fDate);
+      paramIdx++;
+    }
+  }
+
+  if (req.query.to_date && String(req.query.to_date).trim()) {
+    const tDate = new Date(req.query.to_date);
+    if (!isNaN(tDate.getTime())) {
+      tDate.setHours(23, 59, 59, 999);
+      whereClauses.push(`ct.created_at <= $${paramIdx}`);
+      params.push(tDate);
+      paramIdx++;
+    }
+  }
+
   // Search keyword (Reason or Counterparty email)
   if (search && String(search).trim()) {
     const searchParam = `%${String(search).trim()}%`;
@@ -110,8 +130,16 @@ async function buildLedgerQuery(req, isExport = false) {
   }
 
   const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
-  const limitVal = isExport ? 5000 : (parseInt(limit, 10) || 250);
+  const limitVal = isExport ? 5000 : (parseInt(limit, 10) || 50);
   const offsetVal = parseInt(offset, 10) || 0;
+
+  const countSql = `
+    SELECT COUNT(*) as total_count
+    FROM credit_transactions ct
+    LEFT JOIN users u_from ON ct.from_user_id = u_from.id
+    LEFT JOIN users u_to ON ct.to_user_id = u_to.id
+    ${whereSql}
+  `;
 
   const sql = `
     SELECT ct.*, 
@@ -125,7 +153,7 @@ async function buildLedgerQuery(req, isExport = false) {
     LIMIT ${limitVal} OFFSET ${offsetVal}
   `;
 
-  return { sql, params, viewerUserId };
+  return { sql, countSql, countParams: params.slice(), params, viewerUserId, limitVal, offsetVal };
 }
 
 // ===========================================================================
@@ -133,8 +161,13 @@ async function buildLedgerQuery(req, isExport = false) {
 // ===========================================================================
 router.get('/transactions', authenticate, async (req, res) => {
   try {
-    const { sql, params, viewerUserId } = await buildLedgerQuery(req, false);
-    const result = await query(sql, params);
+    const { sql, countSql, countParams, params, viewerUserId, limitVal, offsetVal } = await buildLedgerQuery(req, false);
+    const [result, countResult] = await Promise.all([
+      query(sql, params),
+      query(countSql, countParams)
+    ]);
+
+    const totalCount = parseInt(countResult.rows[0]?.total_count || 0, 10);
 
     // Filter by direction if requested ('credit' vs 'debit')
     const directionFilter = req.query.direction;
@@ -154,6 +187,15 @@ router.get('/transactions', authenticate, async (req, res) => {
         if (!directionFilter || directionFilter === 'all') return true;
         return tx.direction === directionFilter;
       });
+
+    if (req.query.paginate === 'true' || req.query.page) {
+      return res.json({
+        transactions: enriched,
+        total: totalCount,
+        limit: limitVal,
+        offset: offsetVal
+      });
+    }
 
     return res.json(enriched);
   } catch (err) {

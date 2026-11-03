@@ -60,14 +60,15 @@ router.post('/requests', authenticate, async (req, res) => {
     return res.status(400).json({ error: 'Invalid payment amount' });
   }
   const calculatedAmount = suppliedAmount === null ? requestedQty * 0.15 : suppliedAmount;
+  const receiptUrl = (req.body.receipt_url || '').trim() || null;
 
   try {
     const result = await query(`
       INSERT INTO credit_requests 
-        (user_id, package_name, credits_requested, credit_type, destination, amount_inr, utr_number, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'Pending')
+        (user_id, package_name, credits_requested, credit_type, destination, amount_inr, utr_number, receipt_url, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pending')
       RETURNING *
-    `, [req.user.id, package_name, requestedQty, cType, cDest, calculatedAmount, utr.trim()]);
+    `, [req.user.id, package_name, requestedQty, cType, cDest, calculatedAmount, utr.trim(), receiptUrl]);
 
     return res.status(201).json({
       message: 'Top-up request submitted successfully. Credits will be allocated upon verification.',

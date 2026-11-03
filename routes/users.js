@@ -375,6 +375,8 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
       return res.status(403).json({ error: 'Permission denied: Reseller can only allocate credits to own users' });
     }
 
+    const mode = req.body.mode === 'debit' ? 'debit' : 'credit';
+
     // Process each credit update
     for (const [key, rawVal] of Object.entries(updates)) {
       const amount = parseInt(rawVal, 10);
@@ -397,42 +399,83 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
         continue;
       }
 
-      // If reseller, deduct from reseller balance first
-      if (req.user.role === 'reseller') {
-        const resellerCredit = await client.query(
+      if (mode === 'debit') {
+        // --- DEBIT / CLAWBACK MODE ---
+        const targetCredit = await client.query(
           `SELECT balance FROM user_credits WHERE user_id = $1 AND credit_type = $2 AND destination = $3 FOR UPDATE`,
-          [req.user.id, creditType, destination]
+          [targetId, creditType, destination]
         );
-        const currentBal = resellerCredit.rows.length > 0 ? parseInt(resellerCredit.rows[0].balance, 10) : 0;
-        if (currentBal < amount) {
+        const targetBal = targetCredit.rows.length > 0 ? parseInt(targetCredit.rows[0].balance, 10) : 0;
+        if (targetBal < amount) {
           await client.query('ROLLBACK');
           return res.status(400).json({
-            error: `Insufficient balance in your account for ${creditType} (${destination}). Available: ${currentBal}, Needed: ${amount}`
+            error: `Insufficient balance to deduct for ${creditType} (${destination}). Client only has ${targetBal.toLocaleString()} credits.`
           });
         }
 
-        // Deduct from reseller
+        // Deduct from target user
         await client.query(
           `UPDATE user_credits SET balance = balance - $1 WHERE user_id = $2 AND credit_type = $3 AND destination = $4`,
-          [amount, req.user.id, creditType, destination]
+          [amount, targetId, creditType, destination]
         );
+
+        // If reseller is recovering stock from client, add back to reseller stock
+        if (req.user.role === 'reseller') {
+          await client.query(`
+            INSERT INTO user_credits (user_id, credit_type, destination, balance)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (user_id, credit_type, destination)
+            DO UPDATE SET balance = user_credits.balance + EXCLUDED.balance
+          `, [req.user.id, creditType, destination, amount]);
+        }
+
+        // Record debit transaction in passbook
+        await client.query(`
+          INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [req.user.id, targetId, creditType, destination, amount, `Deduction by ${req.user.role} (${req.user.email}): ${String(reason || 'Manual Adjustment').trim().slice(0, 180)}`]);
+
+        await logAudit(client, { actorId: req.user.id, entityType: 'user', entityId: targetId, action: 'credits_deducted', details: { creditType, destination, amount, reason: String(reason || '').trim().slice(0, 1000) } });
+
+      } else {
+        // --- CREDIT ALLOTMENT MODE ---
+        // If reseller, deduct from reseller balance first
+        if (req.user.role === 'reseller') {
+          const resellerCredit = await client.query(
+            `SELECT balance FROM user_credits WHERE user_id = $1 AND credit_type = $2 AND destination = $3 FOR UPDATE`,
+            [req.user.id, creditType, destination]
+          );
+          const currentBal = resellerCredit.rows.length > 0 ? parseInt(resellerCredit.rows[0].balance, 10) : 0;
+          if (currentBal < amount) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+              error: `Insufficient balance in your account for ${creditType} (${destination}). Available: ${currentBal}, Needed: ${amount}`
+            });
+          }
+
+          // Deduct from reseller
+          await client.query(
+            `UPDATE user_credits SET balance = balance - $1 WHERE user_id = $2 AND credit_type = $3 AND destination = $4`,
+            [amount, req.user.id, creditType, destination]
+          );
+        }
+
+        // Add to target user
+        await client.query(`
+          INSERT INTO user_credits (user_id, credit_type, destination, balance)
+          VALUES ($1, $2, $3, $4)
+          ON CONFLICT (user_id, credit_type, destination)
+          DO UPDATE SET balance = user_credits.balance + EXCLUDED.balance
+        `, [targetId, creditType, destination, amount]);
+
+        // Record audit log
+        await client.query(`
+          INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [req.user.id, targetId, creditType, destination, amount, `Allotted by ${req.user.role} (${req.user.email}): ${String(reason || 'Top-up allocation').trim().slice(0, 180)}`]);
+
+        await logAudit(client, { actorId: req.user.id, entityType: 'user', entityId: targetId, action: 'credits_allocated', details: { creditType, destination, amount, reason: String(reason || '').trim().slice(0, 1000) } });
       }
-
-      // Add to target user
-      await client.query(`
-        INSERT INTO user_credits (user_id, credit_type, destination, balance)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (user_id, credit_type, destination)
-        DO UPDATE SET balance = user_credits.balance + EXCLUDED.balance
-      `, [targetId, creditType, destination, amount]);
-
-      // Record audit log
-      await client.query(`
-        INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason)
-        VALUES ($1, $2, $3, $4, $5, $6)
-      `, [req.user.id, targetId, creditType, destination, amount, `Allotted by ${req.user.role} (${req.user.email}): ${String(reason).trim().slice(0, 180)}`]);
-
-      await logAudit(client, { actorId: req.user.id, entityType: 'user', entityId: targetId, action: 'credits_allocated', details: { creditType, destination, amount, reason: String(reason).trim().slice(0, 1000) } });
     }
 
     await client.query('COMMIT');

@@ -835,6 +835,10 @@ function updateWalletView() {
 // --- CREDIT LEDGER STATEMENT & PASSBOOK ---
 let ledgerDebounceTimer = null;
 
+let ledgerCurrentPage = 1;
+let ledgerPageSize = 50;
+let ledgerTotalCount = 0;
+
 window.setLedgerDatePreset = function(preset, btn) {
   ledgerDatePreset = preset;
   const container = document.getElementById('ledger-date-presets');
@@ -842,12 +846,62 @@ window.setLedgerDatePreset = function(preset, btn) {
     container.querySelectorAll('.tab-pill').forEach(b => b.classList.remove('active'));
     if (btn) btn.classList.add('active');
   }
+  const fEl = document.getElementById('ledger-from-date');
+  const tEl = document.getElementById('ledger-to-date');
+  if (fEl) fEl.value = '';
+  if (tEl) tEl.value = '';
+  ledgerCurrentPage = 1;
   loadLedgerTransactions();
+};
+
+window.onLedgerCustomDateChange = function() {
+  const fVal = document.getElementById('ledger-from-date')?.value;
+  const tVal = document.getElementById('ledger-to-date')?.value;
+  if (fVal || tVal) {
+    document.querySelectorAll('#ledger-date-presets .tab-pill').forEach(b => b.classList.remove('active'));
+    ledgerDatePreset = 'custom';
+  }
+  ledgerCurrentPage = 1;
+  loadLedgerTransactions();
+};
+
+window.clearLedgerCustomDate = function() {
+  const fEl = document.getElementById('ledger-from-date');
+  const tEl = document.getElementById('ledger-to-date');
+  if (fEl) fEl.value = '';
+  if (tEl) tEl.value = '';
+  const firstPill = document.querySelector('#ledger-date-presets .tab-pill');
+  if (firstPill) {
+    window.setLedgerDatePreset('all', firstPill);
+  } else {
+    ledgerDatePreset = 'all';
+    ledgerCurrentPage = 1;
+    loadLedgerTransactions();
+  }
+};
+
+window.onLedgerPageSizeChange = function() {
+  const sizeSelect = document.getElementById('ledger-page-size');
+  if (sizeSelect) {
+    ledgerPageSize = parseInt(sizeSelect.value, 10) || 50;
+  }
+  ledgerCurrentPage = 1;
+  loadLedgerTransactions();
+};
+
+window.changeLedgerPage = function(delta) {
+  const totalPages = Math.max(1, Math.ceil(ledgerTotalCount / ledgerPageSize));
+  const newPage = ledgerCurrentPage + delta;
+  if (newPage >= 1 && newPage <= totalPages) {
+    ledgerCurrentPage = newPage;
+    loadLedgerTransactions();
+  }
 };
 
 window.onLedgerFilterChange = function() {
   clearTimeout(ledgerDebounceTimer);
   ledgerDebounceTimer = setTimeout(() => {
+    ledgerCurrentPage = 1;
     loadLedgerTransactions();
   }, 200);
 };
@@ -858,6 +912,8 @@ window.exportLedgerCsv = async function() {
   const dest = document.getElementById('ledger-filter-dest')?.value || 'all';
   const flow = document.getElementById('ledger-filter-flow')?.value || 'all';
   const user = document.getElementById('ledger-filter-user')?.value || '';
+  const fromDate = document.getElementById('ledger-from-date')?.value || '';
+  const toDate = document.getElementById('ledger-to-date')?.value || '';
 
   const params = new URLSearchParams();
   if (search) params.append('search', search);
@@ -865,6 +921,8 @@ window.exportLedgerCsv = async function() {
   if (dest && dest !== 'all') params.append('destination', dest);
   if (flow && flow !== 'all') params.append('direction', flow);
   if (user) params.append('userId', user);
+  if (fromDate) params.append('from_date', fromDate);
+  if (toDate) params.append('to_date', toDate);
 
   showToast('info', 'Exporting Statement', 'Generating ledger statement CSV...');
   try {
@@ -887,6 +945,8 @@ async function loadLedgerTransactions() {
   const dest = document.getElementById('ledger-filter-dest')?.value || 'all';
   const flow = document.getElementById('ledger-filter-flow')?.value || 'all';
   const user = document.getElementById('ledger-filter-user')?.value || '';
+  const fromDate = document.getElementById('ledger-from-date')?.value || '';
+  const toDate = document.getElementById('ledger-to-date')?.value || '';
 
   const params = new URLSearchParams();
   if (search) params.append('search', search);
@@ -894,10 +954,24 @@ async function loadLedgerTransactions() {
   if (dest && dest !== 'all') params.append('destination', dest);
   if (flow && flow !== 'all') params.append('direction', flow);
   if (user) params.append('userId', user);
-  params.append('limit', '300');
+  if (fromDate) params.append('from_date', fromDate);
+  if (toDate) params.append('to_date', toDate);
+
+  params.append('paginate', 'true');
+  params.append('limit', String(ledgerPageSize));
+  params.append('offset', String((ledgerCurrentPage - 1) * ledgerPageSize));
 
   try {
-    allTransactions = await apiFetch(`/credits/transactions?${params.toString()}`);
+    const res = await apiFetch(`/credits/transactions?${params.toString()}`);
+    let displayedTxs = [];
+    if (Array.isArray(res)) {
+      displayedTxs = res;
+      ledgerTotalCount = res.length;
+    } else {
+      displayedTxs = res.transactions || [];
+      ledgerTotalCount = Number(res.total) || 0;
+    }
+    allTransactions = displayedTxs;
     
     // Populate user filter for Admin & Reseller if not already populated
     const userFilterEl = document.getElementById('ledger-filter-user');
@@ -917,16 +991,15 @@ async function loadLedgerTransactions() {
       }
     }
 
-    // Apply client-side Date Range Preset Filter
-    let displayedTxs = Array.isArray(allTransactions) ? allTransactions : [];
+    // Client-side quick preset filtering if not already filtered on server
     const now = new Date();
-    if (ledgerDatePreset === 'today') {
+    if (ledgerDatePreset === 'today' && !fromDate && !toDate) {
       const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
       displayedTxs = displayedTxs.filter(tx => new Date(tx.created_at).getTime() >= startOfToday);
-    } else if (ledgerDatePreset === '7days') {
+    } else if (ledgerDatePreset === '7days' && !fromDate && !toDate) {
       const sevenDaysAgo = now.getTime() - (7 * 24 * 60 * 60 * 1000);
       displayedTxs = displayedTxs.filter(tx => new Date(tx.created_at).getTime() >= sevenDaysAgo);
-    } else if (ledgerDatePreset === 'month') {
+    } else if (ledgerDatePreset === 'month' && !fromDate && !toDate) {
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
       displayedTxs = displayedTxs.filter(tx => new Date(tx.created_at).getTime() >= startOfMonth);
     }
@@ -946,13 +1019,30 @@ async function loadLedgerTransactions() {
     const statCountEl = document.getElementById('ledger-stat-count');
     const statInEl = document.getElementById('ledger-stat-in');
     const statOutEl = document.getElementById('ledger-stat-out');
-    if (statCountEl) statCountEl.textContent = displayedTxs.length.toLocaleString();
+    if (statCountEl) statCountEl.textContent = (ledgerTotalCount || displayedTxs.length).toLocaleString();
     if (statInEl) statInEl.textContent = `+${totalIn.toLocaleString()}`;
     if (statOutEl) statOutEl.textContent = `-${totalOut.toLocaleString()}`;
 
     // Update KPI count if present
     const txCountEl = document.getElementById('wallet-summary-tx-count');
-    if (txCountEl) txCountEl.textContent = displayedTxs.length.toLocaleString();
+    if (txCountEl) txCountEl.textContent = (ledgerTotalCount || displayedTxs.length).toLocaleString();
+
+    // Update Bank-grade Pagination controls
+    const totalPages = Math.max(1, Math.ceil((ledgerTotalCount || displayedTxs.length) / ledgerPageSize));
+    const pageShowingEl = document.getElementById('ledger-pagination-showing');
+    const pageTotalEl = document.getElementById('ledger-pagination-total');
+    const pageNumEl = document.getElementById('ledger-pagination-page');
+    const prevBtn = document.getElementById('btn-ledger-prev');
+    const nextBtn = document.getElementById('btn-ledger-next');
+
+    const startRecord = (ledgerTotalCount || displayedTxs.length) > 0 ? (ledgerCurrentPage - 1) * ledgerPageSize + 1 : 0;
+    const endRecord = Math.min(ledgerTotalCount || displayedTxs.length, ledgerCurrentPage * ledgerPageSize);
+
+    if (pageShowingEl) pageShowingEl.textContent = `${startRecord}–${endRecord}`;
+    if (pageTotalEl) pageTotalEl.textContent = (ledgerTotalCount || displayedTxs.length).toLocaleString();
+    if (pageNumEl) pageNumEl.textContent = `Page ${ledgerCurrentPage} of ${totalPages}`;
+    if (prevBtn) prevBtn.disabled = ledgerCurrentPage <= 1;
+    if (nextBtn) nextBtn.disabled = ledgerCurrentPage >= totalPages;
 
     if (displayedTxs.length === 0) {
       tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:35px;color:var(--slate-400);">No transactions found matching your filters.</td></tr>`;
@@ -4807,7 +4897,62 @@ window.openWalletAllotCreditsModal = function() {
   window.openAllotCreditsModal(null, null);
 };
 
+let allocCurrentMode = 'credit';
+
+window.setAllocMode = function(mode) {
+  allocCurrentMode = mode === 'debit' ? 'debit' : 'credit';
+  const modeInput = document.getElementById('modal-allot-mode');
+  if (modeInput) modeInput.value = allocCurrentMode;
+
+  const btnCredit = document.getElementById('alloc-mode-btn-credit');
+  const btnDebit = document.getElementById('alloc-mode-btn-debit');
+  const modalTitle = document.getElementById('modal-allot-title');
+  const saveBtn = document.getElementById('btn-modal-save-credits');
+  const reasonInput = document.getElementById('alloc-reason');
+
+  if (allocCurrentMode === 'debit') {
+    if (btnCredit) {
+      btnCredit.style.background = 'transparent';
+      btnCredit.style.color = '#64748b';
+      btnCredit.style.fontWeight = '600';
+    }
+    if (btnDebit) {
+      btnDebit.style.background = '#dc2626';
+      btnDebit.style.color = '#ffffff';
+      btnDebit.style.fontWeight = '700';
+    }
+    if (modalTitle) modalTitle.textContent = 'Deduct / Clawback Credits from Account';
+    if (saveBtn) {
+      saveBtn.style.background = '#dc2626';
+      saveBtn.textContent = 'Confirm & Deduct Credits';
+    }
+    if (reasonInput && (!reasonInput.value || reasonInput.value.includes('allotment'))) {
+      reasonInput.value = 'Credit deduction / correction by admin';
+    }
+  } else {
+    if (btnCredit) {
+      btnCredit.style.background = '#10b981';
+      btnCredit.style.color = '#ffffff';
+      btnCredit.style.fontWeight = '700';
+    }
+    if (btnDebit) {
+      btnDebit.style.background = 'transparent';
+      btnDebit.style.color = '#64748b';
+      btnDebit.style.fontWeight = '600';
+    }
+    if (modalTitle) modalTitle.textContent = 'Allot Credits to Account';
+    if (saveBtn) {
+      saveBtn.style.background = '';
+      saveBtn.textContent = 'Save & Transfer Credits';
+    }
+    if (reasonInput && (!reasonInput.value || reasonInput.value.includes('deduction'))) {
+      reasonInput.value = 'Manual credit allotment by admin';
+    }
+  }
+};
+
 window.openAllotCreditsModal = async function(userId, email) {
+  window.setAllocMode('credit');
   const userGroup = document.getElementById('modal-allot-user-group');
   const userSelect = document.getElementById('modal-allot-user-select');
 
@@ -4875,17 +5020,18 @@ if (btnModalSaveCredits) {
       return;
     }
 
+    const mode = document.getElementById('modal-allot-mode')?.value || 'credit';
     btnModalSaveCredits.disabled = true;
-    btnModalSaveCredits.textContent = 'Transferring...';
+    btnModalSaveCredits.textContent = mode === 'debit' ? 'Deducting...' : 'Transferring...';
 
     try {
       const reasonInput = document.getElementById('alloc-reason');
-      const allocReason = (reasonInput && reasonInput.value.trim()) ? reasonInput.value.trim() : 'Manual credit allotment by admin';
+      const allocReason = (reasonInput && reasonInput.value.trim()) ? reasonInput.value.trim() : (mode === 'debit' ? 'Credit deduction by admin' : 'Manual credit allotment by admin');
       const res = await apiFetch(`/users/${userId}/credits`, {
         method: 'POST',
-        body: JSON.stringify({ updates, reason: allocReason })
+        body: JSON.stringify({ updates, reason: allocReason, mode })
       });
-      showToast('success', 'Credits Transferred!', res.message);
+      showToast('success', mode === 'debit' ? 'Credits Deducted!' : 'Credits Transferred!', res.message);
       modalAllotCredits.style.display = 'none';
       if (typeof loadUsers === 'function') loadUsers();
 
@@ -4896,10 +5042,10 @@ if (btnModalSaveCredits) {
       updateWalletView();
       if (typeof loadLedgerTransactions === 'function') loadLedgerTransactions();
     } catch (err) {
-      showToast('error', 'Transfer Failed', err.message);
+      showToast('error', 'Operation Failed', err.message);
     } finally {
       btnModalSaveCredits.disabled = false;
-      btnModalSaveCredits.textContent = 'Save & Transfer Credits';
+      btnModalSaveCredits.textContent = mode === 'debit' ? 'Confirm & Deduct Credits' : 'Save & Transfer Credits';
     }
   });
 }
@@ -8098,9 +8244,46 @@ window.calculateTopupAmount = function() {
   calcEl.textContent = `₹${total.toLocaleString()}`;
 };
 
+window.handleTopupReceiptFile = function(input) {
+  const file = input?.files?.[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('warning', 'File Too Large', 'Payment receipt file must be under 5 MB.');
+    input.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const dataUrl = e.target.result;
+    const urlInput = document.getElementById('modal-order-receipt-url');
+    if (urlInput) urlInput.value = dataUrl;
+
+    const placeholder = document.getElementById('topup-receipt-placeholder');
+    const preview = document.getElementById('topup-receipt-preview');
+    const filenameEl = document.getElementById('topup-receipt-filename');
+    if (placeholder) placeholder.style.display = 'none';
+    if (preview) preview.style.display = 'flex';
+    if (filenameEl) filenameEl.textContent = file.name;
+    showToast('info', 'Receipt Attached', `${file.name} attached successfully.`);
+  };
+  reader.readAsDataURL(file);
+};
+
+window.removeTopupReceipt = function() {
+  const input = document.getElementById('modal-order-receipt-input');
+  const urlInput = document.getElementById('modal-order-receipt-url');
+  if (input) input.value = '';
+  if (urlInput) urlInput.value = '';
+  const placeholder = document.getElementById('topup-receipt-placeholder');
+  const preview = document.getElementById('topup-receipt-preview');
+  if (placeholder) placeholder.style.display = 'flex';
+  if (preview) preview.style.display = 'none';
+};
+
 window.openCreditTopupModal = function() {
   if (modalOrderCredits) modalOrderCredits.value = '';
   if (modalOrderNotes) modalOrderNotes.value = '';
+  window.removeTopupReceipt();
   const calcEl = document.getElementById('modal-order-calc-price');
   if (calcEl) calcEl.textContent = '₹0';
   document.querySelectorAll('.topup-bundle-card').forEach(c => {
@@ -8127,11 +8310,20 @@ window.openRechargeReceiptModal = function(txId) {
     if (el) el.textContent = txt;
   };
 
-  setTxt('receipt-tx-id', `#${tx.id}`);
+  const credits = Math.abs(Number(tx.amount) || 0);
+  const estRate = (tx.destination === 'international') ? 2.50 : 0.15;
+  const grossInr = Math.round(credits * estRate);
+  const taxableInr = grossInr / 1.18;
+  const gstInr = grossInr - taxableInr;
+
+  setTxt('receipt-tx-id', `MS-REC-${tx.id}`);
   setTxt('receipt-timestamp', new Date(tx.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
   setTxt('receipt-account', tx.counterparty_email || currentUser?.email || 'MessageSphere Account');
   setTxt('receipt-channel', `${(tx.credit_type || 'normal').toUpperCase()} (${tx.destination === 'international' ? 'International' : 'Domestic'})`);
-  setTxt('receipt-amount', `+${Math.abs(tx.amount).toLocaleString()}`);
+  setTxt('receipt-amount', `+${credits.toLocaleString()}`);
+  setTxt('receipt-taxable-val', `₹${taxableInr.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  setTxt('receipt-gst-val', `₹${gstInr.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  setTxt('receipt-total-val', `₹${grossInr.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
   setTxt('receipt-notes', tx.reason || 'Telecom credit allotment approved & verified');
 
   modal.style.display = 'flex';
@@ -8175,6 +8367,7 @@ if (btnModalSaveOrder) {
     const credit_type = modalOrderType.value;
     const credits = parseInt(modalOrderCredits.value, 10);
     const notes = modalOrderNotes.value.trim();
+    const receipt_url = document.getElementById('modal-order-receipt-url')?.value || null;
 
     if (!credits || credits <= 0) {
       showToast('warning', 'Invalid Credits', 'Please enter or select a valid credit quantity.');
@@ -8193,7 +8386,7 @@ if (btnModalSaveOrder) {
     try {
       const res = await apiFetch('/billing/requests', {
         method: 'POST',
-        body: JSON.stringify({ destination, credit_type, credits, notes })
+        body: JSON.stringify({ destination, credit_type, credits, notes, receipt_url })
       });
       showToast('success', 'Top-up Request Submitted', `Order #${res.request.id} for ${credits.toLocaleString()} credits submitted. Verification TAT: 5-15 mins.`);
       modalBillingOrder.style.display = 'none';
