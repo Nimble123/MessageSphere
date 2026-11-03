@@ -8695,11 +8695,11 @@ window.closeSmsComposer = function() {
 
 async function populateSmsUserSelector() {
   const sel = document.getElementById('sms-target-user');
+  if (!sel) return;
   sel.innerHTML = '<option value="">— Select target user —</option>';
   try {
-    const res = await apiFetch('/api/users?limit=200');
-    const data = await res.json();
-    const users = data.users || data || [];
+    const data = await apiFetch('/users?limit=200');
+    const users = Array.isArray(data) ? data : (data.users || []);
     users.forEach(u => {
       const opt = document.createElement('option');
       opt.value = u.id;
@@ -8774,7 +8774,7 @@ window.submitSmsCampaign = async function(e) {
   const destination = document.getElementById('sms-destination').value;
   const message = document.getElementById('sms-message').value.trim();
   const scheduledAt = document.getElementById('sms-scheduled-at').value;
-  const targetUserId = document.getElementById('sms-target-user').value;
+  const targetUserId = document.getElementById('sms-target-user') ? document.getElementById('sms-target-user').value : '';
 
   const textNumbers = parseSmsNumbers(document.getElementById('sms-numbers').value || '');
   const allNumbers = smsFileNumbers.length > 0 ? smsFileNumbers : textNumbers;
@@ -8800,16 +8800,13 @@ window.submitSmsCampaign = async function(e) {
     if (scheduledAt) payload.scheduled_at = scheduledAt;
     if (targetUserId) payload.target_user_id = targetUserId;
 
-    const res = await apiFetch('/api/sms', {
+    const data = await apiFetch('/sms', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to submit SMS campaign');
 
     closeSmsComposer();
-    showToast(`✅ SMS Campaign "${title}" submitted! ${data.total_numbers?.toLocaleString() || ''} numbers queued.`, 'success');
+    showToast('success', 'SMS Campaign Submitted', `Campaign "${title}" submitted! ${data.total_numbers ? data.total_numbers.toLocaleString() : ''} numbers queued.`);
     loadSmsCampaigns();
   } catch(err) {
     errEl.textContent = err.message;
@@ -8828,8 +8825,7 @@ window.loadSmsCampaigns = async function() {
   tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--text-muted);">Loading...</td></tr>';
 
   try {
-    const res = await apiFetch('/api/sms');
-    const data = await res.json();
+    const data = await apiFetch('/sms');
     smsCampaignsData = Array.isArray(data) ? data : (data.campaigns || []);
 
     // Update KPIs
@@ -8875,7 +8871,7 @@ window.loadSmsCampaigns = async function() {
         <td style="font-size:0.78rem;color:var(--text-muted);">${createdDisplay}</td>
         <td>
           <div style="display:flex;gap:4px;">
-            ${canDelete ? `<button type="button" class="btn-action" onclick="deleteSmsCanpaign(${c.id})" style="padding:3px 8px;font-size:0.75rem;background:var(--danger);color:#fff;border-color:var(--danger);" title="Cancel Campaign"><i data-lucide="trash-2" style="width:13px;height:13px;"></i></button>` : ''}
+            ${canDelete ? `<button type="button" class="btn-action" onclick="deleteSmsCampaign(${c.id})" style="padding:3px 8px;font-size:0.75rem;background:var(--danger);color:#fff;border-color:var(--danger);" title="Cancel Campaign"><i data-lucide="trash-2" style="width:13px;height:13px;"></i></button>` : ''}
           </div>
         </td>
       </tr>`;
@@ -8888,16 +8884,14 @@ window.loadSmsCampaigns = async function() {
 };
 
 // --- Delete/Cancel ---
-window.deleteSmsCanpaign = async function(id) {
+window.deleteSmsCampaign = async function(id) {
   if (!confirm('Cancel this SMS campaign and refund credits?')) return;
   try {
-    const res = await apiFetch(`/api/sms/${id}`, { method: 'DELETE' });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Delete failed');
-    showToast('SMS campaign cancelled and credits refunded.', 'success');
+    await apiFetch(`/sms/${id}`, { method: 'DELETE' });
+    showToast('success', 'Campaign Cancelled', 'SMS campaign cancelled and credits refunded.');
     loadSmsCampaigns();
   } catch(err) {
-    showToast(`Error: ${err.message}`, 'error');
+    showToast('error', 'Delete Failed', err.message);
   }
 };
 

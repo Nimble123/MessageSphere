@@ -279,6 +279,22 @@ async function initDB() {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_admin_reminders_status ON admin_reminders(is_read, scheduled_for ASC);`);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS credit_requests (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        package_name VARCHAR(100),
+        credits_requested INTEGER NOT NULL,
+        credit_type VARCHAR(50) NOT NULL,
+        destination VARCHAR(50) NOT NULL,
+        amount_inr NUMERIC(10, 2) DEFAULT 0,
+        utr_number VARCHAR(100),
+        status VARCHAR(20) DEFAULT 'Pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_credit_requests_user ON credit_requests(user_id, status);`);
+
     const adminEmail = (process.env.ADMIN_EMAIL || 'admin@messagesphere.com').trim().toLowerCase();
     const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
     const adminCheck = await client.query(`SELECT id, password_hash FROM users WHERE email = $1`, [adminEmail]);
