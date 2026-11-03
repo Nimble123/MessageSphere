@@ -1045,7 +1045,20 @@ async function loadLedgerTransactions() {
     if (nextBtn) nextBtn.disabled = ledgerCurrentPage >= totalPages;
 
     if (displayedTxs.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:35px;color:var(--slate-400);">No transactions found matching your filters.</td></tr>`;
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="9" style="text-align: center; padding: 48px 20px;">
+            <div style="display: inline-flex; flex-direction: column; align-items: center; justify-content: center; max-width: 320px;">
+              <div style="width: 52px; height: 52px; border-radius: 50%; background: #f1f5f9; color: #94a3b8; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;">
+                <i data-lucide="receipt-text" style="width: 24px; height: 24px;"></i>
+              </div>
+              <div style="font-size: 0.95rem; font-weight: 700; color: #1e293b; margin-bottom: 4px;">No Transactions Found</div>
+              <div style="font-size: 0.78rem; color: #64748b; line-height: 1.4;">There are no ledger entries matching your current filters or date range.</div>
+            </div>
+          </td>
+        </tr>
+      `;
+      if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
       return;
     }
 

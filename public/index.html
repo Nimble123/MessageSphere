@@ -2949,215 +2949,271 @@
         <section id="view-wallet" class="app-view">
           
           <!-- Master Fintech Vault Hero Card -->
-          <div style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 55%, #312e81 100%); border-radius: 18px; padding: 26px 30px; color: #ffffff; margin-bottom: 24px; box-shadow: 0 20px 45px -15px rgba(15, 23, 42, 0.45); border: 1px solid rgba(255, 255, 255, 0.1); position: relative; overflow: hidden;">
-            <!-- Subtle background decorative pattern -->
-            <div style="position: absolute; right: -40px; top: -40px; width: 220px; height: 220px; border-radius: 50%; background: radial-gradient(circle, rgba(99, 102, 241, 0.25) 0%, rgba(99, 102, 241, 0) 70%); pointer-events: none;"></div>
+          <div style="background: linear-gradient(135deg, #0b0f19 0%, #151c33 50%, #1e1b4b 100%); border-radius: 20px; padding: 26px 32px; color: #ffffff; margin-bottom: 24px; box-shadow: 0 20px 45px -12px rgba(15, 23, 42, 0.45); border: 1px solid rgba(255, 255, 255, 0.12); position: relative; overflow: hidden;">
+            <!-- Subtle background ambient glows -->
+            <div style="position: absolute; right: -50px; top: -50px; width: 260px; height: 260px; border-radius: 50%; background: radial-gradient(circle, rgba(99, 102, 241, 0.22) 0%, transparent 70%); pointer-events: none;"></div>
+            <div style="position: absolute; left: 20%; bottom: -60px; width: 220px; height: 220px; border-radius: 50%; background: radial-gradient(circle, rgba(16, 185, 129, 0.12) 0%, transparent 70%); pointer-events: none;"></div>
 
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; position: relative; z-index: 1;">
+            <!-- Top Row: Badges & Route Switcher -->
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; position: relative; z-index: 1; margin-bottom: 18px;">
+              <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <span style="font-size: 0.72rem; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; background: rgba(255, 255, 255, 0.1); color: #e0e7ff; padding: 4px 12px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.18); display: inline-flex; align-items: center; gap: 6px;">
+                  <i data-lucide="shield-check" style="width: 13px; height: 13px; color: #a5b4fc;"></i> MASTER TELECOM VAULT
+                </span>
+                <span id="wallet-hero-health-badge" style="font-size: 0.72rem; font-weight: 700; background: #ecfdf5; color: #15803d; padding: 3px 12px; border-radius: 20px; border: 1px solid #bbf7d0; display: inline-flex; align-items: center; gap: 5px;">
+                  <span style="width: 6px; height: 6px; border-radius: 50%; background: #15803d; display: inline-block;"></span> Healthy Stock
+                </span>
+              </div>
+
+              <!-- Vault Route Selector Segmented Pill -->
+              <div style="background: rgba(15, 23, 42, 0.75); padding: 3px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.15); display: inline-flex; gap: 3px;">
+                <button type="button" id="vault-tab-domestic" onclick="switchVaultRoute('domestic')" style="background: #4f46e5; color: #fff; border: none; padding: 6px 16px; border-radius: 9px; font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px;">
+                  🇮🇳 Domestic (India)
+                </button>
+                <button type="button" id="vault-tab-intl" onclick="switchVaultRoute('international')" style="background: transparent; color: #94a3b8; border: none; padding: 6px 16px; border-radius: 9px; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px;">
+                  🌐 International
+                </button>
+              </div>
+            </div>
+
+            <!-- Middle Row: Master Balance & Quick Action Buttons -->
+            <div style="display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 20px; position: relative; z-index: 1;">
               <div>
-                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                  <span style="font-size: 0.72rem; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; background: rgba(255, 255, 255, 0.12); color: #e0e7ff; padding: 4px 10px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.2);">
-                    <i data-lucide="shield-check" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle; margin-right: 4px;"></i> MASTER TELECOM VAULT
-                  </span>
-                  <span id="wallet-hero-health-badge" style="font-size: 0.72rem; font-weight: 700; background: #ecfdf5; color: #15803d; padding: 3px 10px; border-radius: 20px; border: 1px solid #bbf7d0;">
-                    🟢 Healthy Stock
-                  </span>
+                <div style="font-size: 0.84rem; color: #cbd5e1; margin-bottom: 4px;" id="wallet-hero-route-title">Domestic Telecom Route (India +91) &bull; 5 Channels Active</div>
+                <div style="display: flex; align-items: baseline; gap: 10px;">
+                  <div style="font-size: 3.1rem; font-weight: 900; line-height: 1; letter-spacing: -1.5px; color: #ffffff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;" id="wallet-hero-total-balance">0</div>
+                  <span style="font-size: 0.95rem; color: #a5b4fc; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;">Usable Credits</span>
                 </div>
-
-                <div style="font-size: 0.85rem; color: #cbd5e1; margin-bottom: 4px;" id="wallet-hero-route-title">Domestic Telecom Route (India +91)</div>
-                <div style="display: flex; align-items: baseline; gap: 8px;">
-                  <div style="font-size: 2.8rem; font-weight: 900; line-height: 1; letter-spacing: -1px; color: #ffffff;" id="wallet-hero-total-balance">0</div>
-                  <span style="font-size: 1rem; color: #a5b4fc; font-weight: 600;">Credits Usable</span>
-                </div>
-                <div style="font-size: 0.76rem; color: #94a3b8; margin-top: 6px;">
+                <div style="font-size: 0.76rem; color: #94a3b8; margin-top: 5px;">
                   Real-time combined balance for instant multi-channel dispatch
                 </div>
               </div>
 
-              <!-- Vault Route Selector Tabs & Quick Actions -->
-              <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 12px;">
-                <!-- Vault Route Segmented Tabs -->
-                <div style="background: rgba(15, 23, 42, 0.6); padding: 4px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.15); display: inline-flex; gap: 4px;">
-                  <button type="button" id="vault-tab-domestic" onclick="switchVaultRoute('domestic')" style="background: #4f46e5; color: #fff; border: none; padding: 6px 14px; border-radius: 8px; font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 6px;">
-                    🇮🇳 Domestic (India)
-                  </button>
-                  <button type="button" id="vault-tab-intl" onclick="switchVaultRoute('international')" style="background: transparent; color: #94a3b8; border: none; padding: 6px 14px; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 6px;">
-                    🌐 International
-                  </button>
-                </div>
-
-                <!-- Primary Action Buttons -->
-                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                  <button type="button" class="btn-action" onclick="openCreditTopupModal()" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; border: none; padding: 8px 16px; border-radius: 8px; font-size: 0.82rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);">
-                    <i data-lucide="plus-circle" style="width: 15px; height: 15px;"></i> Request Top-Up
-                  </button>
-                  <button type="button" id="btn-wallet-allot-credits" class="btn-action" onclick="openWalletAllotCreditsModal()" style="display: none; background: rgba(255, 255, 255, 0.15); color: #fff; border: 1px solid rgba(255, 255, 255, 0.25); padding: 8px 14px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer; align-items: center; gap: 6px;">
-                    <i data-lucide="arrow-right-left" style="width: 14px; height: 14px;"></i> Allot Credits
-                  </button>
-                  <button type="button" class="btn-action" onclick="exportLedgerCsv()" style="background: rgba(255, 255, 255, 0.1); color: #e2e8f0; border: 1px solid rgba(255, 255, 255, 0.2); padding: 8px 12px; border-radius: 8px; font-size: 0.82rem; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
-                    <i data-lucide="download" style="width: 14px; height: 14px;"></i> Statement
-                  </button>
-                </div>
+              <!-- Primary Action Buttons Group -->
+              <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button type="button" class="btn-action" onclick="openCreditTopupModal()" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff; border: 1px solid rgba(255, 255, 255, 0.2); padding: 9px 18px; border-radius: 9px; font-size: 0.84rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 16px rgba(16, 185, 129, 0.35);">
+                  <i data-lucide="plus-circle" style="width: 15px; height: 15px;"></i> Request Top-Up
+                </button>
+                <button type="button" id="btn-wallet-allot-credits" class="btn-action" onclick="openWalletAllotCreditsModal()" style="display: none; background: rgba(255, 255, 255, 0.12); color: #fff; border: 1px solid rgba(255, 255, 255, 0.22); padding: 9px 16px; border-radius: 9px; font-size: 0.84rem; font-weight: 600; cursor: pointer; align-items: center; gap: 6px; backdrop-filter: blur(8px);">
+                  <i data-lucide="arrow-right-left" style="width: 15px; height: 15px;"></i> Allot Credits
+                </button>
+                <button type="button" class="btn-action" onclick="exportLedgerCsv()" style="background: rgba(255, 255, 255, 0.08); color: #e2e8f0; border: 1px solid rgba(255, 255, 255, 0.18); padding: 9px 14px; border-radius: 9px; font-size: 0.84rem; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; backdrop-filter: blur(8px);">
+                  <i data-lucide="download" style="width: 14px; height: 14px;"></i> Statement
+                </button>
               </div>
             </div>
 
-            <!-- Live Inventory Distribution Bar -->
-            <div style="margin-top: 22px; padding-top: 18px; border-top: 1px solid rgba(255, 255, 255, 0.12);">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.75rem; color: #cbd5e1;">
-                <span style="font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;">Channel Distribution Share</span>
+            <!-- Bottom Row: Inventory Distribution Bar -->
+            <div style="margin-top: 24px; padding-top: 18px; border-top: 1px solid rgba(255, 255, 255, 0.12); position: relative; z-index: 1;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 9px; font-size: 0.74rem; color: #cbd5e1;">
+                <span style="font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase;">Channel Distribution Share</span>
                 <span id="wallet-dist-summary-text" style="color: #a5b4fc; font-weight: 600;">5 Channels Active</span>
               </div>
               
               <!-- Multi-Segment Progress Bar -->
-              <div style="height: 10px; border-radius: 6px; background: rgba(0, 0, 0, 0.4); display: flex; overflow: hidden; margin-bottom: 12px;">
-                <div id="dist-bar-normal" style="width: 60%; background: #6366f1; transition: width 0.3s;" title="Normal / Bulk SMS"></div>
-                <div id="dist-bar-dp" style="width: 15%; background: #0284c7; transition: width 0.3s;" title="DP Media"></div>
-                <div id="dist-bar-cta" style="width: 10%; background: #d97706; transition: width 0.3s;" title="CTA Buttons"></div>
-                <div id="dist-bar-dpcta" style="width: 10%; background: #8b5cf6; transition: width 0.3s;" title="DP + CTA"></div>
-                <div id="dist-bar-own" style="width: 5%; background: #10b981; transition: width 0.3s;" title="Own Number SIM"></div>
+              <div style="height: 9px; border-radius: 10px; background: rgba(0, 0, 0, 0.5); display: flex; overflow: hidden; margin-bottom: 12px; box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);">
+                <div id="dist-bar-normal" style="width: 20%; background: #6366f1; transition: width 0.3s;" title="Normal / Bulk SMS"></div>
+                <div id="dist-bar-dp" style="width: 20%; background: #0284c7; transition: width 0.3s;" title="DP Media"></div>
+                <div id="dist-bar-cta" style="width: 20%; background: #d97706; transition: width 0.3s;" title="CTA Buttons"></div>
+                <div id="dist-bar-dpcta" style="width: 20%; background: #8b5cf6; transition: width 0.3s;" title="DP + CTA"></div>
+                <div id="dist-bar-own" style="width: 20%; background: #10b981; transition: width 0.3s;" title="Own Number SIM"></div>
               </div>
 
               <!-- Distribution Legend Pills -->
-              <div style="display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.72rem;">
-                <span style="display: inline-flex; align-items: center; gap: 5px; color: #e2e8f0;">
+              <div style="display: flex; flex-wrap: wrap; gap: 14px; font-size: 0.72rem;">
+                <span style="display: inline-flex; align-items: center; gap: 6px; color: #e2e8f0;">
                   <span style="width: 8px; height: 8px; border-radius: 50%; background: #6366f1;"></span>
-                  <strong>GSM SMS & Text:</strong> <span id="dist-val-normal">0</span>
+                  <span>GSM SMS:</span> <strong id="dist-val-normal" style="font-family: monospace; font-size: 0.78rem;">0</strong>
                 </span>
-                <span style="display: inline-flex; align-items: center; gap: 5px; color: #e2e8f0;">
+                <span style="display: inline-flex; align-items: center; gap: 6px; color: #e2e8f0;">
                   <span style="width: 8px; height: 8px; border-radius: 50%; background: #0284c7;"></span>
-                  <strong>DP Media:</strong> <span id="dist-val-dp">0</span>
+                  <span>DP Media:</span> <strong id="dist-val-dp" style="font-family: monospace; font-size: 0.78rem;">0</strong>
                 </span>
-                <span style="display: inline-flex; align-items: center; gap: 5px; color: #e2e8f0;">
+                <span style="display: inline-flex; align-items: center; gap: 6px; color: #e2e8f0;">
                   <span style="width: 8px; height: 8px; border-radius: 50%; background: #d97706;"></span>
-                  <strong>CTA Buttons:</strong> <span id="dist-val-cta">0</span>
+                  <span>CTA Buttons:</span> <strong id="dist-val-cta" style="font-family: monospace; font-size: 0.78rem;">0</strong>
                 </span>
-                <span style="display: inline-flex; align-items: center; gap: 5px; color: #e2e8f0;">
+                <span style="display: inline-flex; align-items: center; gap: 6px; color: #e2e8f0;">
                   <span style="width: 8px; height: 8px; border-radius: 50%; background: #8b5cf6;"></span>
-                  <strong>DP + CTA:</strong> <span id="dist-val-dpcta">0</span>
+                  <span>DP + CTA:</span> <strong id="dist-val-dpcta" style="font-family: monospace; font-size: 0.78rem;">0</strong>
                 </span>
-                <span style="display: inline-flex; align-items: center; gap: 5px; color: #e2e8f0;">
+                <span style="display: inline-flex; align-items: center; gap: 6px; color: #e2e8f0;">
                   <span style="width: 8px; height: 8px; border-radius: 50%; background: #10b981;"></span>
-                  <strong>Own SIM:</strong> <span id="dist-val-own">0</span>
+                  <span>Own SIM:</span> <strong id="dist-val-own" style="font-family: monospace; font-size: 0.78rem;">0</strong>
                 </span>
               </div>
             </div>
           </div>
 
           <!-- Reseller Stock Management Banner (Visible only for Resellers) -->
-          <div id="wallet-reseller-stock-card" style="display: none; background: #ffffff; border-radius: 12px; border: 1.5px solid #ddd6fe; padding: 18px 22px; margin-bottom: 22px; box-shadow: 0 2px 6px rgba(124, 58, 237, 0.08);">
+          <div id="wallet-reseller-stock-card" style="display: none; background: #ffffff; border-radius: 14px; border: 1.5px solid #ddd6fe; padding: 18px 22px; margin-bottom: 22px; box-shadow: 0 4px 14px rgba(124, 58, 237, 0.08);">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
               <div style="display: flex; align-items: center; gap: 12px;">
-                <div style="width: 40px; height: 40px; border-radius: 10px; background: #f5f3ff; color: #7c3aed; display: flex; align-items: center; justify-content: center;">
-                  <i data-lucide="store" style="width: 20px; height: 20px;"></i>
+                <div style="width: 42px; height: 42px; border-radius: 12px; background: #f5f3ff; color: #7c3aed; display: flex; align-items: center; justify-content: center;">
+                  <i data-lucide="store" style="width: 22px; height: 22px;"></i>
                 </div>
                 <div>
-                  <h4 style="margin: 0; font-size: 0.95rem; font-weight: 700; color: #1e1b4b;">Reseller Master Stock Inventory</h4>
-                  <div style="font-size: 0.74rem; color: #6b7280; margin-top: 2px;">Your allocated stock pool available for distributing to your customer accounts</div>
+                  <h4 style="margin: 0; font-size: 0.96rem; font-weight: 700; color: #1e1b4b;">Reseller Master Stock Inventory</h4>
+                  <div style="font-size: 0.75rem; color: #6b7280; margin-top: 2px;">Your allocated stock pool available for distributing to your customer accounts</div>
                 </div>
               </div>
-              <button type="button" class="btn-action btn-action-primary" onclick="openWalletAllotCreditsModal()" style="padding: 7px 16px; font-size: 0.82rem; background: #7c3aed;">
+              <button type="button" class="btn-action btn-action-primary" onclick="openWalletAllotCreditsModal()" style="padding: 8px 18px; font-size: 0.82rem; background: #7c3aed; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px;">
                 <i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i> Allot to Customer
               </button>
             </div>
           </div>
 
-          <!-- Channel-Wise Credit Cards Grid (Synchronized with Active Vault Route) -->
-          <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); margin-bottom: 24px; gap: 14px;">
+          <!-- Channel-Wise Credit Cards Grid (Clean Modern Vertical Layout) -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 24px;">
             
-            <!-- Normal / GSM Bulk SMS -->
-            <div class="metric-card" style="padding: 16px 18px; border-left: 4px solid #4f46e5; background: #ffffff;">
-              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; color: #4f46e5; text-transform: uppercase;">Normal (Bulk SMS & Text)</span>
-                <span style="background: #eef2ff; color: #4f46e5; font-size: 0.68rem; padding: 2px 8px; border-radius: 12px; font-weight: 700;">GSM SMS</span>
+            <!-- 1. Normal / GSM Bulk SMS -->
+            <div style="background: #ffffff; border-radius: 14px; padding: 18px 20px; border: 1px solid #e2e8f0; border-top: 3.5px solid #4f46e5; box-shadow: 0 4px 15px -3px rgba(0,0,0,0.04); display: flex; flex-direction: column; justify-content: space-between; transition: all 0.2s ease;" onmouseenter="this.style.transform='translateY(-3px)'; this.style.boxShadow='0 12px 25px -5px rgba(79,70,229,0.12)';" onmouseleave="this.style.transform='none'; this.style.boxShadow='0 4px 15px -3px rgba(0,0,0,0.04)';">
+              <div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                  <div style="width: 36px; height: 36px; border-radius: 10px; background: #eef2ff; color: #4f46e5; display: flex; align-items: center; justify-content: center;">
+                    <i data-lucide="message-square" style="width: 18px; height: 18px;"></i>
+                  </div>
+                  <span style="font-size: 0.68rem; font-weight: 700; background: #eef2ff; color: #4f46e5; padding: 2px 8px; border-radius: 12px; border: 1px solid #c7d2fe;">
+                    GSM SMS
+                  </span>
+                </div>
+                <div style="font-size: 0.85rem; font-weight: 700; color: #1e293b; margin-bottom: 2px;">Normal Bulk SMS</div>
+                <div style="font-size: 0.72rem; color: #64748b; line-height: 1.3;">Plain SMS & WhatsApp Broadcasts</div>
               </div>
-              <div class="metric-data">
-                <div class="metric-value" id="card-val-normal" style="font-size: 1.55rem; font-weight: 800; color: #0f172a;">0</div>
-                <div style="font-size: 0.72rem; color: #64748b; margin-top: 3px;">Plain SMS & WhatsApp Broadcasts</div>
-              </div>
-            </div>
-
-            <!-- DP (Media) -->
-            <div class="metric-card" style="padding: 16px 18px; border-left: 4px solid #0284c7; background: #ffffff;">
-              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; color: #0284c7; text-transform: uppercase;">DP Profile Media</span>
-                <span style="background: #f0f9ff; color: #0284c7; font-size: 0.68rem; padding: 2px 8px; border-radius: 12px; font-weight: 700;">Graphics</span>
-              </div>
-              <div class="metric-data">
-                <div class="metric-value" id="card-val-dp" style="font-size: 1.55rem; font-weight: 800; color: #0f172a;">0</div>
-                <div style="font-size: 0.72rem; color: #64748b; margin-top: 3px;">Image & Video Attachments</div>
+              <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid #f1f5f9;">
+                <div style="display: flex; align-items: baseline; gap: 4px;">
+                  <div id="card-val-normal" style="font-size: 1.55rem; font-weight: 900; color: #0f172a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -0.5px;">0</div>
+                  <span style="font-size: 0.72rem; color: #64748b; font-weight: 600;">Credits</span>
+                </div>
               </div>
             </div>
 
-            <!-- CTA Buttons -->
-            <div class="metric-card" style="padding: 16px 18px; border-left: 4px solid #d97706; background: #ffffff;">
-              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; color: #d97706; text-transform: uppercase;">Interactive CTA</span>
-                <span style="background: #fef3c7; color: #d97706; font-size: 0.68rem; padding: 2px 8px; border-radius: 12px; font-weight: 700;">Buttons</span>
+            <!-- 2. DP (Media) -->
+            <div style="background: #ffffff; border-radius: 14px; padding: 18px 20px; border: 1px solid #e2e8f0; border-top: 3.5px solid #0284c7; box-shadow: 0 4px 15px -3px rgba(0,0,0,0.04); display: flex; flex-direction: column; justify-content: space-between; transition: all 0.2s ease;" onmouseenter="this.style.transform='translateY(-3px)'; this.style.boxShadow='0 12px 25px -5px rgba(2,132,199,0.12)';" onmouseleave="this.style.transform='none'; this.style.boxShadow='0 4px 15px -3px rgba(0,0,0,0.04)';">
+              <div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                  <div style="width: 36px; height: 36px; border-radius: 10px; background: #f0f9ff; color: #0284c7; display: flex; align-items: center; justify-content: center;">
+                    <i data-lucide="image" style="width: 18px; height: 18px;"></i>
+                  </div>
+                  <span style="font-size: 0.68rem; font-weight: 700; background: #f0f9ff; color: #0284c7; padding: 2px 8px; border-radius: 12px; border: 1px solid #bae6fd;">
+                    Graphics
+                  </span>
+                </div>
+                <div style="font-size: 0.85rem; font-weight: 700; color: #1e293b; margin-bottom: 2px;">DP Profile Media</div>
+                <div style="font-size: 0.72rem; color: #64748b; line-height: 1.3;">Image & Video Attachments</div>
               </div>
-              <div class="metric-data">
-                <div class="metric-value" id="card-val-cta" style="font-size: 1.55rem; font-weight: 800; color: #0f172a;">0</div>
-                <div style="font-size: 0.72rem; color: #64748b; margin-top: 3px;">Clickable URL & Call Buttons</div>
-              </div>
-            </div>
-
-            <!-- DP + CTA Combo -->
-            <div class="metric-card" style="padding: 16px 18px; border-left: 4px solid #7c3aed; background: #ffffff;">
-              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; color: #7c3aed; text-transform: uppercase;">DP + CTA Combo</span>
-                <span style="background: #f5f3ff; color: #7c3aed; font-size: 0.68rem; padding: 2px 8px; border-radius: 12px; font-weight: 700;">Full Rich</span>
-              </div>
-              <div class="metric-data">
-                <div class="metric-value" id="card-val-dpcta" style="font-size: 1.55rem; font-weight: 800; color: #0f172a;">0</div>
-                <div style="font-size: 0.72rem; color: #64748b; margin-top: 3px;">Rich Media + Interactive Action</div>
+              <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid #f1f5f9;">
+                <div style="display: flex; align-items: baseline; gap: 4px;">
+                  <div id="card-val-dp" style="font-size: 1.55rem; font-weight: 900; color: #0f172a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -0.5px;">0</div>
+                  <span style="font-size: 0.72rem; color: #64748b; font-weight: 600;">Credits</span>
+                </div>
               </div>
             </div>
 
-            <!-- Own Number (SIM) -->
-            <div class="metric-card" style="padding: 16px 18px; border-left: 4px solid #059669; background: #ffffff;">
-              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; color: #059669; text-transform: uppercase;">Own SIM Channel</span>
-                <span style="background: #ecfdf5; color: #059669; font-size: 0.68rem; padding: 2px 8px; border-radius: 12px; font-weight: 700;">Virtual SIM</span>
+            <!-- 3. CTA Buttons -->
+            <div style="background: #ffffff; border-radius: 14px; padding: 18px 20px; border: 1px solid #e2e8f0; border-top: 3.5px solid #d97706; box-shadow: 0 4px 15px -3px rgba(0,0,0,0.04); display: flex; flex-direction: column; justify-content: space-between; transition: all 0.2s ease;" onmouseenter="this.style.transform='translateY(-3px)'; this.style.boxShadow='0 12px 25px -5px rgba(217,119,6,0.12)';" onmouseleave="this.style.transform='none'; this.style.boxShadow='0 4px 15px -3px rgba(0,0,0,0.04)';">
+              <div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                  <div style="width: 36px; height: 36px; border-radius: 10px; background: #fef3c7; color: #d97706; display: flex; align-items: center; justify-content: center;">
+                    <i data-lucide="mouse-pointer-click" style="width: 18px; height: 18px;"></i>
+                  </div>
+                  <span style="font-size: 0.68rem; font-weight: 700; background: #fef3c7; color: #d97706; padding: 2px 8px; border-radius: 12px; border: 1px solid #fde68a;">
+                    Buttons
+                  </span>
+                </div>
+                <div style="font-size: 0.85rem; font-weight: 700; color: #1e293b; margin-bottom: 2px;">Interactive CTA</div>
+                <div style="font-size: 0.72rem; color: #64748b; line-height: 1.3;">Clickable URL & Call Buttons</div>
               </div>
-              <div class="metric-data">
-                <div class="metric-value" id="card-val-own" style="font-size: 1.55rem; font-weight: 800; color: #0f172a;">0</div>
-                <div style="font-size: 0.72rem; color: #64748b; margin-top: 3px;">Dedicated Mobile Sender</div>
+              <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid #f1f5f9;">
+                <div style="display: flex; align-items: baseline; gap: 4px;">
+                  <div id="card-val-cta" style="font-size: 1.55rem; font-weight: 900; color: #0f172a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -0.5px;">0</div>
+                  <span style="font-size: 0.72rem; color: #64748b; font-weight: 600;">Credits</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 4. DP + CTA Combo -->
+            <div style="background: #ffffff; border-radius: 14px; padding: 18px 20px; border: 1px solid #e2e8f0; border-top: 3.5px solid #7c3aed; box-shadow: 0 4px 15px -3px rgba(0,0,0,0.04); display: flex; flex-direction: column; justify-content: space-between; transition: all 0.2s ease;" onmouseenter="this.style.transform='translateY(-3px)'; this.style.boxShadow='0 12px 25px -5px rgba(124,58,237,0.12)';" onmouseleave="this.style.transform='none'; this.style.boxShadow='0 4px 15px -3px rgba(0,0,0,0.04)';">
+              <div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                  <div style="width: 36px; height: 36px; border-radius: 10px; background: #f5f3ff; color: #7c3aed; display: flex; align-items: center; justify-content: center;">
+                    <i data-lucide="sparkles" style="width: 18px; height: 18px;"></i>
+                  </div>
+                  <span style="font-size: 0.68rem; font-weight: 700; background: #f5f3ff; color: #7c3aed; padding: 2px 8px; border-radius: 12px; border: 1px solid #ddd6fe;">
+                    Full Rich
+                  </span>
+                </div>
+                <div style="font-size: 0.85rem; font-weight: 700; color: #1e293b; margin-bottom: 2px;">DP + CTA Combo</div>
+                <div style="font-size: 0.72rem; color: #64748b; line-height: 1.3;">Rich Media + Interactive Action</div>
+              </div>
+              <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid #f1f5f9;">
+                <div style="display: flex; align-items: baseline; gap: 4px;">
+                  <div id="card-val-dpcta" style="font-size: 1.55rem; font-weight: 900; color: #0f172a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -0.5px;">0</div>
+                  <span style="font-size: 0.72rem; color: #64748b; font-weight: 600;">Credits</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 5. Own Number (SIM) -->
+            <div style="background: #ffffff; border-radius: 14px; padding: 18px 20px; border: 1px solid #e2e8f0; border-top: 3.5px solid #059669; box-shadow: 0 4px 15px -3px rgba(0,0,0,0.04); display: flex; flex-direction: column; justify-content: space-between; transition: all 0.2s ease;" onmouseenter="this.style.transform='translateY(-3px)'; this.style.boxShadow='0 12px 25px -5px rgba(5,150,105,0.12)';" onmouseleave="this.style.transform='none'; this.style.boxShadow='0 4px 15px -3px rgba(0,0,0,0.04)';">
+              <div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                  <div style="width: 36px; height: 36px; border-radius: 10px; background: #ecfdf5; color: #059669; display: flex; align-items: center; justify-content: center;">
+                    <i data-lucide="smartphone" style="width: 18px; height: 18px;"></i>
+                  </div>
+                  <span style="font-size: 0.68rem; font-weight: 700; background: #ecfdf5; color: #059669; padding: 2px 8px; border-radius: 12px; border: 1px solid #a7f3d0;">
+                    Virtual SIM
+                  </span>
+                </div>
+                <div style="font-size: 0.85rem; font-weight: 700; color: #1e293b; margin-bottom: 2px;">Own SIM Channel</div>
+                <div style="font-size: 0.72rem; color: #64748b; line-height: 1.3;">Dedicated Mobile Sender</div>
+              </div>
+              <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid #f1f5f9;">
+                <div style="display: flex; align-items: baseline; gap: 4px;">
+                  <div id="card-val-own" style="font-size: 1.55rem; font-weight: 900; color: #0f172a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -0.5px;">0</div>
+                  <span style="font-size: 0.72rem; color: #64748b; font-weight: 600;">Credits</span>
+                </div>
               </div>
             </div>
 
           </div>
 
           <!-- Transaction Statement / Passbook Ledger Card -->
-          <div class="card" style="background: #ffffff; border-radius: 14px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+          <div class="card" style="background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 20px -4px rgba(0,0,0,0.05);">
             
-            <div class="card-header" style="padding: 18px 22px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; background: #ffffff;">
+            <div class="card-header" style="padding: 18px 24px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; background: #ffffff;">
               <div style="display: flex; align-items: center; gap: 12px;">
-                <div style="width: 38px; height: 38px; border-radius: 10px; background: #eef2ff; color: #4f46e5; display: flex; align-items: center; justify-content: center;">
-                  <i data-lucide="receipt" style="width: 20px; height: 20px;"></i>
+                <div style="width: 40px; height: 40px; border-radius: 11px; background: #eef2ff; color: #4f46e5; display: flex; align-items: center; justify-content: center;">
+                  <i data-lucide="receipt" style="width: 22px; height: 22px;"></i>
                 </div>
                 <div>
-                  <h3 class="card-title" style="margin: 0; font-size: 1.05rem; font-weight: 700; color: #0f172a;">Passbook Ledger & Transaction Audit</h3>
-                  <div class="card-desc" style="font-size: 0.74rem; color: #64748b; margin-top: 2px;">Chronological bank-grade statement of credit recharges, campaign burn, and refunds</div>
+                  <h3 class="card-title" style="margin: 0; font-size: 1.05rem; font-weight: 800; color: #0f172a;">Passbook Ledger & Transaction Audit</h3>
+                  <div class="card-desc" style="font-size: 0.75rem; color: #64748b; margin-top: 2px;">Chronological bank-grade statement of credit recharges, campaign burn, and refunds</div>
                 </div>
               </div>
               
               <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                <button type="button" class="btn-action btn-action-secondary" id="btn-export-ledger-csv" onclick="exportLedgerCsv()" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 0.8rem; border-radius: 8px;">
+                <button type="button" class="btn-action btn-action-secondary" id="btn-export-ledger-csv" onclick="exportLedgerCsv()" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 0.8rem; border-radius: 8px; font-weight: 600;">
                   <i data-lucide="download" style="width: 14px; height: 14px;"></i> Export Statement (CSV)
                 </button>
-                <button type="button" class="btn-action btn-action-secondary" id="btn-refresh-ledger" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 0.8rem; border-radius: 8px;">
+                <button type="button" class="btn-action btn-action-secondary" id="btn-refresh-ledger" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 0.8rem; border-radius: 8px; font-weight: 600;">
                   <i data-lucide="rotate-cw" style="width: 14px; height: 14px;"></i> Refresh
                 </button>
               </div>
             </div>
 
             <!-- Passbook Summary Strip (Inflows vs Outflows & Custom Date Filter) -->
-            <div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 12px 22px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 0.8rem;">
-              <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
-                <span>Total Records: <strong id="ledger-stat-count" style="color: #0f172a;">0</strong></span>
-                <span style="color: #cbd5e1;">|</span>
-                <span>Total Credited: <strong id="ledger-stat-in" style="color: #15803d; font-weight: 700;">+0</strong></span>
-                <span style="color: #cbd5e1;">|</span>
-                <span>Total Debited: <strong id="ledger-stat-out" style="color: #b91c1c; font-weight: 700;">-0</strong></span>
+            <div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 0.8rem;">
+              <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <span style="background: #f1f5f9; color: #334155; padding: 4px 10px; border-radius: 7px; font-weight: 600; border: 1px solid #e2e8f0;">
+                  Total Records: <strong id="ledger-stat-count" style="color: #0f172a;">0</strong>
+                </span>
+                <span style="background: #ecfdf5; color: #15803d; padding: 4px 12px; border-radius: 7px; font-weight: 700; border: 1px solid #bbf7d0;">
+                  Inflow: <strong id="ledger-stat-in">+0</strong>
+                </span>
+                <span style="background: #fef2f2; color: #b91c1c; padding: 4px 12px; border-radius: 7px; font-weight: 700; border: 1px solid #fecaca;">
+                  Outflow: <strong id="ledger-stat-out">-0</strong>
+                </span>
               </div>
 
               <!-- Date Range Presets & Custom Date Picker -->
@@ -3170,13 +3226,13 @@
                   <button type="button" class="tab-pill" onclick="setLedgerDatePreset('month', this)">This Month</button>
                 </div>
 
-                <!-- Custom Date Range -->
-                <div style="display: inline-flex; align-items: center; gap: 5px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 2px 8px;">
-                  <i data-lucide="calendar" style="width: 13px; height: 13px; color: #64748b;"></i>
-                  <input type="date" id="ledger-from-date" onchange="onLedgerCustomDateChange()" title="From Date" style="border: none; font-size: 0.74rem; color: #334155; padding: 2px; outline: none; background: transparent; width: 110px;">
-                  <span style="color: #94a3b8; font-size: 0.72rem;">to</span>
-                  <input type="date" id="ledger-to-date" onchange="onLedgerCustomDateChange()" title="To Date" style="border: none; font-size: 0.74rem; color: #334155; padding: 2px; outline: none; background: transparent; width: 110px;">
-                  <button type="button" onclick="clearLedgerCustomDate()" title="Clear date filter" style="border: none; background: transparent; color: #94a3b8; font-size: 0.8rem; cursor: pointer; padding: 0 3px;">&times;</button>
+                <!-- Custom Date Range Styled Wrapper -->
+                <div style="display: inline-flex; align-items: center; gap: 6px; background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 3px 8px;">
+                  <i data-lucide="calendar" style="width: 14px; height: 14px; color: #4f46e5;"></i>
+                  <input type="date" id="ledger-from-date" onchange="onLedgerCustomDateChange()" title="From Date" style="border: none; font-size: 0.75rem; color: #334155; padding: 1px; outline: none; background: transparent; width: 110px; font-weight: 600;">
+                  <span style="color: #94a3b8; font-size: 0.72rem; font-weight: 600;">to</span>
+                  <input type="date" id="ledger-to-date" onchange="onLedgerCustomDateChange()" title="To Date" style="border: none; font-size: 0.75rem; color: #334155; padding: 1px; outline: none; background: transparent; width: 110px; font-weight: 600;">
+                  <button type="button" onclick="clearLedgerCustomDate()" title="Clear date filter" style="border: none; background: #f1f5f9; color: #64748b; font-size: 0.75rem; cursor: pointer; padding: 1px 6px; border-radius: 4px; font-weight: 700;">&times;</button>
                 </div>
               </div>
             </div>
