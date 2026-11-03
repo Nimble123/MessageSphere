@@ -8904,21 +8904,28 @@ window.closeSmsComposer = function() {
   document.getElementById('modal-compose-sms').style.display = 'none';
 };
 
+let smsAvailableUsers = [];
+
 async function populateSmsUserSelector() {
   const sel = document.getElementById('sms-target-user');
   if (!sel) return;
-  sel.innerHTML = '<option value="">— Select target user —</option>';
+  sel.innerHTML = '<option value="">— Select target beneficiary account —</option>';
   try {
     const data = await apiFetch('/users?limit=200');
-    const users = Array.isArray(data) ? data : (data.users || []);
-    users.forEach(u => {
+    smsAvailableUsers = Array.isArray(data) ? data : (data.users || []);
+    smsAvailableUsers.forEach(u => {
       const opt = document.createElement('option');
       opt.value = u.id;
-      opt.textContent = `${u.email} (${u.role})`;
+      const bal = u.credits_normal_domestic || 0;
+      opt.textContent = `${u.email} (${u.role}) — ${bal.toLocaleString()} credits`;
       sel.appendChild(opt);
     });
   } catch(e) { /* ignore */ }
 }
+
+window.onSmsTargetUserChange = function() {
+  updateSmsCreditsPreview();
+};
 
 // --- Live GSM counter ---
 window.onSmsMessageInput = function() {
@@ -9007,13 +9014,28 @@ window.updateSmsCreditsPreview = function() {
   document.getElementById('sms-est-total-credits').textContent = totalCost.toLocaleString();
 
   const dest = document.getElementById('sms-destination') ? document.getElementById('sms-destination').value : 'domestic';
-  const userBal = window.currentUser ? (dest === 'international' ? (window.currentUser.credits_normal_international || 0) : (window.currentUser.credits_normal_domestic || 0)) : 0;
+  
+  // Check if proxy target user is selected by Admin/Reseller
+  let userBal = 0;
+  let accountLabel = 'Available';
+  const targetSel = document.getElementById('sms-target-user');
+  if (targetSel && targetSel.value && smsAvailableUsers.length > 0) {
+    const targetId = parseInt(targetSel.value, 10);
+    const foundUser = smsAvailableUsers.find(u => Number(u.id) === targetId);
+    if (foundUser) {
+      userBal = foundUser.credits_normal_domestic || 0;
+      accountLabel = `${foundUser.email.split('@')[0]} Available`;
+    }
+  } else if (window.currentUser) {
+    userBal = (window.currentUser.credits_normal_domestic || 0);
+  }
+
   const balCheckEl = document.getElementById('sms-est-balance-check');
   if (balCheckEl) {
     if (userBal >= totalCost) {
-      balCheckEl.innerHTML = `<span style="color:#059669;font-weight:700;margin-left:8px;">✅ Available: ${userBal.toLocaleString()} credits</span>`;
+      balCheckEl.innerHTML = `<span style="color:#059669;font-weight:700;margin-left:8px;">✅ ${accountLabel}: ${userBal.toLocaleString()} credits</span>`;
     } else {
-      balCheckEl.innerHTML = `<span style="color:#dc2626;font-weight:700;margin-left:8px;">❌ Insufficient: You have ${userBal.toLocaleString()} credits (need ${totalCost.toLocaleString()})</span>`;
+      balCheckEl.innerHTML = `<span style="color:#dc2626;font-weight:700;margin-left:8px;">❌ Insufficient: ${accountLabel} has ${userBal.toLocaleString()} credits (need ${totalCost.toLocaleString()})</span>`;
     }
   }
 };
@@ -9073,25 +9095,63 @@ window.submitSmsCampaign = async function(e) {
   }
 };
 
+let currentSmsStatusFilter = 'all';
+
+window.setSmsStatusFilter = function(status, btn) {
+  currentSmsStatusFilter = status;
+  const container = document.getElementById('sms-status-filter-pills');
+  if (container) {
+    container.querySelectorAll('.tab-pill').forEach(p => p.classList.remove('active'));
+  }
+  if (btn) btn.classList.add('active');
+  filterSmsCampaigns();
+};
+
+window.filterSmsCampaigns = function() {
+  renderSmsCampaignsTable();
+};
+
 // --- Load SMS Campaigns ---
 window.loadSmsCampaigns = async function() {
   const tbody = document.getElementById('sms-campaigns-tbody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--text-muted);">Loading...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--text-muted);"><i data-lucide="loader-2" class="spin"></i> Loading SMS campaigns...</td></tr>';
+  if (window.lucide) lucide.createIcons();
 
   try {
     const data = await apiFetch('/sms');
     smsCampaignsData = Array.isArray(data) ? data : (data.campaigns || []);
 
-    // Update KPIs
+    // Setup User Filter for Admin & Reseller
+    const userFilter = document.getElementById('sms-user-filter');
+    if (userFilter) {
+      if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'reseller')) {
+        userFilter.style.display = 'inline-block';
+        const distinctOwners = Array.from(new Set(smsCampaignsData.map(c => c.owner_email).filter(Boolean)));
+        const currentVal = userFilter.value;
+        userFilter.innerHTML = '<option value="">All Accounts</option>' + distinctOwners.map(e => `<option value="${escHtml(e)}">${escHtml(e)}</option>`).join('');
+        if (distinctOwners.includes(currentVal)) {
+          userFilter.value = currentVal;
+        }
+      } else {
+        userFilter.style.display = 'none';
+      }
+    }
+
+    // Update KPIs from real backend enriched data
     const total = smsCampaignsData.length;
-    const totalNumbers = smsCampaignsData.reduce((s, c) => s + (parseInt(c.total_numbers) || 0), 0);
-    const totalCredits = smsCampaignsData.reduce((s, c) => s + (parseInt(c.credits_used) || 0), 0);
+    const totalNumbers = smsCampaignsData.reduce((s, c) => s + (parseInt(c.total_numbers, 10) || 0), 0);
+    const totalCredits = smsCampaignsData.reduce((s, c) => s + (parseInt(c.credits_used, 10) || 0), 0);
     const completed = smsCampaignsData.filter(c => c.status === 'Completed' || c.status === 'Report Updated').length;
-    document.getElementById('sms-kpi-total').textContent = total.toLocaleString();
-    document.getElementById('sms-kpi-numbers').textContent = totalNumbers.toLocaleString();
-    document.getElementById('sms-kpi-credits').textContent = totalCredits.toLocaleString();
-    document.getElementById('sms-kpi-completed').textContent = completed.toLocaleString();
+
+    const totalEl = document.getElementById('sms-kpi-total');
+    if (totalEl) totalEl.textContent = total.toLocaleString();
+    const numbersEl = document.getElementById('sms-kpi-numbers');
+    if (numbersEl) numbersEl.textContent = totalNumbers.toLocaleString();
+    const credEl = document.getElementById('sms-kpi-credits');
+    if (credEl) credEl.textContent = totalCredits.toLocaleString();
+    const compEl = document.getElementById('sms-kpi-completed');
+    if (compEl) compEl.textContent = completed.toLocaleString();
 
     const balEl = document.getElementById('sms-kpi-balance');
     if (balEl && window.currentUser) {
@@ -9099,50 +9159,95 @@ window.loadSmsCampaigns = async function() {
       balEl.textContent = smsBal.toLocaleString();
     }
 
-    if (smsCampaignsData.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-muted);">No SMS campaigns yet. Click <strong>New SMS Campaign</strong> to get started.</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = smsCampaignsData.map(c => {
-      const statusColors = {
-        'Submitted': 'var(--warning)',
-        'Approved': 'var(--primary)',
-        'Completed': 'var(--success)',
-        'Report Updated': 'var(--success)',
-        'Rejected': 'var(--danger)',
-        'Cancelled': 'var(--text-muted)'
-      };
-      const statusColor = statusColors[c.status] || 'var(--text-muted)';
-      const scheduledDisplay = c.scheduled_at ? new Date(c.scheduled_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '—';
-      const createdDisplay = c.created_at ? new Date(c.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '—';
-      const parts = c.sms_parts || 1;
-      const creditsUsed = (parseInt(c.total_numbers) || 0) * parts;
-      const canDelete = c.status === 'Submitted';
-
-      return `<tr>
-        <td><span style="font-family:monospace;font-size:0.78rem;color:var(--text-muted);">#${c.id}</span></td>
-        <td style="font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(c.title || '')}">${escHtml(c.title || '—')}</td>
-        <td><span style="text-transform:capitalize;">${c.destination || '—'}</span></td>
-        <td style="text-align:right;">${(parseInt(c.total_numbers) || 0).toLocaleString()}</td>
-        <td style="text-align:center;">${parts}</td>
-        <td style="text-align:right;">${creditsUsed.toLocaleString()}</td>
-        <td style="font-size:0.78rem;">${scheduledDisplay}</td>
-        <td><span style="background:${statusColor}22;color:${statusColor};padding:2px 8px;border-radius:20px;font-size:0.75rem;font-weight:700;white-space:nowrap;">${c.status}</span></td>
-        <td style="font-size:0.78rem;color:var(--text-muted);">${createdDisplay}</td>
-        <td>
-          <div style="display:flex;gap:4px;">
-            ${canDelete ? `<button type="button" class="btn-action" onclick="deleteSmsCampaign(${c.id})" style="padding:3px 8px;font-size:0.75rem;background:var(--danger);color:#fff;border-color:var(--danger);" title="Cancel Campaign"><i data-lucide="trash-2" style="width:13px;height:13px;"></i></button>` : ''}
-          </div>
-        </td>
-      </tr>`;
-    }).join('');
-
-    if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
+    renderSmsCampaignsTable();
   } catch(err) {
     tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--danger);">Error: ${escHtml(err.message)}</td></tr>`;
   }
 };
+
+function renderSmsCampaignsTable() {
+  const tbody = document.getElementById('sms-campaigns-tbody');
+  if (!tbody) return;
+
+  const q = (document.getElementById('sms-search-input')?.value || '').toLowerCase().trim();
+  const selectedUser = (document.getElementById('sms-user-filter')?.value || '').trim();
+
+  const filtered = smsCampaignsData.filter(c => {
+    if (currentSmsStatusFilter !== 'all' && c.status !== currentSmsStatusFilter) return false;
+    if (selectedUser && c.owner_email !== selectedUser) return false;
+    if (!q) return true;
+    return (
+      String(c.id).includes(q) ||
+      (c.title || '').toLowerCase().includes(q) ||
+      (c.message_text || '').toLowerCase().includes(q) ||
+      (c.owner_email || '').toLowerCase().includes(q)
+    );
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-muted);">No SMS campaigns found matching current filters. Click <strong>New Broadcast</strong> to launch one.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(c => {
+    const statusColors = {
+      'Submitted': 'var(--warning)',
+      'Approved': 'var(--primary)',
+      'Completed': 'var(--success)',
+      'Report Updated': 'var(--success)',
+      'Rejected': 'var(--danger)',
+      'Cancelled': 'var(--text-muted)'
+    };
+    const statusColor = statusColors[c.status] || 'var(--text-muted)';
+    const scheduledDisplay = c.scheduled_at ? new Date(c.scheduled_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+    const createdDisplay = c.created_at ? new Date(c.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+    const parts = c.sms_parts || 1;
+    const creditsUsed = c.credits_used !== undefined ? c.credits_used : ((parseInt(c.total_numbers, 10) || 0) * parts);
+    const canDelete = c.status === 'Submitted';
+
+    return `<tr>
+      <td>
+        <a href="javascript:void(0)" onclick="openCampaignDetailModal(${c.id})" style="font-family:monospace;font-size:0.82rem;font-weight:700;color:#4f46e5;text-decoration:none;">
+          #${c.id}
+        </a>
+      </td>
+      <td>
+        <a href="javascript:void(0)" onclick="openCampaignDetailModal(${c.id})" style="font-weight:700;color:var(--slate-800);text-decoration:none;font-size:0.88rem;display:block;">
+          ${escHtml(c.title || 'SMS Broadcast #' + c.id)}
+        </a>
+        <div style="font-size:0.72rem;color:var(--slate-500);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px;" title="${escHtml(c.message_text || '')}">
+          ${c.is_unicode ? '<span style="color:#d97706;font-weight:700;">[Unicode]</span> ' : ''}${escHtml(c.message_text || '—')}
+        </div>
+      </td>
+      <td>
+        <div style="font-size:0.8rem;font-weight:600;color:var(--slate-800);">${escHtml(c.owner_email || '—')}</div>
+      </td>
+      <td style="text-align:right;font-weight:700;color:#0f172a;">${(parseInt(c.total_numbers, 10) || 0).toLocaleString()}</td>
+      <td style="text-align:center;">
+        <span style="font-weight:700;color:${parts > 1 ? '#d97706' : '#166534'};background:${parts > 1 ? '#fef3c7' : '#ecfdf5'};padding:2px 8px;border-radius:12px;font-size:0.74rem;">
+          ${parts} Part${parts > 1 ? 's' : ''}
+        </span>
+      </td>
+      <td style="text-align:right;font-weight:800;color:#4f46e5;">${creditsUsed.toLocaleString()}</td>
+      <td style="font-size:0.78rem;">${scheduledDisplay}</td>
+      <td><span style="background:${statusColor}22;color:${statusColor};padding:2px 8px;border-radius:20px;font-size:0.75rem;font-weight:700;white-space:nowrap;">${c.status}</span></td>
+      <td style="font-size:0.78rem;color:var(--text-muted);">${createdDisplay}</td>
+      <td>
+        <div style="display:flex;gap:5px;justify-content:center;align-items:center;">
+          <button type="button" class="btn-action btn-action-secondary" onclick="openCampaignDetailModal(${c.id})" style="padding:4px 8px;font-size:0.75rem;" title="View Details">
+            <i data-lucide="eye" style="width:13px;height:13px;"></i>
+          </button>
+          <button type="button" class="btn-action btn-action-secondary" onclick="downloadCampaignNumbers(${c.id}, 'csv')" style="padding:4px 8px;font-size:0.75rem;" title="Download Recipient Numbers CSV">
+            <i data-lucide="download" style="width:13px;height:13px;"></i>
+          </button>
+          ${canDelete ? `<button type="button" class="btn-action" onclick="deleteSmsCampaign(${c.id})" style="padding:4px 8px;font-size:0.75rem;background:#fee2e2;color:#dc2626;border-color:#fecaca;" title="Cancel Campaign and Refund Credits"><i data-lucide="trash-2" style="width:13px;height:13px;"></i></button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
+}
 
 // --- Delete/Cancel ---
 window.deleteSmsCampaign = async function(id) {

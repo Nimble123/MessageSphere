@@ -8,6 +8,7 @@ const archiver = require('archiver');
 const { query, getClient } = require('../db');
 const { authenticate, requireRoles } = require('../middleware/auth');
 const { logAudit } = require('../services/audit');
+const { calculateSmsMetrics } = require('./sms');
 const MAX_CAMPAIGN_RECIPIENTS = Number(process.env.MAX_CAMPAIGN_RECIPIENTS || 50000);
 
 // Setup multer storage for campaign attachments and reports
@@ -942,17 +943,24 @@ router.post('/:id/cancel', authenticate, async (req, res) => {
       return res.status(400).json({ error: `Cannot cancel campaign. Current status is '${campaign.status}'. Only 'Submitted' campaigns can be cancelled.` });
     }
 
-    // 100% Refund credits to user
+    // 100% Refund credits to user (accounting for multi-part SMS if channel is SMS)
+    let refundMultiplier = 1;
+    if (campaign.channel_type === 'sms' && typeof calculateSmsMetrics === 'function') {
+      const smsMetrics = calculateSmsMetrics(campaign.message_text);
+      refundMultiplier = smsMetrics.parts_count || 1;
+    }
+    const refundCredits = (parseInt(campaign.total_numbers, 10) || 0) * refundMultiplier;
+
     await client.query(`
       UPDATE user_credits 
       SET balance = balance + $1 
       WHERE user_id = $2 AND credit_type = $3 AND destination = $4
-    `, [campaign.total_numbers, campaign.user_id, campaign.campaign_type, campaign.destination]);
+    `, [refundCredits, campaign.user_id, campaign.campaign_type, campaign.destination]);
 
     await client.query(`
       INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason)
       VALUES ($1, $2, $3, $4, $5, $6)
-    `, [req.user.id, campaign.user_id, campaign.campaign_type, campaign.destination, campaign.total_numbers, `User self-cancellation for campaign #${campaignId} (${campaign.title})`]);
+    `, [req.user.id, campaign.user_id, campaign.campaign_type, campaign.destination, refundCredits, `User self-cancellation for campaign #${campaignId} (${campaign.title})`]);
 
     await client.query(`UPDATE campaigns SET status = 'Rejected', failed_refunded = TRUE WHERE id = $1`, [campaignId]);
 
@@ -961,11 +969,11 @@ router.post('/:id/cancel', authenticate, async (req, res) => {
       entityType: 'campaign',
       entityId: campaignId,
       action: 'campaign_cancelled_by_user',
-      details: { refundedCredits: campaign.total_numbers }
+      details: { refundedCredits: refundCredits, channelType: campaign.channel_type, partsMultiplier: refundMultiplier }
     });
 
     await client.query('COMMIT');
-    return res.json({ message: `Campaign #${campaignId} cancelled and ${campaign.total_numbers} credits refunded to your wallet!`, refunded: campaign.total_numbers });
+    return res.json({ message: `Campaign #${campaignId} cancelled and ${refundCredits} credits refunded to your wallet!`, refunded: refundCredits });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Cancel campaign error:', err);
@@ -1135,20 +1143,27 @@ router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.sin
     const actualDelivered = parseInt(countCheck.rows[0].delivered, 10) || 0;
     const actualFailed = parseInt(countCheck.rows[0].failed, 10) || 0;
 
-    // Auto-refund failed credits if not already refunded
+    // Auto-refund failed credits if not already refunded (accounting for multi-part SMS)
     let refundedFailedCount = 0;
     if (actualFailed > 0 && !campaign.failed_refunded) {
-      refundedFailedCount = actualFailed;
+      let refundMultiplier = 1;
+      if (campaign.channel_type === 'sms' && typeof calculateSmsMetrics === 'function') {
+        const smsMetrics = calculateSmsMetrics(campaign.message_text);
+        refundMultiplier = smsMetrics.parts_count || 1;
+      }
+      const refundCredits = actualFailed * refundMultiplier;
+      refundedFailedCount = refundCredits;
+
       await client.query(`
         UPDATE user_credits 
         SET balance = balance + $1 
         WHERE user_id = $2 AND credit_type = $3 AND destination = $4
-      `, [actualFailed, campaign.user_id, campaign.campaign_type, campaign.destination]);
+      `, [refundCredits, campaign.user_id, campaign.campaign_type, campaign.destination]);
 
       await client.query(`
         INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason)
         VALUES ($1, $2, $3, $4, $5, $6)
-      `, [req.user.id, campaign.user_id, campaign.campaign_type, campaign.destination, actualFailed, `Auto-refund for ${actualFailed} failed deliveries in campaign #${campaignId}`]);
+      `, [req.user.id, campaign.user_id, campaign.campaign_type, campaign.destination, refundCredits, `Auto-refund for ${actualFailed} failed deliveries in campaign #${campaignId} (${refundCredits} credits)`]);
 
       await client.query(`UPDATE campaigns SET failed_refunded = TRUE WHERE id = $1`, [campaignId]);
     }

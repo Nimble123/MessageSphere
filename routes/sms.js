@@ -363,7 +363,7 @@ router.post('/', authenticate, async (req, res) => {
   }
 
   // ------------------------------------------------------------------
-  // DND / Blacklist filter
+  // DND / Blacklist filter (Robust digit normalization for +91 / 91 / 10-digit)
   // ------------------------------------------------------------------
   const blacklistedRes = await query(
     `SELECT phone_number FROM blacklist
@@ -373,13 +373,28 @@ router.post('/', authenticate, async (req, res) => {
         OR user_id IN (SELECT reseller_id FROM users WHERE id IN ($1, $2) AND reseller_id IS NOT NULL)`,
     [req.user.id, effectiveUserId]
   );
-  const blacklistedSet = new Set(blacklistedRes.rows.map((r) => r.phone_number));
+  
+  const blacklistedSet = new Set();
+  blacklistedRes.rows.forEach((r) => {
+    const raw = String(r.phone_number || '').trim();
+    if (!raw) return;
+    const digits = raw.replace(/[^0-9]/g, '');
+    if (digits) {
+      blacklistedSet.add(digits);
+      if (digits.startsWith('91') && digits.length === 12) {
+        blacklistedSet.add(digits.substring(2)); // also match 10-digit variant
+      } else if (digits.length === 10) {
+        blacklistedSet.add('91' + digits); // also match 91-prefixed variant
+      }
+    }
+  });
 
   const validNumbers = [];
   let skippedBlacklisted = 0;
 
   rawNumberList.forEach((num) => {
-    if (blacklistedSet.has(num)) {
+    const digitsOnly = String(num || '').replace(/[^0-9]/g, '');
+    if (blacklistedSet.has(num) || blacklistedSet.has(digitsOnly)) {
       skippedBlacklisted++;
     } else {
       validNumbers.push(num);
@@ -606,7 +621,24 @@ router.get('/', authenticate, async (req, res) => {
     }
 
     const result = await query(sql, params);
-    return res.json(result.rows);
+
+    // Enrich rows with real computed SMS metrics (parts, credits used, unicode flag)
+    const enriched = result.rows.map((c) => {
+      const metrics = calculateSmsMetrics(c.message_text);
+      const parts = metrics.parts_count || 1;
+      const totalNums = parseInt(c.total_numbers, 10) || 0;
+      const creditsUsed = totalNums * parts;
+      return {
+        ...c,
+        sms_parts: parts,
+        credits_used: creditsUsed,
+        is_unicode: metrics.is_unicode,
+        character_count: metrics.character_count,
+        carrier_warning: metrics.carrier_warning,
+      };
+    });
+
+    return res.json(enriched);
   } catch (err) {
     console.error('List SMS campaigns error:', err);
     return res.status(500).json({ error: 'Failed to load SMS campaigns' });
@@ -789,16 +821,19 @@ router.delete('/:id', authenticate, async (req, res) => {
       `SELECT ABS(amount) AS amount
        FROM credit_transactions
        WHERE to_user_id = $1 AND credit_type = 'normal' AND destination = $2
-         AND reason ILIKE '%campaign #${campaignId}%'
+         AND reason ILIKE '%campaign #' || $3 || '%'
        ORDER BY id DESC LIMIT 1`,
-      [campaign.user_id, campaign.destination]
+      [campaign.user_id, campaign.destination, String(campaignId)]
     );
 
-    // Fall back to total_numbers if no matching transaction found
+    // Calculate exact fallback refund based on parts if transaction record missing
+    const metrics = calculateSmsMetrics(campaign.message_text);
+    const computedRefund = (metrics.parts_count || 1) * (parseInt(campaign.total_numbers, 10) || 0);
+
     const refundAmount =
       txResult.rows.length > 0
         ? parseInt(txResult.rows[0].amount, 10)
-        : campaign.total_numbers;
+        : computedRefund;
 
     if (refundAmount > 0) {
       await client.query(
@@ -851,4 +886,5 @@ router.delete('/:id', authenticate, async (req, res) => {
   }
 });
 
+router.calculateSmsMetrics = calculateSmsMetrics;
 module.exports = router;
