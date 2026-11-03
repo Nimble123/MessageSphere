@@ -3671,6 +3671,24 @@
                       </select>
                     </div>
 
+                    <!-- SMS Character Encoding Selector (GSM-7 vs Unicode) -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px;">
+                      <label id="sms-compose-enc-gsm-lbl" style="border: 2px solid #16a34a; background: #f0fdf4; padding: 8px 12px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.15s;">
+                        <input type="radio" name="sms-compose-encoding" value="gsm7" checked onchange="onSmsEncodingToggle('gsm7')" style="accent-color: #16a34a;">
+                        <div>
+                          <strong style="font-size: 0.82rem; color: #166534; display: block;">GSM-7 (Standard Latin)</strong>
+                          <div style="font-size: 0.7rem; color: #15803d;">160 chars = 1 credit &bull; >160 = 2</div>
+                        </div>
+                      </label>
+                      <label id="sms-compose-enc-uni-lbl" style="border: 1.5px solid #cbd5e1; background: #ffffff; padding: 8px 12px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.15s;">
+                        <input type="radio" name="sms-compose-encoding" value="unicode" onchange="onSmsEncodingToggle('unicode')" style="accent-color: #d97706;">
+                        <div>
+                          <strong style="font-size: 0.82rem; color: #92400e; display: block;">Unicode (हिंदी / Regional / Emojis)</strong>
+                          <div style="font-size: 0.7rem; color: #b45309;">75 chars = 1 credit &bull; >75 = 2</div>
+                        </div>
+                      </label>
+                    </div>
+
                     <textarea id="sms-message" class="form-input" rows="4" placeholder="Type or paste your SMS message here..." required maxlength="1600" oninput="onSmsMessageInput()" style="font-family: inherit; font-size: 0.9rem; line-height: 1.5; padding: 12px 14px; border-radius: 8px; resize: vertical;"></textarea>
 
                     <!-- GSM Metrics Telemetry Bar -->
@@ -4558,11 +4576,43 @@
 
           <textarea id="modal-template-body" class="form-input" rows="5" placeholder="Enter message template text..."></textarea>
 
-          <!-- GSM Live Calculation Strip -->
-          <div id="tpl-create-gsm-strip" style="display:none;margin-top:6px;font-size:0.75rem;padding:6px 10px;border-radius:6px;background:#f8fafc;border:1px solid #e2e8f0;color:var(--slate-600);">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span id="tpl-create-gsm-info"><strong style="color:#2563eb;">GSM-7 (Latin)</strong> • Single message: up to 160 chars (153 chars/part multi)</span>
-              <span id="tpl-create-gsm-parts" style="font-weight:700;color:#1e40af;">1 Part</span>
+          <!-- SMS Encoding Selector & Telemetry (GSM-7 vs Unicode) -->
+          <div id="tpl-create-gsm-strip" style="display:none;margin-top:10px;background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:10px;padding:12px 14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+              <span style="font-weight:700;font-size:0.83rem;color:#1e293b;display:flex;align-items:center;gap:6px;">
+                <i data-lucide="languages" style="width:15px;height:15px;color:#4f46e5;"></i> SMS Character Encoding
+              </span>
+              <span id="tpl-create-enc-detected" style="font-size:0.75rem;font-weight:700;padding:2px 10px;border-radius:20px;background:#ecfdf5;color:#15803d;border:1px solid #bbf7d0;">
+                🟢 GSM-7 Active (160 chars/credit)
+              </span>
+            </div>
+
+            <!-- Explicit Encoding Selection Options -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <label id="tpl-create-enc-gsm-lbl" style="border:2px solid #16a34a;background:#f0fdf4;padding:8px 12px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all 0.15s;">
+                <input type="radio" name="tpl-create-encoding" value="gsm7" checked onchange="onTplEncodingSelect('create', 'gsm7')" style="accent-color:#16a34a;">
+                <div>
+                  <strong style="font-size:0.82rem;color:#166534;display:block;">GSM-7 (Standard Latin)</strong>
+                  <div style="font-size:0.7rem;color:#15803d;">160 chars = 1 credit &bull; >160 = 2</div>
+                </div>
+              </label>
+              <label id="tpl-create-enc-uni-lbl" style="border:1.5px solid #cbd5e1;background:#ffffff;padding:8px 12px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all 0.15s;">
+                <input type="radio" name="tpl-create-encoding" value="unicode" onchange="onTplEncodingSelect('create', 'unicode')" style="accent-color:#d97706;">
+                <div>
+                  <strong style="font-size:0.82rem;color:#92400e;display:block;">Unicode (हिंदी / Regional / Emojis)</strong>
+                  <div style="font-size:0.7rem;color:#b45309;">75 chars = 1 credit &bull; >75 = 2</div>
+                </div>
+              </label>
+            </div>
+
+            <!-- Live Calculation Info Strip -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:8px;border-top:1px dashed #e2e8f0;font-size:0.76rem;">
+              <span id="tpl-create-gsm-info" style="color:var(--slate-600);">
+                Characters: <strong id="tpl-create-char-num" style="color:#0f172a;">0</strong> &bull; Auto-detects Unicode when typing Hindi or emojis
+              </span>
+              <span id="tpl-create-gsm-parts" style="font-weight:700;color:#1e40af;background:#dbeafe;padding:3px 10px;border-radius:6px;font-size:0.78rem;">
+                1 Part (1 Credit)
+              </span>
             </div>
           </div>
           <div id="tpl-create-carrier-warning" style="display:none;margin-top:6px;font-size:0.75rem;padding:8px 10px;border-radius:6px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;font-weight:600;">
@@ -4863,11 +4913,43 @@
 
           <textarea id="modal-edit-tpl-body" class="form-input" rows="5"></textarea>
 
-          <!-- GSM Live Calculation Strip -->
-          <div id="tpl-edit-gsm-strip" style="display:none;margin-top:6px;font-size:0.75rem;padding:6px 10px;border-radius:6px;background:#f8fafc;border:1px solid #e2e8f0;color:var(--slate-600);">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span id="tpl-edit-gsm-info"><strong style="color:#2563eb;">GSM-7 (Latin)</strong> • Single: 160 chars (153/part)</span>
-              <span id="tpl-edit-gsm-parts" style="font-weight:700;color:#1e40af;">1 Part</span>
+          <!-- SMS Encoding Selector & Telemetry (GSM-7 vs Unicode) -->
+          <div id="tpl-edit-gsm-strip" style="display:none;margin-top:10px;background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:10px;padding:12px 14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+              <span style="font-weight:700;font-size:0.83rem;color:#1e293b;display:flex;align-items:center;gap:6px;">
+                <i data-lucide="languages" style="width:15px;height:15px;color:#4f46e5;"></i> SMS Character Encoding
+              </span>
+              <span id="tpl-edit-enc-detected" style="font-size:0.75rem;font-weight:700;padding:2px 10px;border-radius:20px;background:#ecfdf5;color:#15803d;border:1px solid #bbf7d0;">
+                🟢 GSM-7 Active (160 chars/credit)
+              </span>
+            </div>
+
+            <!-- Explicit Encoding Selection Options -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <label id="tpl-edit-enc-gsm-lbl" style="border:2px solid #16a34a;background:#f0fdf4;padding:8px 12px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all 0.15s;">
+                <input type="radio" name="tpl-edit-encoding" value="gsm7" checked onchange="onTplEncodingSelect('edit', 'gsm7')" style="accent-color:#16a34a;">
+                <div>
+                  <strong style="font-size:0.82rem;color:#166534;display:block;">GSM-7 (Standard Latin)</strong>
+                  <div style="font-size:0.7rem;color:#15803d;">160 chars = 1 credit &bull; >160 = 2</div>
+                </div>
+              </label>
+              <label id="tpl-edit-enc-uni-lbl" style="border:1.5px solid #cbd5e1;background:#ffffff;padding:8px 12px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all 0.15s;">
+                <input type="radio" name="tpl-edit-encoding" value="unicode" onchange="onTplEncodingSelect('edit', 'unicode')" style="accent-color:#d97706;">
+                <div>
+                  <strong style="font-size:0.82rem;color:#92400e;display:block;">Unicode (हिंदी / Regional / Emojis)</strong>
+                  <div style="font-size:0.7rem;color:#b45309;">75 chars = 1 credit &bull; >75 = 2</div>
+                </div>
+              </label>
+            </div>
+
+            <!-- Live Calculation Info Strip -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:8px;border-top:1px dashed #e2e8f0;font-size:0.76rem;">
+              <span id="tpl-edit-gsm-info" style="color:var(--slate-600);">
+                Characters: <strong id="tpl-edit-char-num" style="color:#0f172a;">0</strong> &bull; Auto-detects Unicode when typing Hindi or emojis
+              </span>
+              <span id="tpl-edit-gsm-parts" style="font-weight:700;color:#1e40af;background:#dbeafe;padding:3px 10px;border-radius:6px;font-size:0.78rem;">
+                1 Part (1 Credit)
+              </span>
             </div>
           </div>
           <div id="tpl-edit-carrier-warning" style="display:none;margin-top:6px;font-size:0.75rem;padding:8px 10px;border-radius:6px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;font-weight:600;">

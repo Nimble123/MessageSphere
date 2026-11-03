@@ -6236,7 +6236,7 @@ const GSM_7_EXTENDED_CHARS = new Set(['^', '{', '}', '\\', '[', '~', ']', '|', '
 const GSM_7_REGEX = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#$%&'()*+,\-./:;<=>?¡¿\^{}\[~\]|€]*$/;
 
 // Live GSM & Unicode Calculation Helper
-function computeGsmMetrics(text, channel = 'whatsapp') {
+function computeGsmMetrics(text, channel = 'whatsapp', forceUnicode = false) {
   const str = String(text || '');
   const rawGlyphCount = Array.from(str).length;
 
@@ -6251,7 +6251,7 @@ function computeGsmMetrics(text, channel = 'whatsapp') {
     };
   }
 
-  const isUnicode = !GSM_7_REGEX.test(str);
+  const isUnicode = Boolean(forceUnicode) || !GSM_7_REGEX.test(str);
   let effectiveCharCount = 0;
   let parts = 1;
   let charsLeft = 0;
@@ -6295,8 +6295,8 @@ function computeGsmMetrics(text, channel = 'whatsapp') {
       ? `⚠️ Unicode (Emojis/Hindi) • ${parts || 1} Part(s) (75 chars/part) • ${charsLeft} left in part`
       : `GSM-7 Latin • ${parts || 1} Part(s) (160 chars/part) • ${charsLeft} left in part`,
     badgeText: isUnicode 
-      ? `${effectiveCharCount} chars • ${parts || 1} SMS Part${parts > 1 ? 's' : ''} (Unicode)`
-      : `${effectiveCharCount} chars • ${parts || 1} SMS Part${parts > 1 ? 's' : ''} (GSM-7)`
+      ? `${effectiveCharCount} chars • ${parts || 1} Part${parts > 1 ? 's' : ''} (Unicode)`
+      : `${effectiveCharCount} chars • ${parts || 1} Part${parts > 1 ? 's' : ''} (GSM-7)`
   };
 }
 
@@ -6386,51 +6386,105 @@ window.onTemplateChannelChange = function(mode) {
   if (textarea) textarea.dispatchEvent(new Event('input'));
 };
 
+// Explicit GSM-7 vs Unicode Selection in Create/Edit Modal
+window.onTplEncodingSelect = function(mode, enc) {
+  const gsmRadio = document.querySelector(`input[name="tpl-${mode}-encoding"][value="gsm7"]`);
+  const uniRadio = document.querySelector(`input[name="tpl-${mode}-encoding"][value="unicode"]`);
+  const gsmLbl = document.getElementById(`tpl-${mode}-enc-gsm-lbl`);
+  const uniLbl = document.getElementById(`tpl-${mode}-enc-uni-lbl`);
+  const isUni = (enc === 'unicode');
+
+  if (gsmRadio && uniRadio) {
+    gsmRadio.checked = !isUni;
+    uniRadio.checked = isUni;
+  }
+  if (gsmLbl && uniLbl) {
+    gsmLbl.style.border = isUni ? '1.5px solid #cbd5e1' : '2px solid #16a34a';
+    gsmLbl.style.background = isUni ? '#ffffff' : '#f0fdf4';
+    uniLbl.style.border = isUni ? '2px solid #d97706' : '1.5px solid #cbd5e1';
+    uniLbl.style.background = isUni ? '#fffbeb' : '#ffffff';
+  }
+
+  const textarea = (mode === 'edit') ? modalEditTplBody : modalTemplateBody;
+  if (textarea) textarea.dispatchEvent(new Event('input'));
+};
+
+function updateTplGsmUi(mode, text, selChannel) {
+  const encRadio = document.querySelector(`input[name="tpl-${mode}-encoding"]:checked`);
+  const forcedUnicode = encRadio ? (encRadio.value === 'unicode') : false;
+  const metrics = computeGsmMetrics(text, selChannel, forcedUnicode);
+
+  const badge = document.getElementById(`tpl-${mode}-meter-badge`);
+  const gsmStrip = document.getElementById(`tpl-${mode}-gsm-strip`);
+  const gsmParts = document.getElementById(`tpl-${mode}-gsm-parts`);
+  const charNum = document.getElementById(`tpl-${mode}-char-num`);
+  const encDetected = document.getElementById(`tpl-${mode}-enc-detected`);
+  const gsmLbl = document.getElementById(`tpl-${mode}-enc-gsm-lbl`);
+  const uniLbl = document.getElementById(`tpl-${mode}-enc-uni-lbl`);
+  const gsmRadio = document.querySelector(`input[name="tpl-${mode}-encoding"][value="gsm7"]`);
+  const uniRadio = document.querySelector(`input[name="tpl-${mode}-encoding"][value="unicode"]`);
+  const warnBox = document.getElementById(`tpl-${mode}-carrier-warning`);
+  const warnText = document.getElementById(`tpl-${mode}-warning-text`);
+
+  if (badge) {
+    badge.textContent = metrics.badgeText;
+    if (metrics.carrierWarning) {
+      badge.style.background = '#fef2f2'; badge.style.color = '#b91c1c'; badge.style.borderColor = '#fecaca';
+    } else if (metrics.isUnicode) {
+      badge.style.background = '#fef3c7'; badge.style.color = '#92400e'; badge.style.borderColor = '#fde68a';
+    } else if (selChannel === 'sms') {
+      badge.style.background = '#eff6ff'; badge.style.color = '#1e40af'; badge.style.borderColor = '#bfdbfe';
+    } else {
+      badge.style.background = '#ecfdf5'; badge.style.color = '#047857'; badge.style.borderColor = '#a7f3d0';
+    }
+  }
+
+  if (gsmStrip) gsmStrip.style.display = (selChannel === 'sms') ? 'block' : 'none';
+
+  if (selChannel === 'sms') {
+    if (charNum) charNum.textContent = metrics.charCount;
+    if (gsmParts) gsmParts.textContent = `${metrics.parts} Part${metrics.parts > 1 ? 's' : ''} (${metrics.parts} Credit${metrics.parts > 1 ? 's' : ''})`;
+
+    if (metrics.isUnicode) {
+      if (uniRadio) uniRadio.checked = true;
+      if (gsmRadio) gsmRadio.checked = false;
+      if (uniLbl) { uniLbl.style.border = '2px solid #d97706'; uniLbl.style.background = '#fffbeb'; }
+      if (gsmLbl) { gsmLbl.style.border = '1.5px solid #cbd5e1'; gsmLbl.style.background = '#ffffff'; }
+      if (encDetected) {
+        encDetected.textContent = '🟡 Unicode Active (75 chars/credit)';
+        encDetected.style.background = '#fef3c7';
+        encDetected.style.color = '#92400e';
+        encDetected.style.border = '1px solid #fde68a';
+      }
+    } else {
+      if (gsmRadio) gsmRadio.checked = true;
+      if (uniRadio) uniRadio.checked = false;
+      if (gsmLbl) { gsmLbl.style.border = '2px solid #16a34a'; gsmLbl.style.background = '#f0fdf4'; }
+      if (uniLbl) { uniLbl.style.border = '1.5px solid #cbd5e1'; uniLbl.style.background = '#ffffff'; }
+      if (encDetected) {
+        encDetected.textContent = '🟢 GSM-7 Active (160 chars/credit)';
+        encDetected.style.background = '#ecfdf5';
+        encDetected.style.color = '#15803d';
+        encDetected.style.border = '1px solid #bbf7d0';
+      }
+    }
+  }
+
+  if (warnBox && warnText) {
+    if (selChannel === 'sms' && metrics.carrierWarning) {
+      warnBox.style.display = 'block';
+      warnText.textContent = metrics.carrierWarning;
+    } else {
+      warnBox.style.display = 'none';
+    }
+  }
+}
+
 // Wire Create Modal Inputs
 if (modalTemplateBody) {
   modalTemplateBody.addEventListener('input', () => {
     const selChannel = document.querySelector('input[name="tpl-create-channel"]:checked')?.value || 'whatsapp';
-    const metrics = computeGsmMetrics(modalTemplateBody.value, selChannel);
-    const badge = document.getElementById('tpl-create-meter-badge');
-    const gsmInfo = document.getElementById('tpl-create-gsm-info');
-    const gsmParts = document.getElementById('tpl-create-gsm-parts');
-    const gsmStrip = document.getElementById('tpl-create-gsm-strip');
-    const warnBox = document.getElementById('tpl-create-carrier-warning');
-    const warnText = document.getElementById('tpl-create-warning-text');
-
-    if (badge) {
-      badge.textContent = metrics.badgeText;
-      if (metrics.carrierWarning) {
-        badge.style.background = '#fef2f2';
-        badge.style.color = '#b91c1c';
-        badge.style.borderColor = '#fecaca';
-      } else if (metrics.isUnicode) {
-        badge.style.background = '#fef3c7';
-        badge.style.color = '#92400e';
-        badge.style.borderColor = '#fde68a';
-      } else if (selChannel === 'sms') {
-        badge.style.background = '#eff6ff';
-        badge.style.color = '#1e40af';
-        badge.style.borderColor = '#bfdbfe';
-      } else {
-        badge.style.background = '#ecfdf5';
-        badge.style.color = '#047857';
-        badge.style.borderColor = '#a7f3d0';
-      }
-    }
-
-    if (gsmStrip) gsmStrip.style.display = (selChannel === 'sms') ? 'block' : 'none';
-    if (gsmInfo) gsmInfo.innerHTML = `<strong style="color:${metrics.isUnicode ? '#b45309' : '#16a34a'};">${metrics.isUnicode ? '🟡 Unicode (Hindi / Emojis Detected)' : '🟢 GSM-7 (Standard Latin)'}</strong> • ${metrics.isUnicode ? '75 chars/credit' : '160 chars/credit'}`;
-    if (gsmParts) gsmParts.textContent = `${metrics.parts} Part${metrics.parts > 1 ? 's' : ''}`;
-
-    if (warnBox && warnText) {
-      if (selChannel === 'sms' && metrics.carrierWarning) {
-        warnBox.style.display = 'block';
-        warnText.textContent = metrics.carrierWarning;
-      } else {
-        warnBox.style.display = 'none';
-      }
-    }
+    updateTplGsmUi('create', modalTemplateBody.value, selChannel);
   });
 }
 
@@ -6438,47 +6492,7 @@ if (modalTemplateBody) {
 if (modalEditTplBody) {
   modalEditTplBody.addEventListener('input', () => {
     const selChannel = document.querySelector('input[name="tpl-edit-channel"]:checked')?.value || 'whatsapp';
-    const metrics = computeGsmMetrics(modalEditTplBody.value, selChannel);
-    const badge = document.getElementById('tpl-edit-meter-badge');
-    const gsmInfo = document.getElementById('tpl-edit-gsm-info');
-    const gsmParts = document.getElementById('tpl-edit-gsm-parts');
-    const gsmStrip = document.getElementById('tpl-edit-gsm-strip');
-    const warnBox = document.getElementById('tpl-edit-carrier-warning');
-    const warnText = document.getElementById('tpl-edit-warning-text');
-
-    if (badge) {
-      badge.textContent = metrics.badgeText;
-      if (metrics.carrierWarning) {
-        badge.style.background = '#fef2f2';
-        badge.style.color = '#b91c1c';
-        badge.style.borderColor = '#fecaca';
-      } else if (metrics.isUnicode) {
-        badge.style.background = '#fef3c7';
-        badge.style.color = '#92400e';
-        badge.style.borderColor = '#fde68a';
-      } else if (selChannel === 'sms') {
-        badge.style.background = '#eff6ff';
-        badge.style.color = '#1e40af';
-        badge.style.borderColor = '#bfdbfe';
-      } else {
-        badge.style.background = '#ecfdf5';
-        badge.style.color = '#047857';
-        badge.style.borderColor = '#a7f3d0';
-      }
-    }
-
-    if (gsmStrip) gsmStrip.style.display = (selChannel === 'sms') ? 'block' : 'none';
-    if (gsmInfo) gsmInfo.innerHTML = `<strong style="color:${metrics.isUnicode ? '#b45309' : '#16a34a'};">${metrics.isUnicode ? '🟡 Unicode (Hindi / Emojis Detected)' : '🟢 GSM-7 (Standard Latin)'}</strong> • ${metrics.isUnicode ? '75 chars/credit' : '160 chars/credit'}`;
-    if (gsmParts) gsmParts.textContent = `${metrics.parts} Part${metrics.parts > 1 ? 's' : ''}`;
-
-    if (warnBox && warnText) {
-      if (selChannel === 'sms' && metrics.carrierWarning) {
-        warnBox.style.display = 'block';
-        warnText.textContent = metrics.carrierWarning;
-      } else {
-        warnBox.style.display = 'none';
-      }
-    }
+    updateTplGsmUi('edit', modalEditTplBody.value, selChannel);
   });
 }
 
@@ -6537,6 +6551,7 @@ if (btnCreateTemplateModal) {
       modalCreateTemplate.style.display = 'flex';
       const mb = modalCreateTemplate.querySelector('.modal-body-saas');
       if (mb) mb.scrollTop = 0;
+      if (window.lucide) lucide.createIcons({ root: modalCreateTemplate });
     }
   });
 }
@@ -8790,9 +8805,12 @@ checkSession();
 const GSM7_EXTENDED = new Set(['^', '{', '}', '\\', '[', '~', ']', '|', '€']);
 const GSM7_REGEX = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#$%&'()*+,\-./:;<=>?¡¿\^{}\[~\]|€]*$/;
 
-function computeSmsMetrics(text) {
+let smsManualEncoding = 'gsm7'; // 'gsm7' or 'unicode'
+
+function computeSmsMetrics(text, forcedEncoding) {
   const content = String(text || '');
-  const isUnicode = !GSM7_REGEX.test(content);
+  const hasUnicodeChars = !GSM7_REGEX.test(content);
+  const isUnicode = hasUnicodeChars || (forcedEncoding === 'unicode') || (smsManualEncoding === 'unicode');
   let effectiveLen = 0;
   if (isUnicode) {
     effectiveLen = Array.from(content).length;
@@ -8809,7 +8827,7 @@ function computeSmsMetrics(text) {
   }
   let warning = null;
   if (parts >= 5) warning = `⚠️ ${parts} parts per number — carriers may throttle messages over 4 parts.`;
-  return { effectiveLen, isUnicode, parts, warning };
+  return { effectiveLen, isUnicode, parts, warning, autoDetectedUnicode: hasUnicodeChars };
 }
 
 // --- State ---
@@ -8844,15 +8862,25 @@ window.onSmsDestChange = function(dest) {
   updateSmsCreditsPreview();
 };
 
+window.onSmsEncodingToggle = function(enc) {
+  smsManualEncoding = enc;
+  onSmsMessageInput();
+};
+
 window.openSmsComposer = function() {
+  smsManualEncoding = 'gsm7';
   smsFileNumbers = [];
-  document.getElementById('form-compose-sms').reset();
+  const form = document.getElementById('form-compose-sms');
+  if (form) form.reset();
   if (window.onSmsDestChange) window.onSmsDestChange('domestic');
-  smsFileNumbers = [];
-  document.getElementById('form-compose-sms').reset();
   document.getElementById('sms-form-error').style.display = 'none';
   document.getElementById('sms-file-preview').textContent = '';
   document.getElementById('sms-carrier-warning').style.display = 'none';
+  
+  // Reset encoding radio
+  const gsmRadio = document.querySelector('input[name="sms-compose-encoding"][value="gsm7"]');
+  if (gsmRadio) gsmRadio.checked = true;
+
   onSmsMessageInput();
   updateSmsCreditsPreview();
   if (typeof populateComposerSelectors === 'function') {
@@ -8894,17 +8922,50 @@ async function populateSmsUserSelector() {
 
 // --- Live GSM counter ---
 window.onSmsMessageInput = function() {
-  const msg = document.getElementById('sms-message').value;
-  const { effectiveLen, isUnicode, parts, warning } = computeSmsMetrics(msg);
-  document.getElementById('sms-char-count').textContent = effectiveLen;
+  const msgEl = document.getElementById('sms-message');
+  const msg = msgEl ? msgEl.value : '';
+  const { effectiveLen, isUnicode, parts, warning, autoDetectedUnicode } = computeSmsMetrics(msg);
+
+  // If text has unicode characters, automatically reflect in manual selector state
+  if (autoDetectedUnicode) {
+    smsManualEncoding = 'unicode';
+    const uniRadio = document.querySelector('input[name="sms-compose-encoding"][value="unicode"]');
+    if (uniRadio) uniRadio.checked = true;
+  }
+
+  // Update visual state of radio labels
+  const gsmLbl = document.getElementById('sms-compose-enc-gsm-lbl');
+  const uniLbl = document.getElementById('sms-compose-enc-uni-lbl');
+  if (gsmLbl && uniLbl) {
+    if (isUnicode) {
+      gsmLbl.style.borderColor = '#cbd5e1';
+      gsmLbl.style.background = '#ffffff';
+      uniLbl.style.borderColor = '#d97706';
+      uniLbl.style.background = '#fffbeb';
+    } else {
+      gsmLbl.style.borderColor = '#16a34a';
+      gsmLbl.style.background = '#f0fdf4';
+      uniLbl.style.borderColor = '#cbd5e1';
+      uniLbl.style.background = '#ffffff';
+    }
+  }
+
+  const charEl = document.getElementById('sms-char-count');
+  if (charEl) charEl.textContent = effectiveLen;
   const encLabel = document.getElementById('sms-encoding-label');
-  encLabel.textContent = isUnicode ? 'Unicode (UCS-2)' : 'GSM-7';
-  encLabel.style.color = isUnicode ? '#f59e0b' : '#10b981';
-  document.getElementById('sms-parts-count').textContent = parts;
-  document.getElementById('sms-cred-per-num').textContent = parts;
+  if (encLabel) {
+    encLabel.textContent = isUnicode ? 'Unicode (75 chars/part)' : 'GSM-7 (160 chars/part)';
+    encLabel.style.color = isUnicode ? '#d97706' : '#10b981';
+  }
+  const partsEl = document.getElementById('sms-parts-count');
+  if (partsEl) partsEl.textContent = parts;
+  const credEl = document.getElementById('sms-cred-per-num');
+  if (credEl) credEl.textContent = parts;
   const warnEl = document.getElementById('sms-carrier-warning');
-  if (warning) { warnEl.textContent = warning; warnEl.style.display = 'inline'; }
-  else { warnEl.style.display = 'none'; }
+  if (warnEl) {
+    if (warning) { warnEl.textContent = warning; warnEl.style.display = 'inline'; }
+    else { warnEl.style.display = 'none'; }
+  }
   updateSmsCreditsPreview();
 };
 
