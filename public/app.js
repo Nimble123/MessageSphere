@@ -743,6 +743,26 @@ function updateWalletView() {
   // Master Hero Total Balance
   setEl('wallet-hero-total-balance', activeTotal);
 
+  // Dynamic Role Badge & Route Title
+  const roleBadge = document.getElementById('wallet-hero-role-badge');
+  const roleIcon = document.getElementById('wallet-hero-role-icon');
+  const routeTitle = document.getElementById('wallet-hero-route-title');
+  if (roleBadge) {
+    if (currentUser?.role === 'admin') {
+      roleBadge.textContent = 'MASTER TELECOM VAULT';
+      if (roleIcon) roleIcon.setAttribute('data-lucide', 'shield-check');
+      if (routeTitle) routeTitle.textContent = `${route === 'domestic' ? 'Domestic Telecom Route (India +91)' : 'International Telecom Route (Global)'} • 5 Channels Active`;
+    } else if (currentUser?.role === 'reseller') {
+      roleBadge.textContent = 'RESELLER MASTER INVENTORY';
+      if (roleIcon) roleIcon.setAttribute('data-lucide', 'store');
+      if (routeTitle) routeTitle.textContent = `${route === 'domestic' ? 'Reseller Domestic Inventory (India +91)' : 'Reseller International Inventory (Global)'} • Wholesale Pool`;
+    } else {
+      roleBadge.textContent = 'BUSINESS CREDIT WALLET';
+      if (roleIcon) roleIcon.setAttribute('data-lucide', 'wallet');
+      if (routeTitle) routeTitle.textContent = `${route === 'domestic' ? 'Domestic Credits (India +91)' : 'International Credits (Global)'} • Multi-Channel Balance`;
+    }
+  }
+
   // Smart Health Badge
   const healthBadge = document.getElementById('wallet-hero-health-badge');
   if (healthBadge) {
@@ -797,7 +817,7 @@ function updateWalletView() {
 
   const distSummary = document.getElementById('wallet-dist-summary-text');
   if (distSummary) {
-    distSummary.textContent = `${activeTotal.toLocaleString()} total usable credits`;
+    distSummary.textContent = `${activeTotal.toLocaleString()} usable credits (${route === 'domestic' ? 'India' : 'Intl'})`;
   }
 
   // Backward compatibility with previous breakdown elements if present
@@ -815,10 +835,15 @@ function updateWalletView() {
   setEl('wallet-summary-intl-total', intlTotal);
   setEl('wallet-summary-sms-total', domNormal);
 
-  // Reseller Master Stock Banner
+  // Reseller Master Stock Command Center
   const resellerStockCard = document.getElementById('wallet-reseller-stock-card');
   if (resellerStockCard) {
-    resellerStockCard.style.display = (currentUser.role === 'reseller') ? 'block' : 'none';
+    if (currentUser.role === 'reseller') {
+      resellerStockCard.style.display = 'block';
+      loadResellerWalletData();
+    } else {
+      resellerStockCard.style.display = 'none';
+    }
   }
 
   // Show Allot / Transfer button for Admin & Reseller
@@ -830,7 +855,120 @@ function updateWalletView() {
       btnAllot.style.display = 'none';
     }
   }
+
+  if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
 }
+
+// --- RESELLER WALLET & CLIENT NETWORK MANAGEMENT ---
+let resellerCachedClients = [];
+
+async function loadResellerWalletData() {
+  if (currentUser?.role !== 'reseller') return;
+  try {
+    const uData = await apiFetch('/users?limit=300');
+    const clients = Array.isArray(uData) ? uData : (uData.users || []);
+    resellerCachedClients = clients;
+
+    let totalClientCredits = 0;
+    clients.forEach(c => {
+      totalClientCredits += (
+        Number(c.credits_normal_domestic || 0) +
+        Number(c.credits_dp_domestic || 0) +
+        Number(c.credits_cta_domestic || 0) +
+        Number(c.credits_dp_cta_domestic || 0) +
+        Number(c.credits_own_number_domestic || 0) +
+        Number(c.credits_normal_international || 0) +
+        Number(c.credits_dp_international || 0) +
+        Number(c.credits_cta_international || 0) +
+        Number(c.credits_dp_cta_international || 0) +
+        Number(c.credits_own_number_international || 0)
+      );
+    });
+
+    const myDom = Number(currentUser.credits_normal_domestic || 0) + Number(currentUser.credits_dp_domestic || 0) + Number(currentUser.credits_cta_domestic || 0) + Number(currentUser.credits_dp_cta_domestic || 0) + Number(currentUser.credits_own_number_domestic || 0);
+    const myIntl = Number(currentUser.credits_normal_international || 0) + Number(currentUser.credits_dp_international || 0) + Number(currentUser.credits_cta_international || 0) + Number(currentUser.credits_dp_cta_international || 0) + Number(currentUser.credits_own_number_international || 0);
+    const myTotal = myDom + myIntl;
+
+    const vaultStockEl = document.getElementById('reseller-stat-vault-stock');
+    const clientStockEl = document.getElementById('reseller-stat-client-stock');
+    const networkTotalEl = document.getElementById('reseller-stat-network-total');
+    const clientCountEl = document.getElementById('reseller-stat-client-count');
+    const btnClientCountEl = document.getElementById('reseller-btn-client-count');
+
+    if (vaultStockEl) vaultStockEl.textContent = myTotal.toLocaleString();
+    if (clientStockEl) clientStockEl.textContent = totalClientCredits.toLocaleString();
+    if (networkTotalEl) networkTotalEl.textContent = (myTotal + totalClientCredits).toLocaleString();
+    if (clientCountEl) clientCountEl.textContent = clients.length.toLocaleString();
+    if (btnClientCountEl) btnClientCountEl.textContent = clients.length.toLocaleString();
+  } catch (err) {
+    console.error('Error loading reseller wallet data:', err);
+  }
+}
+
+window.openResellerClientBalancesModal = function() {
+  const modal = document.getElementById('modal-reseller-clients');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  renderResellerClientsTable(resellerCachedClients);
+  if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
+};
+
+window.renderResellerClientsTable = function(clients) {
+  const tbody = document.getElementById('reseller-clients-tbody');
+  if (!tbody) return;
+  if (!clients || clients.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 24px; color: #94a3b8;">No client accounts found under your reseller account.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = clients.map(c => {
+    const normal = Number(c.credits_normal_domestic || 0);
+    const dp = Number(c.credits_dp_domestic || 0);
+    const cta = Number(c.credits_cta_domestic || 0);
+    const dpcta = Number(c.credits_dp_cta_domestic || 0);
+    const own = Number(c.credits_own_number_domestic || 0);
+    const total = normal + dp + cta + dpcta + own;
+    return `
+      <tr style="border-bottom: 1px solid #f1f5f9;">
+        <td style="padding: 9px 12px;">
+          <div style="font-weight: 700; color: #1e293b;">${escapeHtml(c.email)}</div>
+          <div style="font-size: 0.72rem; color: #64748b;">${escapeHtml(c.company_name || c.full_name || 'Standard Client')}</div>
+        </td>
+        <td style="padding: 9px 10px; text-align: right; font-family: monospace; font-weight: 700; color: #4f46e5;">${normal.toLocaleString()}</td>
+        <td style="padding: 9px 10px; text-align: right; font-family: monospace; font-weight: 700; color: #0284c7;">${dp.toLocaleString()}</td>
+        <td style="padding: 9px 10px; text-align: right; font-family: monospace; font-weight: 700; color: #d97706;">${cta.toLocaleString()}</td>
+        <td style="padding: 9px 10px; text-align: right; font-family: monospace; font-weight: 800; color: #0f172a;">${total.toLocaleString()}</td>
+        <td style="padding: 9px 12px; text-align: center;">
+          <div style="display: inline-flex; gap: 4px;">
+            <button type="button" class="btn-action btn-action-primary" onclick="quickAllotToClient(${c.id}, '${escapeHtml(c.email)}', 'credit')" style="padding: 3px 8px; font-size: 0.72rem; border-radius: 5px;">
+              + Allot
+            </button>
+            <button type="button" class="btn-action btn-action-secondary" onclick="quickAllotToClient(${c.id}, '${escapeHtml(c.email)}', 'debit')" style="padding: 3px 8px; font-size: 0.72rem; border-radius: 5px; color: #b91c1c;">
+              - Deduct
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+  if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
+};
+
+window.quickAllotToClient = function(userId, email, mode) {
+  const rModal = document.getElementById('modal-reseller-clients');
+  if (rModal) rModal.style.display = 'none';
+  window.openAllotCreditsModal(userId, email);
+  window.setAllocMode(mode);
+};
+
+window.filterResellerClientsTable = function() {
+  const query = (document.getElementById('reseller-client-search')?.value || '').toLowerCase();
+  const filtered = resellerCachedClients.filter(c => 
+    (c.email || '').toLowerCase().includes(query) ||
+    (c.company_name || '').toLowerCase().includes(query) ||
+    (c.full_name || '').toLowerCase().includes(query)
+  );
+  renderResellerClientsTable(filtered);
+};
 
 // --- CREDIT LEDGER STATEMENT & PASSBOOK ---
 let ledgerDebounceTimer = null;
@@ -5054,6 +5192,13 @@ if (btnModalSaveCredits) {
       updateCreditDisplays();
       updateWalletView();
       if (typeof loadLedgerTransactions === 'function') loadLedgerTransactions();
+      if (typeof loadResellerWalletData === 'function' && currentUser.role === 'reseller') {
+        loadResellerWalletData().then(() => {
+          if (document.getElementById('modal-reseller-clients')?.style.display === 'flex') {
+            renderResellerClientsTable(resellerCachedClients);
+          }
+        });
+      }
     } catch (err) {
       showToast('error', 'Operation Failed', err.message);
     } finally {
