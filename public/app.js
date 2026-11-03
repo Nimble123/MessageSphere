@@ -680,57 +680,173 @@ function updateWalletView() {
     if (el) el.textContent = (val || 0).toLocaleString();
   };
 
-  setEl('wallet-dom-normal', currentUser.credits_normal_domestic);
-  setEl('wallet-dom-dp', currentUser.credits_dp_domestic);
-  setEl('wallet-dom-cta', currentUser.credits_cta_domestic);
-  setEl('wallet-dom-dpcta', currentUser.credits_dp_cta_domestic);
-  setEl('wallet-dom-own', currentUser.credits_own_number_domestic);
+  const domNormal = currentUser.credits_normal_domestic || 0;
+  const domDp = currentUser.credits_dp_domestic || 0;
+  const domCta = currentUser.credits_cta_domestic || 0;
+  const domDpCta = currentUser.credits_dp_cta_domestic || 0;
+  const domOwn = currentUser.credits_own_number_domestic || 0;
+  const domTotal = domNormal + domDp + domCta + domDpCta + domOwn;
 
-  setEl('wallet-intl-normal', currentUser.credits_normal_international);
-  setEl('wallet-intl-dp', currentUser.credits_dp_international);
-  setEl('wallet-intl-cta', currentUser.credits_cta_international);
-  setEl('wallet-intl-dpcta', currentUser.credits_dp_cta_international);
-  setEl('wallet-intl-own', currentUser.credits_own_number_international);
+  const intlNormal = currentUser.credits_normal_international || 0;
+  const intlDp = currentUser.credits_dp_international || 0;
+  const intlCta = currentUser.credits_cta_international || 0;
+  const intlDpCta = currentUser.credits_dp_cta_international || 0;
+  const intlOwn = currentUser.credits_own_number_international || 0;
+  const intlTotal = intlNormal + intlDp + intlCta + intlDpCta + intlOwn;
+
+  // Breakdown fields
+  setEl('wallet-dom-normal', domNormal);
+  setEl('wallet-dom-dp', domDp);
+  setEl('wallet-dom-cta', domCta);
+  setEl('wallet-dom-dpcta', domDpCta);
+  setEl('wallet-dom-own', domOwn);
+
+  setEl('wallet-intl-normal', intlNormal);
+  setEl('wallet-intl-dp', intlDp);
+  setEl('wallet-intl-cta', intlCta);
+  setEl('wallet-intl-dpcta', intlDpCta);
+  setEl('wallet-intl-own', intlOwn);
+
+  // High-level Top Summary KPIs
+  setEl('wallet-summary-dom-total', domTotal);
+  setEl('wallet-summary-intl-total', intlTotal);
+  setEl('wallet-summary-sms-total', domNormal);
+
+  // Show Allot / Transfer button for Admin & Reseller
+  const btnAllot = document.getElementById('btn-wallet-allot-credits');
+  if (btnAllot) {
+    if (currentUser.role === 'admin' || currentUser.role === 'reseller') {
+      btnAllot.style.display = 'inline-flex';
+    } else {
+      btnAllot.style.display = 'none';
+    }
+  }
 }
 
-// --- CREDIT LEDGER STATEMENT ---
+// --- CREDIT LEDGER STATEMENT & PASSBOOK ---
+let ledgerDebounceTimer = null;
+
+window.onLedgerFilterChange = function() {
+  clearTimeout(ledgerDebounceTimer);
+  ledgerDebounceTimer = setTimeout(() => {
+    loadLedgerTransactions();
+  }, 200);
+};
+
+window.exportLedgerCsv = async function() {
+  const search = (document.getElementById('ledger-search-input')?.value || '').trim();
+  const channel = document.getElementById('ledger-filter-channel')?.value || 'all';
+  const dest = document.getElementById('ledger-filter-dest')?.value || 'all';
+  const flow = document.getElementById('ledger-filter-flow')?.value || 'all';
+  const user = document.getElementById('ledger-filter-user')?.value || '';
+
+  const params = new URLSearchParams();
+  if (search) params.append('search', search);
+  if (channel && channel !== 'all') params.append('credit_type', channel);
+  if (dest && dest !== 'all') params.append('destination', dest);
+  if (flow && flow !== 'all') params.append('direction', flow);
+  if (user) params.append('userId', user);
+
+  showToast('info', 'Exporting Statement', 'Generating ledger statement CSV...');
+  try {
+    const filename = `MessageSphere_Passbook_Statement_${new Date().toISOString().slice(0, 10)}.csv`;
+    await downloadApiFile(`/credits/transactions/export?${params.toString()}`, filename);
+    showToast('success', 'Download Complete', 'Passbook statement downloaded successfully.');
+  } catch (err) {
+    showToast('error', 'Export Failed', err.message);
+  }
+};
+
 async function loadLedgerTransactions() {
   const tbody = document.getElementById('ledger-table-tbody');
   if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--slate-400);"><i data-lucide="loader-2" class="spin"></i> Loading statement...</td></tr>`;
+  if (window.lucide) lucide.createIcons();
+
+  const search = (document.getElementById('ledger-search-input')?.value || '').trim();
+  const channel = document.getElementById('ledger-filter-channel')?.value || 'all';
+  const dest = document.getElementById('ledger-filter-dest')?.value || 'all';
+  const flow = document.getElementById('ledger-filter-flow')?.value || 'all';
+  const user = document.getElementById('ledger-filter-user')?.value || '';
+
+  const params = new URLSearchParams();
+  if (search) params.append('search', search);
+  if (channel && channel !== 'all') params.append('credit_type', channel);
+  if (dest && dest !== 'all') params.append('destination', dest);
+  if (flow && flow !== 'all') params.append('direction', flow);
+  if (user) params.append('userId', user);
+  params.append('limit', '300');
 
   try {
-    allTransactions = await apiFetch('/credits/transactions');
+    allTransactions = await apiFetch(`/credits/transactions?${params.toString()}`);
+    
+    // Update KPI count
+    const txCountEl = document.getElementById('wallet-summary-tx-count');
+    if (txCountEl) txCountEl.textContent = allTransactions.length.toLocaleString();
+
+    // Populate user filter for Admin & Reseller if not already populated
+    const userFilterEl = document.getElementById('ledger-filter-user');
+    if (userFilterEl && (currentUser?.role === 'admin' || currentUser?.role === 'reseller')) {
+      userFilterEl.style.display = 'inline-block';
+      if (userFilterEl.options.length <= 1) {
+        try {
+          const uData = await apiFetch('/users?limit=200');
+          const uList = Array.isArray(uData) ? uData : (uData.users || []);
+          uList.forEach(u => {
+            const opt = document.createElement('option');
+            opt.value = u.id;
+            opt.textContent = `${u.email} (${u.role})`;
+            userFilterEl.appendChild(opt);
+          });
+        } catch (e) { /* ignore */ }
+      }
+    }
+
     if (allTransactions.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--slate-400);">No transactions in ledger yet.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:35px;color:var(--slate-400);">No transactions found matching your filters.</td></tr>`;
       return;
     }
 
     tbody.innerHTML = allTransactions.map(tx => {
-      const isCredit = tx.amount > 0 && !tx.reason.toLowerCase().includes('deduction');
-      const amountColor = isCredit ? '#059669' : '#dc2626';
+      const isCredit = tx.is_credit;
+      const amountColor = isCredit ? '#15803d' : '#b91c1c';
+      const amountBg = isCredit ? '#ecfdf5' : '#fef2f2';
+      const amountBorder = isCredit ? '#bbf7d0' : '#fecaca';
       const amountSign = isCredit ? '+' : '-';
+      const cleanType = (tx.credit_type || 'normal').toUpperCase();
+      const channelLabel = cleanType === 'NORMAL' ? 'Normal / Bulk SMS' : cleanType;
+      const destLabel = tx.destination === 'international' ? '🌐 International' : '🇮🇳 Domestic';
 
       return `
         <tr>
-          <td><span style="font-size:0.8rem;color:var(--slate-500);">${new Date(tx.created_at).toLocaleString()}</span></td>
+          <td><span style="font-family:monospace;font-size:0.78rem;font-weight:700;color:#64748b;">#${tx.id}</span></td>
+          <td><span style="font-size:0.8rem;color:var(--slate-600);white-space:nowrap;">${new Date(tx.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}</span></td>
           <td>
-            <span class="status-badge ${isCredit ? 'badge-updated' : 'badge-rejected'}">
+            <span class="status-badge" style="background:${amountBg};color:${amountColor};border:1px solid ${amountBorder};font-size:0.73rem;font-weight:700;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;">
               <i data-lucide="${isCredit ? 'arrow-down-left' : 'arrow-up-right'}" style="width:13px;height:13px;"></i>
-              ${isCredit ? 'Credit In' : 'Debit Out'}
+              ${isCredit ? 'Credit In (+)' : 'Debit Out (-)'}
             </span>
           </td>
-          <td><strong>${escapeHtml(tx.credit_type)}</strong></td>
-          <td>${tx.destination === 'international' ? 'Intl' : 'Domestic'}</td>
-          <td><strong style="color:${amountColor};">${amountSign}${Math.abs(tx.amount).toLocaleString()}</strong></td>
-          <td><span style="font-size:0.85rem;">${escapeHtml(tx.reason || 'Manual Adjustment')}</span></td>
-          <td><span style="font-size:0.8rem;color:var(--slate-600);">${escapeHtml(tx.to_email || 'User')}</span></td>
+          <td><strong style="font-size:0.82rem;color:#1e293b;">${escapeHtml(channelLabel)}</strong></td>
+          <td><span style="font-size:0.78rem;color:var(--slate-600);">${destLabel}</span></td>
+          <td style="text-align:right;">
+            <strong style="color:${amountColor};font-size:0.92rem;font-family:monospace;">${amountSign}${Math.abs(tx.amount).toLocaleString()}</strong>
+          </td>
+          <td>
+            <div style="font-size:0.83rem;color:#334155;max-width:320px;line-height:1.4;" title="${escapeHtml(tx.reason || '')}">
+              ${escapeHtml(tx.reason || 'Manual Adjustment')}
+            </div>
+          </td>
+          <td>
+            <span style="font-size:0.8rem;font-weight:600;color:var(--slate-700);">${escapeHtml(tx.counterparty_email || 'System')}</span>
+          </td>
         </tr>
       `;
     }).join('');
 
-    if (window.lucide) lucide.createIcons({ root: tbody });
+    if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:red;padding:20px;">Failed to load statement: ${err.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:red;padding:24px;">Failed to load statement: ${escapeHtml(err.message)}</td></tr>`;
   }
 }
 
@@ -738,7 +854,7 @@ const btnRefreshLedger = document.getElementById('btn-refresh-ledger');
 if (btnRefreshLedger) {
   btnRefreshLedger.addEventListener('click', () => {
     loadLedgerTransactions();
-    showToast('info', 'Statement Refreshed', 'Latest transactions loaded.');
+    showToast('info', 'Statement Refreshed', 'Latest passbook transactions loaded.');
   });
 }
 
@@ -4517,19 +4633,59 @@ const modalAllotUserId = document.getElementById('modal-allot-user-id');
 const modalAllotTitle = document.getElementById('modal-allot-title');
 const btnModalSaveCredits = document.getElementById('btn-modal-save-credits');
 
-window.openAllotCreditsModal = function(userId, email) {
-  modalAllotUserId.value = userId;
-  modalAllotTitle.textContent = `Allot Credits for ${email}`;
+window.openWalletAllotCreditsModal = function() {
+  window.openAllotCreditsModal(null, null);
+};
+
+window.openAllotCreditsModal = async function(userId, email) {
+  const userGroup = document.getElementById('modal-allot-user-group');
+  const userSelect = document.getElementById('modal-allot-user-select');
+
+  if (userId) {
+    modalAllotUserId.value = userId;
+    modalAllotTitle.textContent = `Allot Credits for ${email}`;
+    if (userGroup) userGroup.style.display = 'none';
+  } else {
+    modalAllotUserId.value = '';
+    modalAllotTitle.textContent = 'Allot / Transfer Credits to Client';
+    if (userGroup) {
+      userGroup.style.display = 'block';
+      userSelect.innerHTML = '<option value="">— Select client account —</option>';
+      try {
+        const uData = await apiFetch('/users?limit=200');
+        const uList = Array.isArray(uData) ? uData : (uData.users || []);
+        uList.forEach(u => {
+          const opt = document.createElement('option');
+          opt.value = u.id;
+          opt.textContent = `${u.email} (${u.role})`;
+          userSelect.appendChild(opt);
+        });
+      } catch(e) {}
+    }
+  }
 
   const inputs = modalAllotCredits.querySelectorAll('input[type="number"]');
   inputs.forEach(inp => inp.value = '');
 
   modalAllotCredits.style.display = 'flex';
+  if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
+};
+
+window.onAllotUserSelectChange = function() {
+  const userSelect = document.getElementById('modal-allot-user-select');
+  if (userSelect) {
+    modalAllotUserId.value = userSelect.value;
+  }
 };
 
 if (btnModalSaveCredits) {
   btnModalSaveCredits.addEventListener('click', async () => {
     const userId = modalAllotUserId.value;
+    if (!userId) {
+      showToast('warning', 'Target Account Required', 'Please select a beneficiary client account.');
+      return;
+    }
+
     const updates = {};
     const keys = [
       'normal-domestic', 'dp-domestic', 'cta-domestic', 'dp_cta-domestic', 'own_number-domestic',
@@ -4561,12 +4717,14 @@ if (btnModalSaveCredits) {
       });
       showToast('success', 'Credits Transferred!', res.message);
       modalAllotCredits.style.display = 'none';
-      loadUsers();
+      if (typeof loadUsers === 'function') loadUsers();
 
-      // Refresh own credits if reseller
+      // Refresh own credits & update displays and ledger
       const me = await apiFetch('/auth/me');
       currentUser = me;
       updateCreditDisplays();
+      updateWalletView();
+      if (typeof loadLedgerTransactions === 'function') loadLedgerTransactions();
     } catch (err) {
       showToast('error', 'Transfer Failed', err.message);
     } finally {
@@ -7719,11 +7877,18 @@ const modalOrderType = document.getElementById('modal-order-type');
 const modalOrderCredits = document.getElementById('modal-order-credits');
 const modalOrderNotes = document.getElementById('modal-order-notes');
 
+window.openCreditTopupModal = function() {
+  if (modalOrderCredits) modalOrderCredits.value = '';
+  if (modalOrderNotes) modalOrderNotes.value = '';
+  if (modalBillingOrder) {
+    modalBillingOrder.style.display = 'flex';
+    if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
+  }
+};
+
 if (btnNewBillingOrderModal) {
   btnNewBillingOrderModal.addEventListener('click', () => {
-    modalOrderCredits.value = '';
-    modalOrderNotes.value = '';
-    modalBillingOrder.style.display = 'flex';
+    window.openCreditTopupModal();
   });
 }
 

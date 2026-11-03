@@ -2948,12 +2948,90 @@
         <!-- 5. CREDIT WALLET & PASSBOOK LEDGER VIEW -->
         <section id="view-wallet" class="app-view">
           
-          <!-- Balance Summary Cards -->
-          <div class="card">
+          <!-- View Header with Actions -->
+          <div class="view-header" style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+            <div>
+              <h2 class="view-title" style="display: flex; align-items: center; gap: 10px; margin: 0;">
+                <span style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 8px; background: linear-gradient(135deg, #4f46e5, #6366f1); color: #fff;">
+                  <i data-lucide="wallet" style="width: 18px; height: 18px;"></i>
+                </span>
+                Credit Wallets & Live Ledger Statement
+              </h2>
+              <div class="view-desc" style="font-size: 0.82rem; color: var(--slate-500); margin-top: 4px;">
+                Real-time multi-channel telecom credit balances, passbook ledger statement, and audit reconciliation
+              </div>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+              <button type="button" class="btn-action btn-action-secondary" onclick="openCreditTopupModal()" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; font-size: 0.84rem; font-weight: 600;">
+                <i data-lucide="plus-circle" style="width: 15px; height: 15px; color: #4f46e5;"></i> Request Top-Up
+              </button>
+              <button type="button" id="btn-wallet-allot-credits" class="btn-action btn-action-primary" onclick="openWalletAllotCreditsModal()" style="display: none; background: linear-gradient(135deg, #4f46e5, #6366f1); align-items: center; gap: 6px; padding: 8px 16px; font-size: 0.84rem; font-weight: 600; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);">
+                <i data-lucide="arrow-right-left" style="width: 15px; height: 15px;"></i> Allot / Transfer Credits
+              </button>
+            </div>
+          </div>
+
+          <!-- Total Balance KPI Summary Cards -->
+          <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-bottom: 22px; gap: 14px;">
+            <div class="metric-card" style="padding: 16px 20px; border-left: 4px solid #4f46e5; background: #ffffff;">
+              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">Total Domestic Stock</span>
+                <div style="background: #eef2ff; color: #4f46e5; width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                  <i data-lucide="map-pin" style="width: 16px; height: 16px;"></i>
+                </div>
+              </div>
+              <div class="metric-data">
+                <div class="metric-value" id="wallet-summary-dom-total" style="font-size: 1.6rem; font-weight: 800; color: #4f46e5;">0</div>
+                <div style="font-size: 0.72rem; color: var(--slate-500); margin-top: 3px;">Combined all domestic channels</div>
+              </div>
+            </div>
+
+            <div class="metric-card" style="padding: 16px 20px; border-left: 4px solid #0284c7; background: #ffffff;">
+              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">Total International Stock</span>
+                <div style="background: #f0f9ff; color: #0284c7; width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                  <i data-lucide="globe" style="width: 16px; height: 16px;"></i>
+                </div>
+              </div>
+              <div class="metric-data">
+                <div class="metric-value" id="wallet-summary-intl-total" style="font-size: 1.6rem; font-weight: 800; color: #0284c7;">0</div>
+                <div style="font-size: 0.72rem; color: var(--slate-500); margin-top: 3px;">Combined international channels</div>
+              </div>
+            </div>
+
+            <div class="metric-card" style="padding: 16px 20px; border-left: 4px solid #16a34a; background: #ffffff;">
+              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">GSM Bulk SMS Balance</span>
+                <div style="background: #f0fdf4; color: #16a34a; width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                  <i data-lucide="message-square-text" style="width: 16px; height: 16px;"></i>
+                </div>
+              </div>
+              <div class="metric-data">
+                <div class="metric-value" id="wallet-summary-sms-total" style="font-size: 1.6rem; font-weight: 800; color: #16a34a;">0</div>
+                <div style="font-size: 0.72rem; color: var(--slate-500); margin-top: 3px;">Active Normal Domestic credits</div>
+              </div>
+            </div>
+
+            <div class="metric-card" style="padding: 16px 20px; border-left: 4px solid #7c3aed; background: #ffffff;">
+              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">Ledger Transactions</span>
+                <div style="background: #f5f3ff; color: #7c3aed; width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                  <i data-lucide="receipt" style="width: 16px; height: 16px;"></i>
+                </div>
+              </div>
+              <div class="metric-data">
+                <div class="metric-value" id="wallet-summary-tx-count" style="font-size: 1.6rem; font-weight: 800; color: #7c3aed;">0</div>
+                <div style="font-size: 0.72rem; color: var(--slate-500); margin-top: 3px;">Total passbook records on file</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Balance Breakdown by Channel Cards -->
+          <div class="card" style="margin-bottom: 22px;">
             <div class="card-header">
               <div>
-                <div class="card-title">Credit Balance & Wallet Breakdown</div>
-                <div class="card-desc">Detailed balances for domestic and international campaign message types.</div>
+                <div class="card-title">Channel-Wise Credit Allocation Breakdown</div>
+                <div class="card-desc">Detailed balances across standard text, rich media, and interactive CTA channels.</div>
               </div>
             </div>
             <div class="card-body">
@@ -3042,32 +3120,76 @@
           </div>
 
           <!-- Transaction Statement / Ledger Card -->
-          <div class="card">
-            <div class="card-header">
+          <div class="card" style="background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <div class="card-header" style="padding: 16px 20px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; background: #ffffff;">
               <div>
-                <div class="card-title">Transaction Ledger & Credit Statement</div>
-                <div class="card-desc">Chronological statement of credit additions, campaign deductions, and refunds.</div>
+                <h3 class="card-title" style="margin: 0; font-size: 1rem; font-weight: 700; color: #0f172a;">Transaction Ledger & Credit Statement</h3>
+                <div class="card-desc" style="font-size: 0.74rem; color: #64748b; margin-top: 2px;">Chronological statement of credit additions, campaign deductions, and refunds.</div>
               </div>
-              <button class="btn-action btn-action-secondary" id="btn-refresh-ledger" style="display:flex;align-items:center;gap:6px;">
-                <i data-lucide="rotate-cw" style="width:14px;height:14px;"></i> Refresh Statement
-              </button>
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <button type="button" class="btn-action btn-action-secondary" id="btn-export-ledger-csv" onclick="exportLedgerCsv()" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 0.8rem;">
+                  <i data-lucide="download" style="width: 14px; height: 14px;"></i> Export Statement (CSV)
+                </button>
+                <button type="button" class="btn-action btn-action-secondary" id="btn-refresh-ledger" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 0.8rem;">
+                  <i data-lucide="rotate-cw" style="width: 14px; height: 14px;"></i> Refresh
+                </button>
+              </div>
             </div>
+
+            <!-- Ledger Filter Toolbar -->
+            <div style="padding: 12px 20px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+              <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: 1;">
+                <div style="position: relative; min-width: 220px; flex: 1; max-width: 320px;">
+                  <i data-lucide="search" style="position: absolute; left: 10px; top: 9px; width: 14px; height: 14px; color: var(--slate-400);"></i>
+                  <input type="text" id="ledger-search-input" class="form-input" placeholder="Search reference, note, account..." oninput="onLedgerFilterChange()" style="padding-left: 32px; font-size: 0.82rem; height: 34px;">
+                </div>
+                
+                <select id="ledger-filter-channel" class="form-input" onchange="onLedgerFilterChange()" style="font-size: 0.8rem; height: 34px; padding: 4px 10px; max-width: 170px;">
+                  <option value="all">All Channels</option>
+                  <option value="normal">Normal (SMS & Text)</option>
+                  <option value="dp">DP (Media)</option>
+                  <option value="cta">CTA (Buttons)</option>
+                  <option value="dp_cta">DP + CTA</option>
+                  <option value="own_number">Own Number</option>
+                </select>
+
+                <select id="ledger-filter-dest" class="form-input" onchange="onLedgerFilterChange()" style="font-size: 0.8rem; height: 34px; padding: 4px 10px; max-width: 140px;">
+                  <option value="all">All Routes</option>
+                  <option value="domestic">Domestic (India)</option>
+                  <option value="international">International</option>
+                </select>
+
+                <select id="ledger-filter-flow" class="form-input" onchange="onLedgerFilterChange()" style="font-size: 0.8rem; height: 34px; padding: 4px 10px; max-width: 140px;">
+                  <option value="all">All Flows (In & Out)</option>
+                  <option value="credit">🟢 Credit In (+)</option>
+                  <option value="debit">🔴 Debit Out (-)</option>
+                </select>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <select id="ledger-filter-user" class="form-input" onchange="onLedgerFilterChange()" style="display: none; font-size: 0.8rem; height: 34px; padding: 4px 10px; min-width: 170px;">
+                  <option value="">All Accounts</option>
+                </select>
+              </div>
+            </div>
+
             <div class="card-body" style="padding:0;">
               <div class="table-container">
                 <table>
                   <thead>
                     <tr>
-                      <th>Timestamp</th>
-                      <th>Transaction Type</th>
-                      <th>Channel</th>
-                      <th>Destination</th>
-                      <th>Amount</th>
+                      <th style="width: 80px;">#ID</th>
+                      <th style="width: 150px;">Timestamp</th>
+                      <th style="width: 130px;">Flow / Type</th>
+                      <th style="width: 130px;">Channel</th>
+                      <th style="width: 110px;">Route</th>
+                      <th style="text-align: right; width: 110px;">Amount</th>
                       <th>Reason / Reference</th>
-                      <th>Account</th>
+                      <th style="width: 180px;">Counterparty Account</th>
                     </tr>
                   </thead>
                   <tbody id="ledger-table-tbody">
-                    <tr><td colspan="7" style="text-align:center;padding:30px;color:var(--slate-400);">Loading ledger statement...</td></tr>
+                    <tr><td colspan="8" style="text-align:center;padding:30px;color:var(--slate-400);">Loading ledger statement...</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -4004,6 +4126,16 @@
       </div>
       <div class="modal-body-saas">
         <input type="hidden" id="modal-allot-user-id">
+
+        <div id="modal-allot-user-group" class="form-group" style="display:none;background:#f5f3ff;border:1.5px solid #ddd6fe;padding:12px 14px;border-radius:10px;margin-bottom:14px;">
+          <label style="font-weight:700;color:#5b21b6;font-size:0.83rem;display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <i data-lucide="user-check" style="width:15px;height:15px;"></i> Target Beneficiary Account <span style="color:#dc2626;">*</span>
+          </label>
+          <select id="modal-allot-user-select" class="form-input" onchange="onAllotUserSelectChange()" style="background:#ffffff;margin-top:4px;font-size:0.85rem;">
+            <option value="">— Select client account —</option>
+          </select>
+        </div>
+
         <p style="font-size:0.85rem;color:var(--slate-500);margin-bottom:16px;">
           Enter the number of credits to grant. Negative numbers are not allowed.
         </p>
