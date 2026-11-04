@@ -1231,7 +1231,6 @@ async function loadLedgerTransactions() {
       const destLabel = tx.destination === 'international' ? '🌐 International' : '🇮🇳 Domestic';
 
       // Parse campaign #ID in reason to make it clickable
-      const rawReason = String(tx.reason || 'Manual Adjustment');
       const escapedReason = escapeHtml(rawReason);
       const linkedReason = escapedReason.replace(/(?:Campaign\s*)?#(\d+)/gi, (match, p1) => {
         return `<a href="javascript:void(0)" onclick="openCampaignDetailModal(${p1})" style="color:#4f46e5;font-weight:700;text-decoration:underline;" title="View Campaign Details">#${p1}</a>`;
