@@ -297,14 +297,6 @@ const navItems = document.querySelectorAll('.nav-item');
 const views = document.querySelectorAll('.app-view');
 
 window.switchView = function(viewId) {
-  if (viewId === 'view-sms-new') {
-    switchView('view-sms');
-    setTimeout(() => {
-      if (typeof openNewSmsModal === 'function') openNewSmsModal();
-    }, 120);
-    return;
-  }
-
   views.forEach(v => v.classList.remove('active'));
   navItems.forEach(n => n.classList.remove('active'));
 
@@ -333,7 +325,8 @@ window.switchView = function(viewId) {
     'view-resellers': { title: 'Reseller Network', breadcrumb: 'MessageSphere / Administration / Resellers' },
     'view-branding': { title: 'White-label Brand', breadcrumb: 'MessageSphere / Reseller / Brand' },
     'view-settings': { title: 'Account Settings', breadcrumb: 'MessageSphere / Settings / Profile' },
-    'view-sms': { title: 'GSM Bulk SMS Gateway', breadcrumb: 'MessageSphere / GSM SMS / Broadcasts' }
+    'view-sms-new': { title: 'Create GSM Bulk SMS Campaign', breadcrumb: 'MessageSphere / GSM SMS / New Broadcast' },
+    'view-sms': { title: 'GSM Bulk SMS Broadcasts', breadcrumb: 'MessageSphere / GSM SMS / Broadcasts' }
   };
 
   if (titles[viewId]) {
@@ -364,6 +357,9 @@ window.switchView = function(viewId) {
   if (viewId === 'view-operations') loadOperationsAudit();
   if (viewId === 'view-resellers') loadResellerNetwork();
   if (viewId === 'view-branding') loadMyBrandProfile();
+  if (viewId === 'view-sms-new') {
+    if (typeof initSmsComposerView === 'function') initSmsComposerView();
+  }
   if (viewId === 'view-sms') loadSmsCampaigns();
 
   if (window.lucide) {
@@ -380,7 +376,14 @@ navItems.forEach(item => {
 });
 
 if (btnNavCreateCampaign) {
-  btnNavCreateCampaign.addEventListener('click', () => switchView('view-new-campaign'));
+  btnNavCreateCampaign.addEventListener('click', () => {
+    const activeView = document.querySelector('.app-view.active');
+    if (activeView && (activeView.id === 'view-sms' || activeView.id === 'view-sms-new')) {
+      switchView('view-sms-new');
+    } else {
+      switchView('view-new-campaign');
+    }
+  });
 }
 
 const btnDashViewAll = document.getElementById('btn-dash-view-all');
@@ -10933,15 +10936,20 @@ window.onSmsEncodingToggle = function(enc) {
   onSmsMessageInput();
 };
 
-window.openSmsComposer = function() {
+window.initSmsComposerView = function() {
   smsManualEncoding = 'gsm7';
   smsFileNumbers = [];
   const form = document.getElementById('form-compose-sms');
   if (form) form.reset();
   if (window.onSmsDestChange) window.onSmsDestChange('domestic');
-  document.getElementById('sms-form-error').style.display = 'none';
-  document.getElementById('sms-file-preview').textContent = '';
-  document.getElementById('sms-carrier-warning').style.display = 'none';
+  const errEl = document.getElementById('sms-form-error');
+  if (errEl) errEl.style.display = 'none';
+  const filePrev = document.getElementById('sms-file-preview');
+  if (filePrev) filePrev.textContent = '';
+  const warnEl = document.getElementById('sms-carrier-warning');
+  if (warnEl) warnEl.style.display = 'none';
+  const overlay = document.getElementById('sms-submitting-overlay');
+  if (overlay) overlay.style.display = 'none';
   
   // Reset encoding radio
   const gsmRadio = document.querySelector('input[name="sms-compose-encoding"][value="gsm7"]');
@@ -10957,20 +10965,23 @@ window.openSmsComposer = function() {
   const tug = document.getElementById('sms-target-user-group');
   const activeUser = currentUser || window.currentUser;
   if (activeUser && activeUser.role === 'admin') {
-    tug.style.display = 'block';
+    if (tug) tug.style.display = 'block';
     populateSmsUserSelector();
   } else {
-    tug.style.display = 'none';
+    if (tug) tug.style.display = 'none';
   }
 
-  document.getElementById('modal-compose-sms').style.display = 'flex';
   if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
+};
+
+window.openSmsComposer = function() {
+  switchView('view-sms-new');
 };
 
 window.closeSmsComposer = function() {
   const overlay = document.getElementById('sms-submitting-overlay');
   if (overlay) overlay.style.display = 'none';
-  document.getElementById('modal-compose-sms').style.display = 'none';
+  switchView('view-sms');
 };
 
 let smsAvailableUsers = [];
@@ -10993,6 +11004,25 @@ async function populateSmsUserSelector() {
 }
 
 window.onSmsTargetUserChange = function() {
+  const sel = document.getElementById('sms-target-user');
+  const pill = document.getElementById('sms-target-balance-pill');
+  if (sel && pill) {
+    if (sel.value && smsAvailableUsers.length > 0) {
+      const u = smsAvailableUsers.find(x => Number(x.id) === Number(sel.value));
+      if (u) {
+        const bal = u.credits_gsm_sms_domestic || 0;
+        pill.textContent = `Wallet: ${bal.toLocaleString()} SMS credits`;
+        pill.style.background = '#dcfce7';
+        pill.style.color = '#15803d';
+        pill.style.borderColor = '#86efac';
+      }
+    } else {
+      pill.textContent = 'Select Account to Verify Wallet';
+      pill.style.background = '#e0e7ff';
+      pill.style.color = '#3730a3';
+      pill.style.borderColor = '#c7d2fe';
+    }
+  }
   updateSmsCreditsPreview();
 };
 
@@ -11063,6 +11093,17 @@ window.onSmsMessageInput = function() {
     if (warning) { warnEl.textContent = warning; warnEl.style.display = 'inline'; }
     else { warnEl.style.display = 'none'; }
   }
+
+  // Update live mobile phone screen preview
+  const phoneText = document.getElementById('sms-phone-preview-text');
+  if (phoneText) {
+    phoneText.textContent = msg || 'Your SMS broadcast message will appear here in real time as you compose...';
+  }
+  const phoneMeta = document.getElementById('sms-phone-preview-meta');
+  if (phoneMeta) {
+    phoneMeta.textContent = `${effectiveLen} chars • ${parts} part${parts > 1 ? 's' : ''} • ${isUnicode ? 'Unicode' : 'GSM-7'}`;
+  }
+
   updateSmsCreditsPreview();
 };
 
