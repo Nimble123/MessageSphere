@@ -4068,8 +4068,19 @@ function renderCampaignsTable() {
           </span>
         </td>
         <td>
-          <div style="max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:0.82rem;" title="${escapeHtml(c.message_text)}">
-            ${escapeHtml(c.message_text)}
+          <div style="max-width:320px;min-width:220px;font-size:0.82rem;color:#1e293b;line-height:1.45;word-break:break-word;">
+            <div id="camp-msg-preview-${c.id}" style="max-height:48px;overflow:hidden;transition:max-height 0.2s ease;white-space:pre-wrap;font-family:inherit;">${escapeHtml(c.message_text || '—')}</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap;">
+              ${c.message_text && c.message_text.length > 50 ? `
+                <button type="button" onclick="window.toggleMessageExpand(event, ${c.id})" id="camp-msg-btn-${c.id}" style="border:none;background:none;padding:0;font-size:0.72rem;color:#4f46e5;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:2px;">
+                  <span>Show More ▼</span>
+                </button>
+                <span style="color:#cbd5e1;font-size:0.7rem;">•</span>
+              ` : ''}
+              <button type="button" onclick="openCampaignDetailModal(${c.id})" style="border:none;background:none;padding:0;font-size:0.72rem;color:#0284c7;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:3px;" title="View full campaign details">
+                <i data-lucide="eye" style="width:11px;height:11px;"></i> Full Details
+              </button>
+            </div>
           </div>
           ${(() => {
             let attCount = 0;
@@ -4078,9 +4089,9 @@ function renderCampaignsTable() {
               try { attCount = JSON.parse(c.attachments).length; } catch(e) {}
             }
             if (attCount > 0) {
-              return `<span style="font-size:0.73rem;display:inline-flex;align-items:center;gap:3px;margin-top:2px;color:#16a34a;font-weight:700;"><i data-lucide="paperclip" style="width:11px;height:11px;"></i> ${attCount} File${attCount > 1 ? 's' : ''} Attached</span>`;
+              return `<span style="font-size:0.73rem;display:inline-flex;align-items:center;gap:3px;margin-top:4px;color:#16a34a;font-weight:700;"><i data-lucide="paperclip" style="width:11px;height:11px;"></i> ${attCount} File${attCount > 1 ? 's' : ''} Attached</span>`;
             } else if (c.attachment_url) {
-              return `<a href="${c.attachment_url}" target="_blank" style="font-size:0.73rem;display:inline-flex;align-items:center;gap:3px;margin-top:2px;color:var(--primary);"><i data-lucide="paperclip" style="width:11px;height:11px;"></i> View Media</a>`;
+              return `<a href="${c.attachment_url}" target="_blank" style="font-size:0.73rem;display:inline-flex;align-items:center;gap:3px;margin-top:4px;color:var(--primary);"><i data-lucide="paperclip" style="width:11px;height:11px;"></i> View Media</a>`;
             }
             return '';
           })()}
@@ -4102,6 +4113,23 @@ function renderCampaignsTable() {
 
   if (window.lucide) lucide.createIcons({ root: tbody });
 }
+
+window.toggleMessageExpand = function(event, id) {
+  if (event) event.stopPropagation();
+  const el = document.getElementById(`camp-msg-preview-${id}`);
+  const btn = document.getElementById(`camp-msg-btn-${id}`);
+  if (!el || !btn) return;
+  const isExpanded = el.style.maxHeight === 'none' || el.dataset.expanded === 'true';
+  if (isExpanded) {
+    el.style.maxHeight = '48px';
+    el.dataset.expanded = 'false';
+    btn.innerHTML = '<span>Show More ▼</span>';
+  } else {
+    el.style.maxHeight = 'none';
+    el.dataset.expanded = 'true';
+    btn.innerHTML = '<span>Show Less ▲</span>';
+  }
+};
 
 window.exportFilteredCampaignsCsv = function() {
   const rows = window.currentFilteredCampaigns || allCampaigns || [];
@@ -10813,8 +10841,22 @@ function renderSmsCampaignsTable() {
         <a href="javascript:void(0)" onclick="openCampaignDetailModal(${c.id})" style="font-weight:700;color:var(--slate-800);text-decoration:none;font-size:0.88rem;display:block;">
           ${escHtml(c.title || 'SMS Broadcast #' + c.id)}
         </a>
-        <div style="font-size:0.72rem;color:var(--slate-500);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px;" title="${escHtml(c.message_text || '')}">
-          ${c.is_unicode ? '<span style="color:#d97706;font-weight:700;">[Unicode]</span> ' : ''}${escHtml(c.message_text || '—')}
+        <div style="max-width:320px;min-width:220px;margin-top:4px;">
+          ${c.is_unicode ? '<span style="color:#d97706;font-size:0.7rem;font-weight:800;background:#fef3c7;padding:1px 6px;border-radius:4px;margin-bottom:3px;display:inline-block;">Unicode (Regional/Hindi)</span>' : ''}
+          <div id="sms-msg-preview-${c.id}" style="font-size:0.78rem;color:#334155;line-height:1.45;max-height:44px;overflow:hidden;transition:max-height 0.2s ease;white-space:pre-wrap;word-break:break-word;">
+            ${escHtml(c.message_text || '—')}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap;">
+            ${c.message_text && c.message_text.length > 50 ? `
+              <button type="button" onclick="window.toggleSmsMessageExpand(event, ${c.id})" id="sms-msg-btn-${c.id}" style="border:none;background:none;padding:0;font-size:0.72rem;color:#4f46e5;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:2px;">
+                <span>Show More ▼</span>
+              </button>
+              <span style="color:#cbd5e1;font-size:0.7rem;">•</span>
+            ` : ''}
+            <button type="button" onclick="openCampaignDetailModal(${c.id})" style="border:none;background:none;padding:0;font-size:0.72rem;color:#0284c7;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:3px;" title="View full campaign details">
+              <i data-lucide="eye" style="width:11px;height:11px;"></i> Full Details
+            </button>
+          </div>
         </div>
       </td>
       <td>
@@ -10846,6 +10888,23 @@ function renderSmsCampaignsTable() {
 
   if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
 }
+
+window.toggleSmsMessageExpand = function(event, id) {
+  if (event) event.stopPropagation();
+  const el = document.getElementById(`sms-msg-preview-${id}`);
+  const btn = document.getElementById(`sms-msg-btn-${id}`);
+  if (!el || !btn) return;
+  const isExpanded = el.style.maxHeight === 'none' || el.dataset.expanded === 'true';
+  if (isExpanded) {
+    el.style.maxHeight = '44px';
+    el.dataset.expanded = 'false';
+    btn.innerHTML = '<span>Show More ▼</span>';
+  } else {
+    el.style.maxHeight = 'none';
+    el.dataset.expanded = 'true';
+    btn.innerHTML = '<span>Show Less ▲</span>';
+  }
+};
 
 // --- Delete/Cancel ---
 window.deleteSmsCampaign = async function(id) {
