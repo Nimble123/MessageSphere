@@ -1236,27 +1236,39 @@ async function loadLedgerTransactions() {
       const amountSign = isCredit ? '+' : '-';
       const rawType = (tx.credit_type || 'normal').toLowerCase();
       const rawReason = String(tx.reason || 'Manual Adjustment');
-      let channelLabel = 'WA Text & GSM SMS';
-      if (rawType === 'normal') {
+      let channelLabel = 'Normal WhatsApp Text';
+      let channelIcon = 'message-square';
+      if (rawType === 'gsm_sms') {
+        channelLabel = 'GSM Bulk SMS';
+        channelIcon = 'radio';
+      } else if (rawType === 'normal') {
         if (/sms\b/i.test(rawReason)) {
-          channelLabel = '📱 GSM Bulk SMS';
-        } else if (/whatsapp\b/i.test(rawReason)) {
-          channelLabel = '💬 WhatsApp Plain Text';
+          channelLabel = 'GSM Bulk SMS';
+          channelIcon = 'radio';
         } else {
-          channelLabel = '💬 WA Text & GSM SMS';
+          channelLabel = 'Normal WhatsApp Text';
+          channelIcon = 'message-square';
         }
       } else if (rawType === 'dp') {
-        channelLabel = '🖼️ WhatsApp DP Media';
+        channelLabel = 'WhatsApp DP (Media)';
+        channelIcon = 'image';
       } else if (rawType === 'cta') {
-        channelLabel = '🔘 WhatsApp CTA Buttons';
+        channelLabel = 'WhatsApp CTA (Buttons)';
+        channelIcon = 'mouse-pointer-click';
       } else if (rawType === 'dp_cta') {
-        channelLabel = '✨ WhatsApp DP + CTA';
+        channelLabel = 'WhatsApp DP + CTA Combo';
+        channelIcon = 'layers';
       } else if (rawType === 'own_number') {
-        channelLabel = '📱 WhatsApp Own SIM';
+        channelLabel = 'WhatsApp Own SIM';
+        channelIcon = 'smartphone';
       } else {
         channelLabel = rawType.toUpperCase();
+        channelIcon = 'credit-card';
       }
-      const destLabel = tx.destination === 'international' ? '🌐 International' : '🇮🇳 Domestic';
+
+      const isIntl = tx.destination === 'international';
+      const destLabel = isIntl ? 'International' : 'Domestic';
+      const destIcon = isIntl ? 'globe-2' : 'map-pin';
 
       // Parse campaign #ID in reason to make it clickable
       const escapedReason = escapeHtml(rawReason);
@@ -1281,8 +1293,8 @@ async function loadLedgerTransactions() {
               ${isCredit ? 'Credit In (+)' : 'Debit Out (-)'}
             </span>
           </td>
-          <td><strong style="font-size:0.82rem;color:#1e293b;">${escapeHtml(channelLabel)}</strong></td>
-          <td><span style="font-size:0.78rem;color:var(--slate-600);">${destLabel}</span></td>
+          <td><strong style="font-size:0.82rem;color:#1e293b;display:inline-flex;align-items:center;gap:5px;"><i data-lucide="${channelIcon}" style="width:13px;height:13px;color:#4f46e5;"></i> ${escapeHtml(channelLabel)}</strong></td>
+          <td><span style="font-size:0.78rem;color:var(--slate-600);display:inline-flex;align-items:center;gap:4px;"><i data-lucide="${destIcon}" style="width:12px;height:12px;color:#64748b;"></i> ${destLabel}</span></td>
           <td style="text-align:right;">
             <strong style="color:${amountColor};font-size:0.92rem;font-family:monospace;">${amountSign}${Math.abs(tx.amount).toLocaleString()}</strong>
           </td>
@@ -5190,6 +5202,9 @@ window.setAllocMode = function(mode) {
   const reasonInput = document.getElementById('alloc-reason');
   const commercialSec = document.getElementById('alloc-commercial-section');
 
+  const rateFields = document.querySelectorAll('.alloc-rate-field');
+  const subtotalPills = document.querySelectorAll('[id^="subtotal-"]');
+
   if (allocCurrentMode === 'debit') {
     if (btnCredit) {
       btnCredit.style.background = 'transparent';
@@ -5210,6 +5225,8 @@ window.setAllocMode = function(mode) {
       reasonInput.value = 'Credit deduction / correction by admin';
     }
     if (commercialSec) commercialSec.style.display = 'none';
+    rateFields.forEach(el => el.style.display = 'none');
+    subtotalPills.forEach(el => el.style.display = 'none');
   } else {
     if (btnCredit) {
       btnCredit.style.background = '#10b981';
@@ -5230,7 +5247,59 @@ window.setAllocMode = function(mode) {
       reasonInput.value = 'Manual credit allotment by admin';
     }
     if (commercialSec) commercialSec.style.display = 'block';
+    rateFields.forEach(el => el.style.display = '');
+    subtotalPills.forEach(el => el.style.display = '');
   }
+};
+
+const DEFAULT_CHANNEL_RATES = {
+  'gsm_sms-domestic': 0.1200,
+  'normal-domestic': 0.1500,
+  'dp-domestic': 0.2800,
+  'cta-domestic': 0.2400,
+  'dp_cta-domestic': 0.3500,
+  'own_number-domestic': 0.0800,
+  'gsm_sms-international': 1.5000,
+  'normal-international': 2.0000,
+  'dp-international': 2.5000,
+  'cta-international': 2.5000,
+  'dp_cta-international': 3.0000,
+  'own_number-international': 1.2000
+};
+
+window.applyChannelRates = function(ratesMap = {}) {
+  const keys = [
+    'gsm_sms-domestic', 'normal-domestic', 'dp-domestic', 'cta-domestic', 'dp_cta-domestic', 'own_number-domestic',
+    'gsm_sms-international', 'normal-international', 'dp-international', 'cta-international', 'dp_cta-international', 'own_number-international'
+  ];
+  keys.forEach(k => {
+    const rateInp = document.getElementById(`alloc-rate-${k}`);
+    if (rateInp) {
+      const dbKey = k.replace(/-/g, '_');
+      const val = (ratesMap && ratesMap[dbKey] !== undefined && ratesMap[dbKey] !== null) 
+        ? parseFloat(ratesMap[dbKey]) 
+        : DEFAULT_CHANNEL_RATES[k];
+      rateInp.value = Number(val).toFixed(4);
+    }
+  });
+};
+
+window.loadTargetUserRates = async function(userId) {
+  if (!userId) {
+    window.applyChannelRates({});
+    return;
+  }
+  try {
+    const res = await apiFetch(`/users/${userId}/360`);
+    if (res && res.credits && res.credits.rates) {
+      window.applyChannelRates(res.credits.rates);
+    } else {
+      window.applyChannelRates({});
+    }
+  } catch(e) {
+    window.applyChannelRates({});
+  }
+  window.calculateAllocKhata();
 };
 
 window.onAllocPaymentStatusChange = function() {
@@ -5248,14 +5317,27 @@ window.calculateAllocKhata = function() {
     'gsm_sms-international', 'normal-international', 'dp-international', 'cta-international', 'dp_cta-international', 'own_number-international'
   ];
   let totalCredits = 0;
+  let totalBill = 0;
+
   keys.forEach(k => {
-    const inp = document.getElementById(`alloc-${k}`);
-    totalCredits += parseInt(inp ? inp.value : 0, 10) || 0;
+    const qtyInp = document.getElementById(`alloc-${k}`);
+    const rateInp = document.getElementById(`alloc-rate-${k}`);
+    const subtotalEl = document.getElementById(`subtotal-${k}`);
+
+    const qty = parseInt(qtyInp ? qtyInp.value : 0, 10) || 0;
+    const defRate = DEFAULT_CHANNEL_RATES[k] || 0.1500;
+    const rate = parseFloat(rateInp && rateInp.value !== '' ? rateInp.value : defRate) || 0;
+    const channelCost = Math.round((qty * rate) * 100) / 100;
+
+    if (subtotalEl) {
+      subtotalEl.textContent = `₹${channelCost.toFixed(2)}`;
+    }
+
+    totalCredits += qty;
+    totalBill += channelCost;
   });
 
-  const rateInp = document.getElementById('alloc-rate-per-credit');
-  const rate = parseFloat(rateInp && rateInp.value !== '' ? rateInp.value : 0.150) || 0;
-  const totalBill = totalCredits * rate;
+  totalBill = Math.round(totalBill * 100) / 100;
 
   const totalBillDisplay = document.getElementById('alloc-total-bill-display');
   if (totalBillDisplay) {
@@ -5272,14 +5354,14 @@ window.calculateAllocKhata = function() {
   } else {
     received = 0;
   }
-  const baki = Math.max(0, totalBill - received);
+  const due = Math.max(0, Math.round((totalBill - received) * 100) / 100);
 
   const calcCr = document.getElementById('alloc-calc-credits');
   if (calcCr) calcCr.textContent = totalCredits.toLocaleString();
   const calcRec = document.getElementById('alloc-calc-received');
   if (calcRec) calcRec.textContent = `₹${received.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const calcBaki = document.getElementById('alloc-calc-baki');
-  if (calcBaki) calcBaki.textContent = `₹${baki.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (calcBaki) calcBaki.textContent = `₹${due.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
 window.openAllotCreditsModal = async function(userId, email) {
@@ -5291,6 +5373,7 @@ window.openAllotCreditsModal = async function(userId, email) {
     modalAllotUserId.value = userId;
     modalAllotTitle.textContent = `Allot Credits for ${email}`;
     if (userGroup) userGroup.style.display = 'none';
+    await window.loadTargetUserRates(userId);
   } else {
     modalAllotUserId.value = '';
     modalAllotTitle.textContent = 'Allot / Transfer Credits to Client';
@@ -5308,18 +5391,25 @@ window.openAllotCreditsModal = async function(userId, email) {
         });
       } catch(e) {}
     }
+    window.applyChannelRates({});
   }
 
-  const inputs = modalAllotCredits.querySelectorAll('input[type="number"]');
-  inputs.forEach(inp => {
-    if (inp.id === 'alloc-rate-per-credit') inp.value = '0.150';
-    else inp.value = '';
+  // Clear quantity inputs
+  const keys = [
+    'gsm_sms-domestic', 'normal-domestic', 'dp-domestic', 'cta-domestic', 'dp_cta-domestic', 'own_number-domestic',
+    'gsm_sms-international', 'normal-international', 'dp-international', 'cta-international', 'dp_cta-international', 'own_number-international'
+  ];
+  keys.forEach(k => {
+    const qInp = document.getElementById(`alloc-${k}`);
+    if (qInp) qInp.value = '';
   });
 
   const pStatusSelect = document.getElementById('alloc-payment-status');
   if (pStatusSelect) pStatusSelect.value = 'unpaid';
   const partialGrp = document.getElementById('alloc-partial-amount-group');
   if (partialGrp) partialGrp.style.display = 'none';
+  const paidInp = document.getElementById('alloc-paid-amount');
+  if (paidInp) paidInp.value = '';
 
   window.calculateAllocKhata();
 
@@ -5327,10 +5417,16 @@ window.openAllotCreditsModal = async function(userId, email) {
   if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
 };
 
-window.onAllotUserSelectChange = function() {
+window.onAllotUserSelectChange = async function() {
   const userSelect = document.getElementById('modal-allot-user-select');
   if (userSelect) {
     modalAllotUserId.value = userSelect.value;
+    if (userSelect.value) {
+      await window.loadTargetUserRates(userSelect.value);
+    } else {
+      window.applyChannelRates({});
+      window.calculateAllocKhata();
+    }
   }
 };
 
@@ -5343,6 +5439,7 @@ if (btnModalSaveCredits) {
     }
 
     const updates = {};
+    const rates = {};
     const keys = [
       'gsm_sms-domestic', 'normal-domestic', 'dp-domestic', 'cta-domestic', 'dp_cta-domestic', 'own_number-domestic',
       'gsm_sms-international', 'normal-international', 'dp-international', 'cta-international', 'dp_cta-international', 'own_number-international'
@@ -5353,6 +5450,10 @@ if (btnModalSaveCredits) {
       const val = parseInt(inp ? inp.value : 0, 10) || 0;
       if (val > 0) {
         updates[k.replace(/-/g, '_')] = val;
+      }
+      const rateInp = document.getElementById(`alloc-rate-${k}`);
+      if (rateInp && rateInp.value !== '') {
+        rates[k.replace(/-/g, '_')] = parseFloat(rateInp.value);
       }
     });
 
@@ -5369,7 +5470,6 @@ if (btnModalSaveCredits) {
       const reasonInput = document.getElementById('alloc-reason');
       const allocReason = (reasonInput && reasonInput.value.trim()) ? reasonInput.value.trim() : (mode === 'debit' ? 'Credit deduction by admin' : 'Manual credit allotment by admin');
       
-      const ratePerCredit = parseFloat(document.getElementById('alloc-rate-per-credit')?.value) || 0.150;
       const paymentStatus = document.getElementById('alloc-payment-status')?.value || 'unpaid';
       const paidAmount = parseFloat(document.getElementById('alloc-paid-amount')?.value) || 0;
       const totalBillEl = document.getElementById('alloc-total-bill-display');
@@ -5379,9 +5479,9 @@ if (btnModalSaveCredits) {
         method: 'POST',
         body: JSON.stringify({ 
           updates, 
+          rates,
           reason: allocReason, 
           mode,
-          rate_per_credit: ratePerCredit,
           payment_status: paymentStatus,
           paid_amount: paidAmount,
           total_bill: totalBill
@@ -8955,11 +9055,11 @@ function renderBillingOrdersTable() {
 
     let pBadgeHtml = '';
     if (dueAmount <= 0 && totalBill > 0) {
-      pBadgeHtml = `<span class="status-badge" style="background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-weight:700;font-size:0.7rem;">PAID (CLEAR)</span>`;
+      pBadgeHtml = `<span class="status-badge" style="background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-weight:700;font-size:0.7rem;">PAID (SETTLED)</span>`;
     } else if (paidAmount > 0 && dueAmount > 0) {
-      pBadgeHtml = `<span class="status-badge" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;font-weight:700;font-size:0.7rem;">PARTIAL (₹${dueAmount.toLocaleString()} BAKI)</span>`;
+      pBadgeHtml = `<span class="status-badge" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;font-weight:700;font-size:0.7rem;">PARTIAL (₹${dueAmount.toLocaleString()} DUE)</span>`;
     } else {
-      pBadgeHtml = `<span class="status-badge" style="background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;font-weight:700;font-size:0.7rem;">DUE (UNPAID)</span>`;
+      pBadgeHtml = `<span class="status-badge" style="background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;font-weight:700;font-size:0.7rem;">UNPAID (FULL DUE)</span>`;
     }
 
     const ratePerCr = parseFloat(ord.rate_per_credit) || (totalBill > 0 && ord.credits_requested ? (totalBill / ord.credits_requested) : 0.150);
@@ -8969,7 +9069,7 @@ function renderBillingOrdersTable() {
     let actionBtns = [];
     if (canManageKhata) {
       actionBtns.push(`
-        <button class="btn-action" onclick="openRecordPaymentModal(${ord.id})" style="padding:3px 8px;font-size:0.72rem;background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;font-weight:700;display:inline-flex;align-items:center;gap:3px;" title="Record payment or clear Khata">
+        <button class="btn-action" onclick="openRecordPaymentModal(${ord.id})" style="padding:3px 8px;font-size:0.72rem;background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;font-weight:700;display:inline-flex;align-items:center;gap:3px;" title="Record payment or settle invoice">
           <i data-lucide="hand-coins" style="width:12px;height:12px;"></i> Settle ₹
         </button>
       `);

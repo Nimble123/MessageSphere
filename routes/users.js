@@ -41,7 +41,7 @@ router.get('/', authenticate, requireRoles('admin', 'reseller'), async (req, res
     // Fetch credits for these users
     const userIds = userList.map(u => u.id);
     const creditsResult = await query(
-      `SELECT user_id, credit_type, destination, balance FROM user_credits WHERE user_id = ANY($1::int[])`,
+      `SELECT user_id, credit_type, destination, balance, rate_inr FROM user_credits WHERE user_id = ANY($1::int[])`,
       [userIds]
     );
 
@@ -49,6 +49,7 @@ router.get('/', authenticate, requireRoles('admin', 'reseller'), async (req, res
     creditsResult.rows.forEach(r => {
       if (!creditsMap[r.user_id]) creditsMap[r.user_id] = {};
       creditsMap[r.user_id][`credits_${r.credit_type}_${r.destination}`] = parseInt(r.balance, 10);
+      creditsMap[r.user_id][`rate_${r.credit_type}_${r.destination}`] = parseFloat(r.rate_inr) || 0.1500;
     });
 
     const response = userList.map(u => ({
@@ -111,7 +112,7 @@ router.get('/:id/360', authenticate, async (req, res) => {
 
     // 2. Credits breakdown
     const creditsResult = await query(`
-      SELECT credit_type, destination, balance
+      SELECT credit_type, destination, balance, rate_inr
       FROM user_credits
       WHERE user_id = $1
       ORDER BY destination, credit_type
@@ -120,9 +121,11 @@ router.get('/:id/360', authenticate, async (req, res) => {
     let totalDomestic = 0;
     let totalInternational = 0;
     const creditBalances = {};
+    const creditRates = {};
     creditsResult.rows.forEach(r => {
       const bal = parseInt(r.balance, 10) || 0;
       creditBalances[`${r.credit_type}_${r.destination}`] = bal;
+      creditRates[`${r.credit_type}_${r.destination}`] = parseFloat(r.rate_inr) || 0.1500;
       if (r.destination === 'domestic') totalDomestic += bal;
       else if (r.destination === 'international') totalInternational += bal;
     });
@@ -197,6 +200,7 @@ router.get('/:id/360', authenticate, async (req, res) => {
       },
       credits: {
         balances: creditBalances,
+        rates: creditRates,
         totalDomestic,
         totalInternational,
         totalBalance: totalDomestic + totalInternational
@@ -478,33 +482,70 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
       }
     }
 
-    // Commercial Khata Billing: create invoice record in credit_requests for credit allotments
+    const incomingRates = req.body.rates || {};
+
+    // Commercial Billing: create invoice record in credit_requests for credit allotments with itemized channel rates
     if (mode !== 'debit') {
       let totalAllotted = 0;
+      let totalBill = 0;
       let primaryType = 'gsm_sms';
       let primaryDest = 'domestic';
+      const channelRatesBreakdown = {};
 
       for (const [key, rawVal] of Object.entries(updates)) {
         const val = parseInt(rawVal, 10) || 0;
         if (val > 0) {
           totalAllotted += val;
+          let dest = 'domestic';
+          let cType = '';
           if (key.endsWith('_international')) {
-            primaryDest = 'international';
-            primaryType = key.replace(/_international$/, '');
+            dest = 'international';
+            cType = key.replace(/_international$/, '');
           } else {
-            primaryDest = 'domestic';
-            primaryType = key.replace(/_domestic$/, '');
+            dest = 'domestic';
+            cType = key.replace(/_domestic$/, '');
           }
+
+          primaryDest = dest;
+          primaryType = cType;
+
+          // Get channel rate (either incoming custom rate or user's existing rate or default)
+          let chRate = 0.1500;
+          if (incomingRates[key] !== undefined && incomingRates[key] !== '') {
+            chRate = parseFloat(incomingRates[key]) || 0.1500;
+          } else {
+            const chRateRes = await client.query(
+              `SELECT rate_inr FROM user_credits WHERE user_id = $1 AND credit_type = $2 AND destination = $3`,
+              [targetId, cType, dest]
+            );
+            if (chRateRes.rows.length > 0 && chRateRes.rows[0].rate_inr !== null) {
+              chRate = parseFloat(chRateRes.rows[0].rate_inr);
+            }
+          }
+
+          // Persist user's custom rate for this channel
+          await client.query(`
+            UPDATE user_credits 
+            SET rate_inr = $1 
+            WHERE user_id = $2 AND credit_type = $3 AND destination = $4
+          `, [chRate, targetId, cType, dest]);
+
+          const channelCost = Math.round((val * chRate) * 100) / 100;
+          totalBill += channelCost;
+          channelRatesBreakdown[key] = {
+            credits: val,
+            rate: chRate,
+            cost: channelCost
+          };
         }
       }
 
       if (totalAllotted > 0) {
-        const ratePerCredit = req.body.rate_per_credit !== undefined && req.body.rate_per_credit !== '' 
-          ? parseFloat(req.body.rate_per_credit) 
-          : 0.1500;
-        const totalBill = req.body.total_bill !== undefined && req.body.total_bill !== ''
-          ? parseFloat(req.body.total_bill)
-          : (totalAllotted * ratePerCredit);
+        if (req.body.total_bill !== undefined && req.body.total_bill !== '') {
+          totalBill = parseFloat(req.body.total_bill) || totalBill;
+        }
+
+        const avgRate = totalAllotted > 0 ? (totalBill / totalAllotted) : 0.1500;
         
         let paymentStatus = (req.body.payment_status || 'unpaid').toLowerCase();
         let paidAmount = 0.00;
@@ -527,8 +568,8 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
 
         await client.query(`
           INSERT INTO credit_requests 
-            (user_id, package_name, credits_requested, credit_type, destination, amount_inr, rate_per_credit, paid_amount, payment_status, utr_number, status, billing_type, payment_notes, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Approved', 'postpaid_credit', $11, CURRENT_TIMESTAMP)
+            (user_id, package_name, credits_requested, credit_type, destination, amount_inr, rate_per_credit, paid_amount, payment_status, utr_number, status, billing_type, payment_notes, channel_rates, created_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Approved', 'postpaid_credit', $11, $12::jsonb, CURRENT_TIMESTAMP)
         `, [
           targetId,
           `Credit Allotment (${req.user.role === 'admin' ? 'Super Admin' : 'Reseller'})`,
@@ -536,11 +577,12 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
           primaryType,
           primaryDest,
           totalBill,
-          ratePerCredit,
+          avgRate,
           paidAmount,
           paymentStatus,
           invNumber,
-          notes
+          notes,
+          JSON.stringify(channelRatesBreakdown)
         ]);
       }
     }

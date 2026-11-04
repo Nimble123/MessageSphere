@@ -304,7 +304,22 @@ async function initDB() {
         ADD COLUMN IF NOT EXISTS billing_type VARCHAR(20) DEFAULT 'postpaid_credit',
         ADD COLUMN IF NOT EXISTS payment_notes TEXT,
         ADD COLUMN IF NOT EXISTS due_date DATE,
-        ADD COLUMN IF NOT EXISTS payment_history JSONB DEFAULT '[]'::jsonb;
+        ADD COLUMN IF NOT EXISTS payment_history JSONB DEFAULT '[]'::jsonb,
+        ADD COLUMN IF NOT EXISTS channel_rates JSONB DEFAULT '{}'::jsonb;
+    `);
+    await client.query(`ALTER TABLE user_credits ADD COLUMN IF NOT EXISTS rate_inr NUMERIC(10, 4) DEFAULT 0.1500;`);
+    await client.query(`
+      UPDATE user_credits SET rate_inr = 0.1200 WHERE credit_type = 'gsm_sms' AND destination = 'domestic' AND (rate_inr IS NULL OR rate_inr = 0.1500);
+      UPDATE user_credits SET rate_inr = 0.2800 WHERE credit_type = 'dp' AND destination = 'domestic' AND (rate_inr IS NULL OR rate_inr = 0.1500);
+      UPDATE user_credits SET rate_inr = 0.2400 WHERE credit_type = 'cta' AND destination = 'domestic' AND (rate_inr IS NULL OR rate_inr = 0.1500);
+      UPDATE user_credits SET rate_inr = 0.3500 WHERE credit_type = 'dp_cta' AND destination = 'domestic' AND (rate_inr IS NULL OR rate_inr = 0.1500);
+      UPDATE user_credits SET rate_inr = 0.0800 WHERE credit_type = 'own_number' AND destination = 'domestic' AND (rate_inr IS NULL OR rate_inr = 0.1500);
+      UPDATE user_credits SET rate_inr = 1.5000 WHERE credit_type = 'gsm_sms' AND destination = 'international' AND (rate_inr IS NULL OR rate_inr = 0.1500);
+      UPDATE user_credits SET rate_inr = 2.0000 WHERE credit_type = 'normal' AND destination = 'international' AND (rate_inr IS NULL OR rate_inr = 0.1500);
+      UPDATE user_credits SET rate_inr = 2.5000 WHERE credit_type = 'dp' AND destination = 'international' AND (rate_inr IS NULL OR rate_inr = 0.1500);
+      UPDATE user_credits SET rate_inr = 2.5000 WHERE credit_type = 'cta' AND destination = 'international' AND (rate_inr IS NULL OR rate_inr = 0.1500);
+      UPDATE user_credits SET rate_inr = 3.0000 WHERE credit_type = 'dp_cta' AND destination = 'international' AND (rate_inr IS NULL OR rate_inr = 0.1500);
+      UPDATE user_credits SET rate_inr = 1.2000 WHERE credit_type = 'own_number' AND destination = 'international' AND (rate_inr IS NULL OR rate_inr = 0.1500);
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_credit_requests_user ON credit_requests(user_id, status);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_credit_requests_payment ON credit_requests(payment_status, status);`);
