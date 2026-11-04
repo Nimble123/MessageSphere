@@ -4131,6 +4131,17 @@
 
                     <textarea id="sms-message" class="form-input" rows="4" placeholder="Type or paste your SMS message here..." required maxlength="1600" oninput="onSmsMessageInput()" style="font-family: inherit; font-size: 0.9rem; line-height: 1.5; padding: 12px 14px; border-radius: 8px; resize: vertical;"></textarea>
 
+                    <!-- Non-GSM Character Alert & 1-Click Clean to GSM-7 -->
+                    <div id="sms-unicode-hint" style="display: none; margin-top: 8px; background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 8px; padding: 9px 12px; font-size: 0.78rem; color: #92400e; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+                      <div style="display: flex; align-items: center; gap: 7px; flex: 1;">
+                        <i data-lucide="alert-triangle" style="width: 16px; height: 16px; color: #d97706; flex-shrink: 0;"></i>
+                        <span id="sms-unicode-hint-text">Special non-GSM characters detected. Telecom carriers will bill this as Unicode (75 chars/part).</span>
+                      </div>
+                      <button type="button" class="btn-action" onclick="cleanSmsTextToGsm()" style="padding: 4px 10px; font-size: 0.73rem; background: #d97706; color: #ffffff; font-weight: 700; white-space: nowrap; border-radius: 6px; display: inline-flex; align-items: center; gap: 5px; border: none; cursor: pointer;">
+                        <i data-lucide="sparkles" style="width: 12px; height: 12px;"></i> Convert to GSM-7 (Save Credits)
+                      </button>
+                    </div>
+
                     <!-- GSM Metrics Telemetry Bar -->
                     <div style="margin-top: 8px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 14px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; font-size: 0.8rem; gap: 8px;">
                       <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
@@ -6617,6 +6628,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=1793774800001"></script>
+  <script src="app.js?v=1793775000001"></script>
 </body>
 </html>

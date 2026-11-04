@@ -10396,6 +10396,27 @@ window.onSmsMessageInput = function() {
   const msg = msgEl ? msgEl.value : '';
   const { effectiveLen, isUnicode, parts, warning, autoDetectedUnicode } = computeSmsMetrics(msg);
 
+  // Detect specific non-GSM characters causing Unicode
+  const nonGsmChars = [];
+  for (const ch of msg) {
+    if (!GSM7_REGEX.test(ch) && !nonGsmChars.includes(ch)) {
+      nonGsmChars.push(ch);
+    }
+  }
+
+  const hintEl = document.getElementById('sms-unicode-hint');
+  const hintTextEl = document.getElementById('sms-unicode-hint-text');
+  if (hintEl && hintTextEl) {
+    if (nonGsmChars.length > 0) {
+      hintEl.style.display = 'flex';
+      const formattedChars = nonGsmChars.map(c => `<code>${escapeHtml(c)}</code>`).join(' ');
+      hintTextEl.innerHTML = `Non-GSM characters detected: ${formattedChars}. In cellular GSM telecom, these characters force <strong>Unicode encoding (75 chars/part)</strong>.`;
+      if (window.lucide) lucide.createIcons();
+    } else {
+      hintEl.style.display = 'none';
+    }
+  }
+
   // If text has unicode characters, automatically reflect in manual selector state
   if (autoDetectedUnicode) {
     smsManualEncoding = 'unicode';
@@ -10437,6 +10458,32 @@ window.onSmsMessageInput = function() {
     else { warnEl.style.display = 'none'; }
   }
   updateSmsCreditsPreview();
+};
+
+window.cleanSmsTextToGsm = function() {
+  const textarea = document.getElementById('sms-message');
+  if (!textarea) return;
+  let text = textarea.value;
+  // Replace Rupee symbol with Rs.
+  text = text.replace(/₹/g, 'Rs.');
+  // Replace en-dash, em-dash with standard hyphen
+  text = text.replace(/[\u2013\u2014]/g, '-');
+  // Replace smart quotes with standard ASCII quotes
+  text = text.replace(/[\u201C\u201D\u201E\u201F]/g, '"');
+  text = text.replace(/[\u2018\u2019\u201A\u201B]/g, "'");
+  // Replace non-breaking spaces with normal space
+  text = text.replace(/\u00A0/g, ' ');
+  // Replace ellipsis
+  text = text.replace(/\u2026/g, '...');
+  
+  textarea.value = text;
+  smsManualEncoding = 'gsm7';
+  const gsmRadio = document.querySelector('input[name="sms-compose-encoding"][value="gsm7"]');
+  if (gsmRadio) gsmRadio.checked = true;
+  window.onSmsMessageInput();
+  if (window.showToast) {
+    showToast('success', 'Converted to GSM-7!', 'Replaced non-GSM symbols (₹ → Rs., – → -). Message is now GSM-7 (160 chars/part)!');
+  }
 };
 
 // --- Parse numbers from textarea ---
