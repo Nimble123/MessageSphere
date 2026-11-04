@@ -4068,14 +4068,14 @@ function renderCampaignsTable() {
           </span>
         </td>
         <td>
-          <div style="max-width:320px;min-width:220px;font-size:0.82rem;color:#1e293b;line-height:1.45;word-break:break-word;">
-            <div id="camp-msg-preview-${c.id}" style="max-height:48px;overflow:hidden;transition:max-height 0.2s ease;white-space:pre-wrap;font-family:inherit;">${escapeHtml(c.message_text || '—')}</div>
-            <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap;">
+          <div style="max-width:340px;min-width:220px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;margin-top:2px;">
+            <div id="camp-msg-preview-${c.id}" style="font-size:0.8rem;color:#334155;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;white-space:pre-wrap;">${escapeHtml(c.message_text || '—')}</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:5px;padding-top:4px;border-top:1px dashed #e2e8f0;font-size:0.72rem;">
               ${c.message_text && c.message_text.length > 50 ? `
                 <button type="button" onclick="window.toggleMessageExpand(event, ${c.id})" id="camp-msg-btn-${c.id}" style="border:none;background:none;padding:0;font-size:0.72rem;color:#4f46e5;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:2px;">
                   <span>Show More ▼</span>
                 </button>
-                <span style="color:#cbd5e1;font-size:0.7rem;">•</span>
+                <span style="color:#cbd5e1;">•</span>
               ` : ''}
               <button type="button" onclick="openCampaignDetailModal(${c.id})" style="border:none;background:none;padding:0;font-size:0.72rem;color:#0284c7;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:3px;" title="View full campaign details">
                 <i data-lucide="eye" style="width:11px;height:11px;"></i> Full Details
@@ -4119,13 +4119,15 @@ window.toggleMessageExpand = function(event, id) {
   const el = document.getElementById(`camp-msg-preview-${id}`);
   const btn = document.getElementById(`camp-msg-btn-${id}`);
   if (!el || !btn) return;
-  const isExpanded = el.style.maxHeight === 'none' || el.dataset.expanded === 'true';
+  const isExpanded = el.dataset.expanded === 'true';
   if (isExpanded) {
-    el.style.maxHeight = '48px';
+    el.style.display = '-webkit-box';
+    el.style.webkitLineClamp = '2';
     el.dataset.expanded = 'false';
     btn.innerHTML = '<span>Show More ▼</span>';
   } else {
-    el.style.maxHeight = 'none';
+    el.style.display = 'block';
+    el.style.webkitLineClamp = 'unset';
     el.dataset.expanded = 'true';
     btn.innerHTML = '<span>Show Less ▲</span>';
   }
@@ -10964,20 +10966,20 @@ function renderSmsCampaignsTable() {
         </a>
       </td>
       <td>
-        <a href="javascript:void(0)" onclick="openCampaignDetailModal(${c.id})" style="font-weight:700;color:var(--slate-800);text-decoration:none;font-size:0.88rem;display:block;">
+        <a href="javascript:void(0)" onclick="openCampaignDetailModal(${c.id})" style="font-weight:700;color:var(--slate-800);text-decoration:none;font-size:0.88rem;display:inline-block;margin-bottom:2px;">
           ${escHtml(c.title || 'SMS Broadcast #' + c.id)}
         </a>
-        <div style="max-width:320px;min-width:220px;margin-top:4px;">
-          ${c.is_unicode ? '<span style="color:#d97706;font-size:0.7rem;font-weight:800;background:#fef3c7;padding:1px 6px;border-radius:4px;margin-bottom:3px;display:inline-block;">Unicode (Regional/Hindi)</span>' : ''}
-          <div id="sms-msg-preview-${c.id}" style="font-size:0.78rem;color:#334155;line-height:1.45;max-height:44px;overflow:hidden;transition:max-height 0.2s ease;white-space:pre-wrap;word-break:break-word;">
+        <div style="max-width:340px;min-width:220px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;margin-top:3px;">
+          ${c.is_unicode ? '<span style="color:#b45309;font-size:0.68rem;font-weight:700;background:#fef3c7;padding:1px 6px;border-radius:4px;margin-bottom:4px;display:inline-block;border:1px solid #fde68a;">Unicode (Regional / Hindi)</span>' : ''}
+          <div id="sms-msg-preview-${c.id}" style="font-size:0.78rem;color:#334155;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;white-space:pre-wrap;">
             ${escHtml(c.message_text || '—')}
           </div>
-          <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:8px;margin-top:5px;padding-top:4px;border-top:1px dashed #e2e8f0;font-size:0.72rem;">
             ${c.message_text && c.message_text.length > 50 ? `
               <button type="button" onclick="window.toggleSmsMessageExpand(event, ${c.id})" id="sms-msg-btn-${c.id}" style="border:none;background:none;padding:0;font-size:0.72rem;color:#4f46e5;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:2px;">
                 <span>Show More ▼</span>
               </button>
-              <span style="color:#cbd5e1;font-size:0.7rem;">•</span>
+              <span style="color:#cbd5e1;">•</span>
             ` : ''}
             <button type="button" onclick="openCampaignDetailModal(${c.id})" style="border:none;background:none;padding:0;font-size:0.72rem;color:#0284c7;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:3px;" title="View full campaign details">
               <i data-lucide="eye" style="width:11px;height:11px;"></i> Full Details
@@ -11020,13 +11022,15 @@ window.toggleSmsMessageExpand = function(event, id) {
   const el = document.getElementById(`sms-msg-preview-${id}`);
   const btn = document.getElementById(`sms-msg-btn-${id}`);
   if (!el || !btn) return;
-  const isExpanded = el.style.maxHeight === 'none' || el.dataset.expanded === 'true';
+  const isExpanded = el.dataset.expanded === 'true';
   if (isExpanded) {
-    el.style.maxHeight = '44px';
+    el.style.display = '-webkit-box';
+    el.style.webkitLineClamp = '2';
     el.dataset.expanded = 'false';
     btn.innerHTML = '<span>Show More ▼</span>';
   } else {
-    el.style.maxHeight = 'none';
+    el.style.display = 'block';
+    el.style.webkitLineClamp = 'unset';
     el.dataset.expanded = 'true';
     btn.innerHTML = '<span>Show Less ▲</span>';
   }
