@@ -1258,7 +1258,15 @@ async function loadLedgerTransactions() {
       const amountBorder = isCredit ? '#bbf7d0' : '#fecaca';
       const amountSign = isCredit ? '+' : '-';
       const rawType = (tx.credit_type || 'normal').toLowerCase();
-      const rawReason = String(tx.reason || 'Manual Adjustment');
+      let cleanReason = String(tx.reason || 'Manual Adjustment');
+      if (!currentUser || currentUser.role !== 'admin') {
+        cleanReason = cleanReason
+          .replace(/Allotted by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Telecom Balance Allotment: ')
+          .replace(/Deduction by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Balance Adjustment: ')
+          .replace(/\bby reseller\b/gi, 'via Telecom Gateway')
+          .replace(/\[Created by [^\]]+ on behalf of account\]/gi, '');
+      }
+      const rawReason = cleanReason;
       let channelLabel = 'Normal WhatsApp Text';
       let channelIcon = 'message-square';
       if (rawType === 'gsm_sms') {
@@ -1327,7 +1335,7 @@ async function loadLedgerTransactions() {
             </div>
           </td>
           <td>
-            <span style="font-size:0.8rem;font-weight:600;color:var(--slate-700);">${escapeHtml(tx.counterparty_email || 'System')}</span>
+            <span style="font-size:0.8rem;font-weight:600;color:var(--slate-700);">${escapeHtml((!currentUser || currentUser.role !== 'admin') ? (isCredit ? 'Direct Telecom Platform' : 'Campaign Dispatcher') : (tx.counterparty_email || 'System'))}</span>
           </td>
           <td style="text-align:center;">
             ${voucherAction}
@@ -9411,10 +9419,21 @@ window.openRechargeReceiptModal = function(txId) {
 
   setTxt('receipt-tx-id', `MS-REC-${tx.id}`);
   setTxt('receipt-timestamp', new Date(tx.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
-  setTxt('receipt-account', tx.counterparty_email || currentUser?.email || 'MessageSphere Account');
+  let voucherNotes = tx.reason || 'Telecom credit allotment approved & verified';
+  let voucherAccount = currentUser?.email || tx.counterparty_email || 'MessageSphere Account';
+  if (currentUser && currentUser.role !== 'admin') {
+    voucherNotes = voucherNotes
+      .replace(/Allotted by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Telecom Balance Allotment: ')
+      .replace(/Deduction by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Balance Adjustment: ')
+      .replace(/\bby reseller\b/gi, 'via Telecom Gateway')
+      .replace(/\[Created by [^\]]+ on behalf of account\]/gi, '');
+    voucherAccount = currentUser?.email || 'MessageSphere Account';
+  }
+
+  setTxt('receipt-account', voucherAccount);
   setTxt('receipt-channel', `${(tx.credit_type || 'normal').toUpperCase()} (${tx.destination === 'international' ? 'International' : 'Domestic'})`);
   setTxt('receipt-amount', `+${credits.toLocaleString()}`);
-  setTxt('receipt-notes', tx.reason || 'Telecom credit allotment approved & verified');
+  setTxt('receipt-notes', voucherNotes);
 
   modal.style.display = 'flex';
   if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
@@ -10618,15 +10637,19 @@ window.openUser360Modal = async function(userId, evt) {
     document.getElementById('u360-company').innerHTML = user.companyName ? `<i data-lucide="building" style="width:13px;height:13px;display:inline;vertical-align:-1px;"></i> ${escapeHtml(user.companyName)}` : '';
 
     const resellerEl = document.getElementById('u360-reseller');
-    if (user.resellerEmail) {
-      resellerEl.style.display = 'inline-block';
-      resellerEl.innerHTML = `<i data-lucide="network" style="width:12px;height:12px;display:inline;vertical-align:-1px;"></i> Associated Reseller: <strong>${escapeHtml(user.resellerName || user.resellerEmail)}</strong> (${escapeHtml(user.resellerEmail)})`;
-    } else if (user.role === 'reseller') {
-      resellerEl.style.display = 'inline-block';
-      resellerEl.innerHTML = `<i data-lucide="award" style="width:12px;height:12px;display:inline;vertical-align:-1px;color:#7c3aed;"></i> Account Type: <strong>Reseller Partner Account</strong>`;
+    if (currentUser && currentUser.role === 'admin') {
+      if (user.resellerEmail) {
+        resellerEl.style.display = 'inline-block';
+        resellerEl.innerHTML = `<i data-lucide="network" style="width:12px;height:12px;display:inline;vertical-align:-1px;"></i> Associated Reseller: <strong>${escapeHtml(user.resellerName || user.resellerEmail)}</strong> (${escapeHtml(user.resellerEmail)})`;
+      } else if (user.role === 'reseller') {
+        resellerEl.style.display = 'inline-block';
+        resellerEl.innerHTML = `<i data-lucide="award" style="width:12px;height:12px;display:inline;vertical-align:-1px;color:#7c3aed;"></i> Account Type: <strong>Reseller Partner Account</strong>`;
+      } else {
+        resellerEl.style.display = 'inline-block';
+        resellerEl.innerHTML = `<i data-lucide="shield-check" style="width:12px;height:12px;display:inline;vertical-align:-1px;color:#0284c7;"></i> Account Origin: <strong>Direct Super Admin Root</strong>`;
+      }
     } else {
-      resellerEl.style.display = 'inline-block';
-      resellerEl.innerHTML = `<i data-lucide="shield-check" style="width:12px;height:12px;display:inline;vertical-align:-1px;color:#0284c7;"></i> Account Origin: <strong>Direct Super Admin Root</strong>`;
+      resellerEl.style.display = 'none';
     }
 
     // Header Quick Action Buttons (Admin / Reseller)
@@ -10661,9 +10684,11 @@ window.openUser360Modal = async function(userId, evt) {
     document.getElementById('u360-dom-credits').textContent = (credits.totalDomestic || 0).toLocaleString();
     document.getElementById('u360-intl-credits').textContent = (credits.totalInternational || 0).toLocaleString();
     document.getElementById('u360-sent-count').textContent = (campaignStats.totalNumbers || 0).toLocaleString();
-    document.getElementById('u360-delivery-rate').textContent = `${campaignStats.deliveryRate || 0}% Delivery Success (${(campaignStats.deliveredCount || 0).toLocaleString()} Delivered)`;
+    const delivRate = campaignStats.deliveryRate || 0;
+    const delivCount = (campaignStats.deliveredCount || 0).toLocaleString();
+    document.getElementById('u360-delivery-rate').innerHTML = `<span style="color:#059669;font-weight:700;">${delivRate}% Delivery Success</span> &bull; ${delivCount} delivered`;
     document.getElementById('u360-contacts-count').textContent = (assets.totalContacts || 0).toLocaleString();
-    document.getElementById('u360-groups-count').textContent = `${assets.totalGroups || 0} Groups • ${assets.approvedTemplates || 0}/${assets.totalTemplates || 0} Templates`;
+    document.getElementById('u360-groups-count').textContent = `${assets.totalGroups || 0} Groups • ${assets.approvedTemplates || 0} Templates`;
 
     // Tab 1: Credit Portfolio Table
     const channels = [
@@ -10742,19 +10767,30 @@ window.openUser360Modal = async function(userId, evt) {
       ledgerTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--slate-400);">No credit transactions on record.</td></tr>';
     } else {
       ledgerTbody.innerHTML = recentTransactions.map(t => {
-        const isCredit = Number(t.to_user_id) === Number(user.id);
+        const reasonLower = String(t.reason || '').toLowerCase();
+        const isDeduction = reasonLower.includes('deduction') || reasonLower.includes('debit') || reasonLower.includes('burn') || reasonLower.includes('cost');
+        const isCredit = !isDeduction && (Number(t.to_user_id) === Number(user.id));
         const amountBadge = isCredit 
-          ? `<span style="color:#16a34a;font-weight:700;">+${Number(t.amount).toLocaleString()}</span>` 
-          : `<span style="color:#dc2626;font-weight:700;">-${Number(t.amount).toLocaleString()}</span>`;
+          ? `<span style="color:#15803d;font-weight:700;background:#ecfdf5;padding:3px 8px;border-radius:6px;border:1px solid #bbf7d0;">+${Number(t.amount).toLocaleString()}</span>` 
+          : `<span style="color:#b91c1c;font-weight:700;background:#fef2f2;padding:3px 8px;border-radius:6px;border:1px solid #fecaca;">-${Number(t.amount).toLocaleString()}</span>`;
+
+        let displayReason = String(t.reason || 'Credit allocation / adjustment');
+        if (!currentUser || currentUser.role !== 'admin') {
+          displayReason = displayReason
+            .replace(/Allotted by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Telecom Balance Allotment: ')
+            .replace(/Deduction by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Balance Adjustment: ')
+            .replace(/\bby reseller\b/gi, 'via Telecom Gateway')
+            .replace(/\[Created by [^\]]+ on behalf of account\]/gi, '');
+        }
 
         return `
           <tr>
-            <td style="font-size:0.8rem;color:var(--slate-500);">${new Date(t.created_at).toLocaleString()}</td>
+            <td style="font-size:0.8rem;color:var(--slate-500);white-space:nowrap;">${new Date(t.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}</td>
             <td><strong style="text-transform:uppercase;font-size:0.75rem;">${escapeHtml(t.credit_type)}</strong></td>
             <td><span style="font-size:0.75rem;color:var(--slate-600);text-transform:capitalize;">${escapeHtml(t.destination)}</span></td>
             <td>${amountBadge}</td>
-            <td style="font-size:0.8rem;color:var(--slate-600);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(t.reason || '')}">
-              ${escapeHtml(t.reason || 'Credit allocation / adjustment')}
+            <td style="font-size:0.8rem;color:var(--slate-600);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(displayReason)}">
+              ${escapeHtml(displayReason)}
             </td>
           </tr>
         `;
@@ -10771,7 +10807,15 @@ window.openUser360Modal = async function(userId, evt) {
 
     document.getElementById('u360-info-id').textContent = `#${user.id}`;
     document.getElementById('u360-info-role').textContent = user.role.toUpperCase();
-    document.getElementById('u360-info-parent').textContent = user.resellerEmail ? `Managed by ${user.resellerEmail} (${user.resellerName || 'Reseller'})` : 'Direct Platform Account (Super Admin)';
+    
+    const parentInfoEl = document.getElementById('u360-info-parent');
+    if (parentInfoEl) {
+      if (currentUser && currentUser.role === 'admin') {
+        parentInfoEl.textContent = user.resellerEmail ? `Managed by ${user.resellerEmail} (${user.resellerName || 'Reseller'})` : 'Direct Platform Account (Super Admin)';
+      } else {
+        parentInfoEl.textContent = 'Direct Telecom Platform Account (Verified)';
+      }
+    }
     document.getElementById('u360-info-status').textContent = user.isBlocked ? 'Blocked / Suspended' : 'Active & Verified';
     document.getElementById('u360-info-created').textContent = new Date(user.createdAt).toLocaleString();
 

@@ -175,12 +175,25 @@ router.get('/transactions', authenticate, async (req, res) => {
     const enriched = result.rows
       .map(tx => {
         const dir = resolveTransactionDirection(tx, viewerUserId);
+        let safeReason = tx.reason || '';
+        let counterparty = Number(tx.to_user_id) === Number(viewerUserId) ? (tx.from_email || 'System / Issuer') : (tx.to_email || 'Recipient Account');
+        if (req.user.role !== 'admin') {
+          safeReason = safeReason
+            .replace(/Allotted by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Telecom Balance Allotment: ')
+            .replace(/Deduction by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Balance Adjustment: ')
+            .replace(/\bby reseller\b/gi, 'via Telecom Gateway')
+            .replace(/\[Created by [^\]]+ on behalf of account\]/gi, '');
+          if (req.user.role === 'user') {
+            counterparty = 'Direct Telecom Platform';
+          }
+        }
         return {
           ...tx,
+          reason: safeReason,
           direction: dir.direction,
           signed_amount: dir.signed_amount,
           is_credit: dir.is_credit,
-          counterparty_email: Number(tx.to_user_id) === Number(viewerUserId) ? (tx.from_email || 'System / Issuer') : (tx.to_email || 'Recipient Account')
+          counterparty_email: counterparty
         };
       })
       .filter(tx => {
@@ -216,12 +229,25 @@ router.get('/transactions/export', authenticate, async (req, res) => {
     const enriched = result.rows
       .map(tx => {
         const dir = resolveTransactionDirection(tx, viewerUserId);
+        let safeReason = tx.reason || '';
+        let counterparty = Number(tx.to_user_id) === Number(viewerUserId) ? (tx.from_email || 'System') : (tx.to_email || 'Recipient');
+        if (req.user.role !== 'admin') {
+          safeReason = safeReason
+            .replace(/Allotted by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Telecom Balance Allotment: ')
+            .replace(/Deduction by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Balance Adjustment: ')
+            .replace(/\bby reseller\b/gi, 'via Telecom Gateway')
+            .replace(/\[Created by [^\]]+ on behalf of account\]/gi, '');
+          if (req.user.role === 'user') {
+            counterparty = 'Direct Telecom Platform';
+          }
+        }
         return {
           ...tx,
+          reason: safeReason,
           direction: dir.direction,
           signed_amount: dir.signed_amount,
           is_credit: dir.is_credit,
-          counterparty_email: Number(tx.to_user_id) === Number(viewerUserId) ? (tx.from_email || 'System') : (tx.to_email || 'Recipient')
+          counterparty_email: counterparty
         };
       })
       .filter(tx => {

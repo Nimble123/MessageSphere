@@ -6495,41 +6495,49 @@
       </div>
 
       <!-- Quick KPI Metric Cards -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;padding:14px 22px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">
-        <div class="metric-card" style="margin:0;padding:10px 14px;background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(210px, 1fr));gap:12px;padding:14px 22px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+        <div class="metric-card" style="margin:0;padding:12px 16px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 1px 2px rgba(0,0,0,0.03);display:flex;flex-direction:column;justify-content:space-between;">
           <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:0.72rem;font-weight:600;text-transform:uppercase;color:var(--slate-500);letter-spacing:0.5px;">Domestic Credits</span>
-            <i data-lucide="map-pin" style="width:15px;height:15px;color:#4f46e5;"></i>
+            <span style="font-size:0.72rem;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:0.5px;">Domestic Credits</span>
+            <div style="width:26px;height:26px;border-radius:6px;background:#eef2ff;color:#4f46e5;display:flex;align-items:center;justify-content:center;">
+              <i data-lucide="wallet" style="width:14px;height:14px;"></i>
+            </div>
           </div>
-          <div id="u360-dom-credits" style="font-size:1.3rem;font-weight:700;color:#1e293b;margin-top:2px;">0</div>
-          <div style="font-size:0.72rem;color:var(--slate-500);margin-top:2px;">Available Domestic Balance</div>
+          <div id="u360-dom-credits" style="font-size:1.35rem;font-weight:800;color:#0f172a;line-height:1.2;margin:4px 0 2px 0;">0</div>
+          <div style="font-size:0.72rem;color:#64748b;">Available domestic balance</div>
         </div>
 
-        <div class="metric-card" style="margin:0;padding:10px 14px;background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;">
+        <div class="metric-card" style="margin:0;padding:12px 16px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 1px 2px rgba(0,0,0,0.03);display:flex;flex-direction:column;justify-content:space-between;">
           <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:0.72rem;font-weight:600;text-transform:uppercase;color:var(--slate-500);letter-spacing:0.5px;">Intl Credits</span>
-            <i data-lucide="globe" style="width:15px;height:15px;color:#0891b2;"></i>
+            <span style="font-size:0.72rem;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:0.5px;">Intl Credits</span>
+            <div style="width:26px;height:26px;border-radius:6px;background:#f0f9ff;color:#0284c7;display:flex;align-items:center;justify-content:center;">
+              <i data-lucide="globe" style="width:14px;height:14px;"></i>
+            </div>
           </div>
-          <div id="u360-intl-credits" style="font-size:1.3rem;font-weight:700;color:#1e293b;margin-top:2px;">0</div>
-          <div style="font-size:0.72rem;color:var(--slate-500);margin-top:2px;">Available International Balance</div>
+          <div id="u360-intl-credits" style="font-size:1.35rem;font-weight:800;color:#0f172a;line-height:1.2;margin:4px 0 2px 0;">0</div>
+          <div style="font-size:0.72rem;color:#64748b;">Available international balance</div>
         </div>
 
-        <div class="metric-card" style="margin:0;padding:10px 14px;background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;">
+        <div class="metric-card" style="margin:0;padding:12px 16px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 1px 2px rgba(0,0,0,0.03);display:flex;flex-direction:column;justify-content:space-between;">
           <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:0.72rem;font-weight:600;text-transform:uppercase;color:var(--slate-500);letter-spacing:0.5px;">Campaign Volume</span>
-            <i data-lucide="send" style="width:15px;height:15px;color:#10b981;"></i>
+            <span style="font-size:0.72rem;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:0.5px;">Campaign Volume</span>
+            <div style="width:26px;height:26px;border-radius:6px;background:#ecfdf5;color:#059669;display:flex;align-items:center;justify-content:center;">
+              <i data-lucide="send" style="width:14px;height:14px;"></i>
+            </div>
           </div>
-          <div id="u360-sent-count" style="font-size:1.3rem;font-weight:700;color:#1e293b;margin-top:2px;">0</div>
-          <div id="u360-delivery-rate" style="font-size:0.72rem;color:#059669;font-weight:600;margin-top:2px;">0% Delivery Success</div>
+          <div id="u360-sent-count" style="font-size:1.35rem;font-weight:800;color:#0f172a;line-height:1.2;margin:4px 0 2px 0;">0</div>
+          <div id="u360-delivery-rate" style="font-size:0.72rem;color:#059669;font-weight:600;">100% Delivery Success</div>
         </div>
 
-        <div class="metric-card" style="margin:0;padding:10px 14px;background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;">
+        <div class="metric-card" style="margin:0;padding:12px 16px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 1px 2px rgba(0,0,0,0.03);display:flex;flex-direction:column;justify-content:space-between;">
           <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:0.72rem;font-weight:600;text-transform:uppercase;color:var(--slate-500);letter-spacing:0.5px;">Audience & Assets</span>
-            <i data-lucide="users" style="width:15px;height:15px;color:#8b5cf6;"></i>
+            <span style="font-size:0.72rem;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:0.5px;">Audience &amp; Assets</span>
+            <div style="width:26px;height:26px;border-radius:6px;background:#f5f3ff;color:#7c3aed;display:flex;align-items:center;justify-content:center;">
+              <i data-lucide="users" style="width:14px;height:14px;"></i>
+            </div>
           </div>
-          <div id="u360-contacts-count" style="font-size:1.3rem;font-weight:700;color:#1e293b;margin-top:2px;">0</div>
-          <div id="u360-groups-count" style="font-size:0.72rem;color:var(--slate-500);margin-top:2px;">0 Contact Groups • 0 Templates</div>
+          <div id="u360-contacts-count" style="font-size:1.35rem;font-weight:800;color:#0f172a;line-height:1.2;margin:4px 0 2px 0;">0</div>
+          <div id="u360-groups-count" style="font-size:0.72rem;color:#64748b;">0 Contact Groups &bull; 0 Templates</div>
         </div>
       </div>
 
@@ -6862,6 +6870,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=1793799500001"></script>
+  <script src="app.js?v=1793799600001"></script>
 </body>
 </html>

@@ -191,6 +191,27 @@ router.get('/:id/360', authenticate, async (req, res) => {
     `, [targetId]);
     const assets = assetsResult.rows[0] || {};
 
+    // Sanitize transactions: if viewer is not admin, mask reseller emails and replace "by reseller" references
+    const sanitizedTransactions = transactionsResult.rows.map(t => {
+      let reason = t.reason || '';
+      let fromEmail = t.from_email || 'System / Platform';
+      if (req.user.role !== 'admin') {
+        reason = reason
+          .replace(/Allotted by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Telecom Balance Allotment: ')
+          .replace(/Deduction by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Balance Adjustment: ')
+          .replace(/\bby reseller\b/gi, 'via Telecom Gateway')
+          .replace(/\[Created by [^\]]+ on behalf of account\]/gi, '');
+        if (req.user.role === 'user') {
+          fromEmail = 'Direct Telecom Platform';
+        }
+      }
+      return {
+        ...t,
+        reason,
+        from_email: fromEmail
+      };
+    });
+
     return res.json({
       user: {
         id: user.id,
@@ -229,7 +250,7 @@ router.get('/:id/360', authenticate, async (req, res) => {
         deliveryRate
       },
       recentCampaigns: recentCampaignsResult.rows,
-      recentTransactions: transactionsResult.rows,
+      recentTransactions: sanitizedTransactions,
       assets: {
         totalGroups: Number(assets.total_groups || 0),
         totalContacts: Number(assets.total_contacts || 0),
@@ -529,7 +550,7 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
         await client.query(`
           INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason)
           VALUES ($1, $2, $3, $4, $5, $6)
-        `, [req.user.id, targetId, creditType, destination, amount, `Deduction by ${req.user.role} (${req.user.email}): ${String(reason || 'Manual Adjustment').trim().slice(0, 180)}`]);
+        `, [req.user.id, targetId, creditType, destination, amount, `Balance Adjustment / Debit: ${String(reason || 'Manual Adjustment').trim().slice(0, 180)}`]);
 
         await logAudit(client, { actorId: req.user.id, entityType: 'user', entityId: targetId, action: 'credits_deducted', details: { creditType, destination, amount, reason: String(reason || '').trim().slice(0, 1000) } });
 
@@ -568,7 +589,7 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
         await client.query(`
           INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        `, [req.user.id, targetId, creditType, destination, amount, `Allotted by ${req.user.role} (${req.user.email}): ${String(reason || 'Top-up allocation').trim().slice(0, 180)}`, effectiveTaxMode, 0.00, 0.00]);
+        `, [req.user.id, targetId, creditType, destination, amount, `Allotted via Telecom Gateway: ${String(reason || 'Top-up allocation').trim().slice(0, 180)}`, effectiveTaxMode, 0.00, 0.00]);
 
         await logAudit(client, { actorId: req.user.id, entityType: 'user', entityId: targetId, action: 'credits_allocated', details: { creditType, destination, amount, reason: String(reason || '').trim().slice(0, 1000) } });
       }
@@ -675,7 +696,7 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
         }
 
         const invNumber = `INV-${Date.now().toString().slice(-6)}`;
-        const notes = String(reason || `Direct allotment by ${req.user.role}`).trim();
+        const notes = String(reason || `Direct Telecom Allocation`).trim();
 
         await client.query(`
           INSERT INTO credit_requests 
