@@ -4513,7 +4513,24 @@
           <div class="form-group"><label>Password *</label><input type="password" id="modal-user-pass" class="form-input" placeholder="Minimum 8 characters"></div>
           <div class="form-group"><label>Account role *</label><select id="modal-user-role" class="form-input"><option value="user" selected>Client user</option><option value="reseller" id="modal-role-reseller-opt">Reseller partner</option></select></div>
           <div class="form-group" id="modal-user-reseller-wrap" style="display:none;"><label>Assign to reseller</label><select id="modal-user-reseller-id" class="form-input"><option value="">Direct Super Admin account</option></select></div>
-          <div class="form-group"><label>GSTIN (optional)</label><input id="modal-user-gstin" class="form-input" placeholder="GST registration number"></div>
+          <div class="form-group"><label>GSTIN (optional)</label><input id="modal-user-gstin" class="form-input" placeholder="GST registration number (e.g. 08AAAAA0000A1Z5)" oninput="onModalUserGstinChange(this.value)"></div>
+          <div class="form-group">
+            <label>Tax Invoicing Mode *</label>
+            <select id="modal-user-tax-mode" class="form-input">
+              <option value="non_gst" selected>Non-GST (0% / Exempt Bill of Supply)</option>
+              <option value="with_gst">With GST (+18% SAC 998413 Tax Invoice)</option>
+            </select>
+          </div>
+          <div class="form-group" id="modal-user-refund-dest-wrap">
+            <label>Failed DLR Auto-Refund Rule *</label>
+            <select id="modal-user-refund-dest" class="form-input">
+              <option value="user" selected>Refund to Client Wallet (Standard)</option>
+              <option value="reseller">Route Refund to Reseller Wallet (Confidential)</option>
+            </select>
+            <div style="font-size:0.69rem;color:#64748b;margin-top:2px;line-height:1.3;">
+              When routed to Reseller, carrier failed message refunds go directly into Reseller's wallet. Client will not see refund notices.
+            </div>
+          </div>
         </div>
         <div class="form-group"><label>Business address (optional)</label><textarea id="modal-user-business-address" class="form-input" rows="2" placeholder="Billing or business address"></textarea></div>
       </div>
@@ -4835,10 +4852,29 @@
             <span style="font-size:0.7rem;background:#eef2ff;color:#4f46e5;font-weight:700;padding:2px 8px;border-radius:6px;">Wholesale Billing Engine</span>
           </div>
 
+          <!-- GST vs Non-GST Tax Invoicing Mode Toggle -->
+          <div style="margin-bottom:12px;background:#ffffff;border:1.5px solid #cbd5e1;border-radius:8px;padding:10px 12px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+              <label style="font-size:0.78rem;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px;margin:0;">
+                <i data-lucide="percent" style="width:14px;height:14px;color:#4f46e5;"></i> Tax Invoicing Mode <span style="color:#dc2626;">*</span>
+              </label>
+              <span id="alloc-tax-hint" style="font-size:0.7rem;color:#64748b;font-weight:500;">Non-GST Account (0% Tax)</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <button type="button" id="alloc-tax-btn-non_gst" onclick="setAllocTaxMode('non_gst')" style="padding:8px 10px;border:1.5px solid #10b981;border-radius:6px;font-size:0.78rem;font-weight:700;background:#ecfdf5;color:#065f46;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.15s;">
+                <i data-lucide="shield-check" style="width:13px;height:13px;"></i> Non-GST (0% / Bill of Supply)
+              </button>
+              <button type="button" id="alloc-tax-btn-with_gst" onclick="setAllocTaxMode('with_gst')" style="padding:8px 10px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:0.78rem;font-weight:600;background:#ffffff;color:#475569;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.15s;">
+                <i data-lucide="file-text" style="width:13px;height:13px;"></i> With GST (+18% SAC 998413)
+              </button>
+            </div>
+            <input type="hidden" id="alloc-tax-mode" value="non_gst">
+          </div>
+
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
             <div>
               <label style="font-size:0.78rem;font-weight:700;color:#475569;display:block;margin-bottom:4px;">
-                Total Invoice Amount (Calculated)
+                Total Invoice Gross Value
               </label>
               <div id="alloc-total-bill-display" style="height:38px;background:#ffffff;border:1.5px solid #6366f1;border-radius:8px;display:flex;align-items:center;padding:0 12px;font-weight:800;color:#4f46e5;font-size:1.05rem;">
                 ₹0.00
@@ -4854,6 +4890,12 @@
                 <option value="partial">Partial Payment (Balance Remaining)</option>
               </select>
             </div>
+          </div>
+
+          <!-- Base Subtotal & GST Breakdown Details -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;font-size:0.76rem;">
+            <div>Base Subtotal: <strong id="alloc-calc-base" style="color:#0f172a;">₹0.00</strong></div>
+            <div style="text-align:right;">Tax (<span id="alloc-tax-percent-label">0% Non-GST</span>): <strong id="alloc-calc-gst" style="color:#059669;">₹0.00</strong></div>
           </div>
 
           <div id="alloc-partial-amount-group" style="display:none;margin-bottom:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px;">
@@ -6130,7 +6172,7 @@
       <div class="modal-header-saas" style="background: #0f172a; color: #fff; padding: 16px 20px;">
         <div style="display: flex; align-items: center; gap: 8px;">
           <i data-lucide="receipt" style="width: 18px; height: 18px; color: #10b981;"></i>
-          <h3 style="margin: 0; font-size: 1rem; color: #fff;">Credit Voucher & GST Tax Statement</h3>
+          <h3 style="margin: 0; font-size: 1rem; color: #fff;" id="receipt-modal-title">Credit Voucher &amp; Statement</h3>
         </div>
         <button class="btn-modal-close" data-close="modal-recharge-receipt" style="color: #cbd5e1;">&times;</button>
       </div>
@@ -6138,15 +6180,15 @@
       <div class="modal-body-saas" id="receipt-printable-area" style="padding: 24px; background: #ffffff;">
         <div style="text-align: center; border-bottom: 2px dashed #e2e8f0; padding-bottom: 16px; margin-bottom: 16px;">
           <div style="font-size: 1.3rem; font-weight: 900; color: #0f172a; letter-spacing: -0.5px;">MessageSphere Technologies Pvt Ltd</div>
-          <div style="font-size: 0.74rem; color: #475569; margin-top: 2px;">GSTIN: <strong>08AABCM1234F1Z5</strong> &bull; State: 08 (Rajasthan / India) &bull; SAC: <strong>998413</strong></div>
-          <div style="margin-top: 10px; display: inline-flex; align-items: center; gap: 4px; background: #ecfdf5; color: #059669; font-weight: 800; font-size: 0.72rem; padding: 3px 12px; border-radius: 20px; border: 1px solid #bbf7d0;">
-            <i data-lucide="check" style="width:12px;height:12px;"></i> VERIFIED & CREDITED TO VAULT
+          <div id="receipt-company-tax-meta" style="font-size: 0.74rem; color: #475569; margin-top: 2px;">GSTIN: <strong>08AABCM1234F1Z5</strong> &bull; State: 08 (Rajasthan / India) &bull; SAC: <strong>998413</strong></div>
+          <div style="margin-top: 10px; display: inline-flex; align-items: center; gap: 4px; background: #ecfdf5; color: #059669; font-weight: 800; font-size: 0.72rem; padding: 3px 12px; border-radius: 20px; border: 1px solid #bbf7d0;" id="receipt-status-pill">
+            <i data-lucide="check" style="width:12px;height:12px;"></i> <span id="receipt-status-text">VERIFIED & CREDITED TO VAULT</span>
           </div>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 0.8rem; margin-bottom: 16px;">
           <div>
-            <div style="color: #64748b; font-size: 0.72rem;">VOUCHER / INVOICE REF</div>
+            <div style="color: #64748b; font-size: 0.72rem;" id="receipt-label-ref">VOUCHER / INVOICE REF</div>
             <strong style="color: #0f172a; font-family: monospace;" id="receipt-tx-id">#0000</strong>
           </div>
           <div style="text-align: right;">
@@ -6154,7 +6196,7 @@
             <strong style="color: #0f172a;" id="receipt-timestamp">--</strong>
           </div>
           <div>
-            <div style="color: #64748b; font-size: 0.72rem;">BILLED TO ACCOUNT</div>
+            <div style="color: #64748b; font-size: 0.72rem;" id="receipt-label-account">BILLED TO ACCOUNT</div>
             <strong style="color: #0f172a;" id="receipt-account">--</strong>
           </div>
           <div style="text-align: right;">
@@ -6164,24 +6206,24 @@
         </div>
 
         <div style="background: #f8fafc; border-radius: 10px; padding: 14px; text-align: center; border: 1px solid #e2e8f0; margin-bottom: 16px;">
-          <div style="font-size: 0.74rem; color: #64748b; text-transform: uppercase; font-weight: 600;">Credits Credited</div>
+          <div style="font-size: 0.74rem; color: #64748b; text-transform: uppercase; font-weight: 600;" id="receipt-label-units">Credits Credited</div>
           <div style="font-size: 2.2rem; font-weight: 900; color: #15803d; letter-spacing: -0.5px; line-height: 1.1; margin: 4px 0;" id="receipt-amount">+0</div>
-          <div style="font-size: 0.75rem; color: #64748b;">Direct Telecom Balance Added</div>
+          <div style="font-size: 0.75rem; color: #64748b;" id="receipt-sub-units">Direct Telecom Balance Added</div>
         </div>
 
-        <!-- B2B GST Statutory Tax Summary -->
-        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; font-size: 0.76rem; margin-bottom: 14px;">
-          <div style="font-weight: 700; color: #1e293b; margin-bottom: 6px; font-size: 0.78rem;">Statutory Tax Breakdown (SAC 998413)</div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 3px; color: #475569;">
-            <span>Taxable Service Base Value:</span>
+        <!-- B2B GST Statutory Tax Summary or Non-GST Bill of Supply -->
+        <div id="receipt-tax-section" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; font-size: 0.76rem; margin-bottom: 14px;">
+          <div style="font-weight: 700; color: #1e293b; margin-bottom: 6px; font-size: 0.78rem;" id="receipt-tax-header">Statutory Tax Breakdown (SAC 998413)</div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 3px; color: #475569;" id="receipt-tax-row-1">
+            <span id="receipt-tax-label-1">Taxable Service Base Value:</span>
             <strong id="receipt-taxable-val">₹0.00</strong>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 3px; color: #475569;">
-            <span>CGST (9%) + SGST (9%) [Total 18% GST]:</span>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 3px; color: #475569;" id="receipt-tax-row-2">
+            <span id="receipt-tax-label-2">CGST (9%) + SGST (9%) [Total 18% GST]:</span>
             <strong id="receipt-gst-val">₹0.00</strong>
           </div>
-          <div style="display: flex; justify-content: space-between; border-top: 1px dashed #cbd5e1; padding-top: 4px; margin-top: 4px; color: #0f172a; font-size: 0.82rem;">
-            <strong>Total Invoice Gross Value:</strong>
+          <div style="display: flex; justify-content: space-between; border-top: 1px dashed #cbd5e1; padding-top: 4px; margin-top: 4px; color: #0f172a; font-size: 0.82rem;" id="receipt-tax-row-3">
+            <strong id="receipt-tax-label-3">Total Invoice Gross Value:</strong>
             <strong id="receipt-total-val" style="color: #4f46e5;">₹0.00</strong>
           </div>
         </div>
@@ -6544,6 +6586,16 @@
                 <span id="u360-info-parent" style="color:var(--slate-700);">Direct Platform Account</span>
                 <span style="color:var(--slate-500);">Account Status:</span>
                 <strong id="u360-info-status">Active</strong>
+                <span style="color:var(--slate-500);">Tax Invoicing:</span>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span id="u360-info-tax-mode" class="status-badge" style="background:#ecfdf5;color:#065f46;border:1px solid #bbf7d0;font-size:0.72rem;font-weight:700;">Non-GST (0%)</span>
+                  <button type="button" class="btn-action" onclick="quickToggleTaxMode()" style="padding:2px 7px;font-size:0.68rem;border:1px solid #cbd5e1;background:#fff;border-radius:4px;cursor:pointer;font-weight:600;" title="Toggle between Non-GST and GST 18%">Switch</button>
+                </div>
+                <span style="color:var(--slate-500);">Auto-Refund:</span>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span id="u360-info-refund-dest" class="status-badge" style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;font-size:0.72rem;font-weight:700;">Client Wallet</span>
+                  <button type="button" class="btn-action" onclick="quickToggleRefundDestination()" style="padding:2px 7px;font-size:0.68rem;border:1px solid #cbd5e1;background:#fff;border-radius:4px;cursor:pointer;font-weight:600;" title="Route failed DLR refunds to Reseller or Client">Switch</button>
+                </div>
                 <span style="color:var(--slate-500);">Member Since:</span>
                 <span id="u360-info-created" style="color:var(--slate-700);">-</span>
               </div>
@@ -6739,6 +6791,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=1793797000001"></script>
+  <script src="app.js?v=1793798500001"></script>
 </body>
 </html>

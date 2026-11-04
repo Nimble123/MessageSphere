@@ -15,7 +15,7 @@ router.get('/', authenticate, requireRoles('admin', 'reseller'), async (req, res
 
     if (req.user.role === 'admin') {
       usersQuery = `
-        SELECT u.id, u.email, u.role, u.is_blocked, u.reseller_id, u.full_name, u.company_name, u.phone, u.business_address, u.gstin, u.created_at,
+        SELECT u.id, u.email, u.role, u.is_blocked, u.reseller_id, u.full_name, u.company_name, u.phone, u.business_address, u.gstin, u.created_at, u.tax_mode, u.refund_destination,
                r.email AS reseller_email, r.full_name AS reseller_full_name, r.company_name AS reseller_company_name
         FROM users u
         LEFT JOIN users r ON u.reseller_id = r.id
@@ -25,7 +25,7 @@ router.get('/', authenticate, requireRoles('admin', 'reseller'), async (req, res
       params = [req.user.id];
     } else {
       usersQuery = `
-        SELECT u.id, u.email, u.role, u.is_blocked, u.reseller_id, u.full_name, u.company_name, u.phone, u.business_address, u.gstin, u.created_at,
+        SELECT u.id, u.email, u.role, u.is_blocked, u.reseller_id, u.full_name, u.company_name, u.phone, u.business_address, u.gstin, u.created_at, u.tax_mode, u.refund_destination,
                r.email AS reseller_email, r.full_name AS reseller_full_name, r.company_name AS reseller_company_name
         FROM users u
         LEFT JOIN users r ON u.reseller_id = r.id
@@ -70,6 +70,8 @@ router.get('/', authenticate, requireRoles('admin', 'reseller'), async (req, res
       phone: u.phone,
       businessAddress: u.business_address,
       gstin: u.gstin,
+      taxMode: u.tax_mode || 'non_gst',
+      refundDestination: u.refund_destination || 'user',
       createdAt: u.created_at,
       ...(creditsMap[u.id] || {})
     }));
@@ -105,7 +107,7 @@ router.get('/:id/360', authenticate, async (req, res) => {
 
     // 1. User base profile & managing reseller
     const userResult = await query(`
-      SELECT u.id, u.email, u.role, u.is_blocked, u.reseller_id, u.full_name, u.company_name, u.phone, u.business_address, u.gstin, u.created_at,
+      SELECT u.id, u.email, u.role, u.is_blocked, u.reseller_id, u.full_name, u.company_name, u.phone, u.business_address, u.gstin, u.tax_mode, u.refund_destination, u.created_at,
              r.email AS reseller_email, r.full_name AS reseller_name
       FROM users u
       LEFT JOIN users r ON u.reseller_id = r.id
@@ -203,6 +205,8 @@ router.get('/:id/360', authenticate, async (req, res) => {
         phone: user.phone,
         businessAddress: user.business_address,
         gstin: user.gstin,
+        taxMode: user.tax_mode || 'non_gst',
+        refundDestination: user.refund_destination || 'user',
         createdAt: user.created_at
       },
       credits: {
@@ -242,7 +246,7 @@ router.get('/:id/360', authenticate, async (req, res) => {
 
 // POST /api/users - Create a new user
 router.post('/', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
-  const { email, password, role, full_name, company_name, phone, business_address, gstin, reseller_id } = req.body;
+  const { email, password, role, full_name, company_name, phone, business_address, gstin, reseller_id, tax_mode, refund_destination } = req.body;
 
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
@@ -295,11 +299,19 @@ router.post('/', authenticate, requireRoles('admin', 'reseller'), async (req, re
       resellerId = resellerCheck.rows[0].id;
     }
 
+    const finalTaxMode = ['with_gst', 'non_gst'].includes(tax_mode)
+      ? tax_mode
+      : ((gstin && String(gstin).trim()) ? 'with_gst' : 'non_gst');
+
+    const finalRefundDest = ['user', 'reseller'].includes(refund_destination)
+      ? refund_destination
+      : 'user';
+
     const insertResult = await client.query(`
-      INSERT INTO users (email, password_hash, role, reseller_id, full_name, company_name, phone, business_address, gstin)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      RETURNING id, email, role, is_blocked, reseller_id, full_name, company_name, phone, business_address, gstin, created_at
-    `, [email.trim().toLowerCase(), passwordHash, assignedRole, resellerId, String(full_name).trim().slice(0, 120), String(company_name || '').trim().slice(0, 160) || null, String(phone).trim().slice(0, 30), String(business_address || '').trim().slice(0, 2000) || null, String(gstin || '').trim().toUpperCase().slice(0, 20) || null]);
+      INSERT INTO users (email, password_hash, role, reseller_id, full_name, company_name, phone, business_address, gstin, tax_mode, refund_destination)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      RETURNING id, email, role, is_blocked, reseller_id, full_name, company_name, phone, business_address, gstin, tax_mode, refund_destination, created_at
+    `, [email.trim().toLowerCase(), passwordHash, assignedRole, resellerId, String(full_name).trim().slice(0, 120), String(company_name || '').trim().slice(0, 160) || null, String(phone).trim().slice(0, 30), String(business_address || '').trim().slice(0, 2000) || null, String(gstin || '').trim().toUpperCase().slice(0, 20) || null, finalTaxMode, finalRefundDest]);
 
     const newUser = insertResult.rows[0];
     await initializeUserCredits(client, newUser.id);
@@ -354,6 +366,76 @@ router.patch('/:id/block', authenticate, requireRoles('admin', 'reseller'), asyn
   }
 });
 
+// PATCH /api/users/:id/settings - Update tax invoicing mode, auto-refund destination & profile
+router.patch('/:id/settings', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  const targetId = parseInt(req.params.id, 10);
+  if (isNaN(targetId)) return res.status(400).json({ error: 'Invalid user ID' });
+
+  const { tax_mode, refund_destination, full_name, company_name, phone, gstin, business_address } = req.body;
+
+  try {
+    const userCheck = await query('SELECT id, email, role, reseller_id FROM users WHERE id = $1', [targetId]);
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const targetUser = userCheck.rows[0];
+
+    // Resellers can only update their own sub-users
+    if (req.user.role === 'reseller' && targetUser.reseller_id !== req.user.id) {
+      return res.status(403).json({ error: 'Permission denied: You can only update your own users' });
+    }
+
+    const updates = [];
+    const values = [];
+    let pIdx = 1;
+
+    if (tax_mode !== undefined && ['with_gst', 'non_gst'].includes(tax_mode)) {
+      updates.push(`tax_mode = $${pIdx++}`);
+      values.push(tax_mode);
+    }
+    if (refund_destination !== undefined && ['user', 'reseller'].includes(refund_destination)) {
+      updates.push(`refund_destination = $${pIdx++}`);
+      values.push(refund_destination);
+    }
+    if (full_name !== undefined && String(full_name).trim()) {
+      updates.push(`full_name = $${pIdx++}`);
+      values.push(String(full_name).trim().slice(0, 120));
+    }
+    if (company_name !== undefined) {
+      updates.push(`company_name = $${pIdx++}`);
+      values.push(String(company_name || '').trim().slice(0, 160) || null);
+    }
+    if (phone !== undefined && String(phone).trim()) {
+      updates.push(`phone = $${pIdx++}`);
+      values.push(String(phone).trim().slice(0, 30));
+    }
+    if (gstin !== undefined) {
+      updates.push(`gstin = $${pIdx++}`);
+      values.push(String(gstin || '').trim().toUpperCase().slice(0, 20) || null);
+    }
+    if (business_address !== undefined) {
+      updates.push(`business_address = $${pIdx++}`);
+      values.push(String(business_address || '').trim().slice(0, 2000) || null);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No valid fields provided for update' });
+    }
+
+    values.push(targetId);
+    const updateSql = `UPDATE users SET ${updates.join(', ')} WHERE id = $${pIdx} RETURNING id, email, role, full_name, company_name, phone, gstin, tax_mode, refund_destination`;
+    const updated = await query(updateSql, values);
+
+    return res.json({
+      message: 'Account settings updated successfully',
+      user: updated.rows[0]
+    });
+  } catch (err) {
+    console.error('Update user settings error:', err);
+    return res.status(500).json({ error: 'Failed to update user settings' });
+  }
+});
+
 // POST /api/users/:id/credits - Add/allot credits
 router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
   const targetId = parseInt(req.params.id, 10);
@@ -373,7 +455,7 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
     await client.query('BEGIN');
 
     // Verify target user exists
-    const targetCheck = await client.query('SELECT id, email, reseller_id FROM users WHERE id = $1', [targetId]);
+    const targetCheck = await client.query('SELECT id, email, reseller_id, tax_mode, gstin FROM users WHERE id = $1', [targetId]);
     if (targetCheck.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Target user not found' });
@@ -387,6 +469,9 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
     }
 
     const mode = req.body.mode === 'debit' ? 'debit' : 'credit';
+    const effectiveTaxMode = ['with_gst', 'non_gst'].includes(req.body.tax_mode)
+      ? req.body.tax_mode
+      : ((targetUser.tax_mode === 'with_gst' || (targetUser.gstin && String(targetUser.gstin).trim())) ? 'with_gst' : 'non_gst');
 
     // Process each credit update
     for (const [key, rawVal] of Object.entries(updates)) {
@@ -481,9 +566,9 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
 
         // Record audit log
         await client.query(`
-          INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason)
-          VALUES ($1, $2, $3, $4, $5, $6)
-        `, [req.user.id, targetId, creditType, destination, amount, `Allotted by ${req.user.role} (${req.user.email}): ${String(reason || 'Top-up allocation').trim().slice(0, 180)}`]);
+          INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `, [req.user.id, targetId, creditType, destination, amount, `Allotted by ${req.user.role} (${req.user.email}): ${String(reason || 'Top-up allocation').trim().slice(0, 180)}`, effectiveTaxMode, 0.00, 0.00]);
 
         await logAudit(client, { actorId: req.user.id, entityType: 'user', entityId: targetId, action: 'credits_allocated', details: { creditType, destination, amount, reason: String(reason || '').trim().slice(0, 1000) } });
       }
@@ -548,21 +633,40 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
       }
 
       if (totalAllotted > 0) {
-        if (req.body.total_bill !== undefined && req.body.total_bill !== '') {
-          totalBill = parseFloat(req.body.total_bill) || totalBill;
+        let baseSubtotal = Math.round(totalBill * 100) / 100;
+        let gstAmount = 0.00;
+        let grossInvoice = baseSubtotal;
+
+        if (effectiveTaxMode === 'with_gst') {
+          gstAmount = Math.round(baseSubtotal * 0.18 * 100) / 100;
+          grossInvoice = Math.round((baseSubtotal + gstAmount) * 100) / 100;
         }
 
-        const avgRate = totalAllotted > 0 ? (totalBill / totalAllotted) : 0.1500;
+        if (req.body.total_bill !== undefined && req.body.total_bill !== '') {
+          const explicitBill = parseFloat(req.body.total_bill) || 0;
+          if (explicitBill > 0) {
+            grossInvoice = explicitBill;
+            if (effectiveTaxMode === 'with_gst') {
+              baseSubtotal = Math.round((grossInvoice / 1.18) * 100) / 100;
+              gstAmount = Math.round((grossInvoice - baseSubtotal) * 100) / 100;
+            } else {
+              baseSubtotal = grossInvoice;
+              gstAmount = 0.00;
+            }
+          }
+        }
+
+        const avgRate = totalAllotted > 0 ? (grossInvoice / totalAllotted) : 0.1500;
         
         let paymentStatus = (req.body.payment_status || 'unpaid').toLowerCase();
         let paidAmount = 0.00;
 
         if (paymentStatus === 'paid') {
-          paidAmount = totalBill;
+          paidAmount = grossInvoice;
           paymentStatus = 'Paid';
         } else if (paymentStatus === 'partial') {
           paidAmount = parseFloat(req.body.paid_amount) || 0.00;
-          if (paidAmount >= totalBill && totalBill > 0) paymentStatus = 'Paid';
+          if (paidAmount >= grossInvoice && grossInvoice > 0) paymentStatus = 'Paid';
           else if (paidAmount <= 0) paymentStatus = 'Unpaid';
           else paymentStatus = 'Partial';
         } else {
@@ -575,21 +679,24 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
 
         await client.query(`
           INSERT INTO credit_requests 
-            (user_id, package_name, credits_requested, credit_type, destination, amount_inr, rate_per_credit, paid_amount, payment_status, utr_number, status, billing_type, payment_notes, channel_rates, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Approved', 'postpaid_credit', $11, $12::jsonb, CURRENT_TIMESTAMP)
+            (user_id, package_name, credits_requested, credit_type, destination, amount_inr, rate_per_credit, paid_amount, payment_status, utr_number, status, billing_type, payment_notes, channel_rates, tax_mode, base_amount, gst_amount, created_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Approved', 'postpaid_credit', $11, $12::jsonb, $13, $14, $15, CURRENT_TIMESTAMP)
         `, [
           targetId,
           `Credit Allotment (${req.user.role === 'admin' ? 'Super Admin' : 'Reseller'})`,
           totalAllotted,
           primaryType,
           primaryDest,
-          totalBill,
+          grossInvoice,
           avgRate,
           paidAmount,
           paymentStatus,
           invNumber,
           notes,
-          JSON.stringify(channelRatesBreakdown)
+          JSON.stringify(channelRatesBreakdown),
+          effectiveTaxMode,
+          baseSubtotal,
+          gstAmount
         ]);
       }
     }

@@ -308,6 +308,21 @@ async function initDB() {
         ADD COLUMN IF NOT EXISTS channel_rates JSONB DEFAULT '{}'::jsonb;
     `);
     await client.query(`ALTER TABLE user_credits ADD COLUMN IF NOT EXISTS rate_inr NUMERIC(10, 4) DEFAULT 0.1500;`);
+    
+    // GST vs Non-GST Invoicing & Smart Reseller Auto-Refund Schema Migrations
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS tax_mode VARCHAR(20) DEFAULT 'non_gst';`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS refund_destination VARCHAR(20) DEFAULT 'user';`);
+    await client.query(`UPDATE users SET tax_mode = 'with_gst' WHERE gstin IS NOT NULL AND TRIM(gstin) != '' AND (tax_mode IS NULL OR tax_mode = 'non_gst');`);
+
+    await client.query(`ALTER TABLE credit_requests ADD COLUMN IF NOT EXISTS tax_mode VARCHAR(20) DEFAULT 'non_gst';`);
+    await client.query(`ALTER TABLE credit_requests ADD COLUMN IF NOT EXISTS base_amount NUMERIC(10, 2) DEFAULT 0.00;`);
+    await client.query(`ALTER TABLE credit_requests ADD COLUMN IF NOT EXISTS gst_amount NUMERIC(10, 2) DEFAULT 0.00;`);
+
+    await client.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS tax_mode VARCHAR(20) DEFAULT 'non_gst';`);
+    await client.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS base_amount NUMERIC(10, 2) DEFAULT 0.00;`);
+    await client.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS gst_amount NUMERIC(10, 2) DEFAULT 0.00;`);
+    await client.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS refund_client_email VARCHAR(255);`);
+    await client.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS refund_campaign_id INTEGER;`);
     await client.query(`
       UPDATE user_credits SET rate_inr = 0.1200 WHERE credit_type = 'gsm_sms' AND destination = 'domestic' AND (rate_inr IS NULL OR rate_inr = 0.1500);
       UPDATE user_credits SET rate_inr = 0.2800 WHERE credit_type = 'dp' AND destination = 'domestic' AND (rate_inr IS NULL OR rate_inr = 0.1500);

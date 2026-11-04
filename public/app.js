@@ -4719,7 +4719,11 @@ window.openCampaignDetailModal = async function(campaignId) {
       detailCountDelivered.style.color = '#15803d';
 
       if (kpiFailedLabel) {
-        kpiFailedLabel.textContent = 'FAILED (REFUNDED)';
+        if (currentUser && currentUser.role === 'user') {
+          kpiFailedLabel.textContent = 'UNDELIVERED / FAILED';
+        } else {
+          kpiFailedLabel.textContent = c.failed_refunded ? 'FAILED (AUTO-REFUNDED)' : 'UNDELIVERED / FAILED';
+        }
         kpiFailedLabel.style.color = '#991b1b';
       }
       if (kpiFailedCard) {
@@ -5066,6 +5070,15 @@ function renderUsersTable() {
       `;
     }
 
+    const isWithGst = u.taxMode === 'with_gst';
+    const taxPill = isWithGst
+      ? '<span style="font-size:0.67rem;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:1px 6px;border-radius:4px;font-weight:700;" title="B2B GST Account (+18% Tax Invoice)">GST 18%</span>'
+      : '<span style="font-size:0.67rem;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;padding:1px 6px;border-radius:4px;font-weight:600;" title="Retail Non-GST Account (0% Bill of Supply)">Non-GST</span>';
+
+    const refundPill = (u.refundDestination === 'reseller')
+      ? '<span style="font-size:0.67rem;background:#fffbeb;color:#b45309;border:1px solid #fde68a;padding:1px 6px;border-radius:4px;font-weight:700;" title="Failed DLR auto-refunds route to Reseller wallet">Refund &rarr; Reseller</span>'
+      : '';
+
     return `
       <tr>
         <td>
@@ -5078,7 +5091,15 @@ function renderUsersTable() {
             </div>
           </div>
         </td>
-        <td><span class="role-badge role-${escapeHtml(u.role)}">${escapeHtml(u.role)}</span></td>
+        <td>
+          <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
+            <span class="role-badge role-${escapeHtml(u.role)}">${escapeHtml(u.role)}</span>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:2px;">
+              ${taxPill}
+              ${refundPill}
+            </div>
+          </div>
+        </td>
         <td>${parentCellHtml}</td>
         <td>
           ${u.isBlocked 
@@ -5446,6 +5467,15 @@ function updateResellerAssignmentVisibility() {
   if (!visible && modalUserResellerId) modalUserResellerId.value = '';
 }
 
+window.onModalUserGstinChange = function(val) {
+  const taxSelect = document.getElementById('modal-user-tax-mode');
+  if (taxSelect) {
+    if (String(val || '').trim().length >= 4) {
+      taxSelect.value = 'with_gst';
+    }
+  }
+};
+
 if (btnOpenCreateUserModal) {
   btnOpenCreateUserModal.addEventListener('click', async () => {
     modalUserEmail.value = '';
@@ -5456,6 +5486,11 @@ if (btnOpenCreateUserModal) {
     modalUserPhone.value = '';
     modalUserGstin.value = '';
     modalUserBusinessAddress.value = '';
+    const taxSelect = document.getElementById('modal-user-tax-mode');
+    if (taxSelect) taxSelect.value = 'non_gst';
+    const refundSelect = document.getElementById('modal-user-refund-dest');
+    if (refundSelect) refundSelect.value = 'user';
+
     if (modalRoleResellerOpt && currentUser) {
       modalRoleResellerOpt.disabled = (currentUser.role !== 'admin');
     }
@@ -5477,6 +5512,8 @@ if (btnModalSaveUser) {
     const phone = modalUserPhone.value.trim();
     const gstin = modalUserGstin.value.trim();
     const business_address = modalUserBusinessAddress.value.trim();
+    const tax_mode = document.getElementById('modal-user-tax-mode')?.value || 'non_gst';
+    const refund_destination = document.getElementById('modal-user-refund-dest')?.value || 'user';
 
     if (!email || !password || !full_name || !phone) {
       showToast('error', 'Validation Error', 'Full name, email, phone number and temporary password are required.');
@@ -5493,7 +5530,7 @@ if (btnModalSaveUser) {
     try {
       await apiFetch('/users', {
         method: 'POST',
-        body: JSON.stringify({ email, password, role, full_name, company_name, phone, gstin, business_address, reseller_id: modalUserResellerId?.value || null })
+        body: JSON.stringify({ email, password, role, full_name, company_name, phone, gstin, business_address, reseller_id: modalUserResellerId?.value || null, tax_mode, refund_destination })
       });
       showToast('success', 'User Created!', `Account ${email} has been created.`);
       modalCreateUser.style.display = 'none';
@@ -5640,13 +5677,53 @@ window.onAllocPaymentStatusChange = function() {
   window.calculateAllocKhata();
 };
 
+window.setAllocTaxMode = function(mode) {
+  const hiddenInp = document.getElementById('alloc-tax-mode');
+  if (hiddenInp) hiddenInp.value = mode;
+
+  const btnNon = document.getElementById('alloc-tax-btn-non_gst');
+  const btnWith = document.getElementById('alloc-tax-btn-with_gst');
+  const hintEl = document.getElementById('alloc-tax-hint');
+
+  if (mode === 'with_gst') {
+    if (btnWith) {
+      btnWith.style.background = '#e0e7ff';
+      btnWith.style.color = '#3730a3';
+      btnWith.style.borderColor = '#6366f1';
+      btnWith.style.fontWeight = '700';
+    }
+    if (btnNon) {
+      btnNon.style.background = '#ffffff';
+      btnNon.style.color = '#475569';
+      btnNon.style.borderColor = '#cbd5e1';
+      btnNon.style.fontWeight = '600';
+    }
+    if (hintEl) hintEl.textContent = 'With GST +18% (SAC 998413 Tax Invoice)';
+  } else {
+    if (btnNon) {
+      btnNon.style.background = '#ecfdf5';
+      btnNon.style.color = '#065f46';
+      btnNon.style.borderColor = '#10b981';
+      btnNon.style.fontWeight = '700';
+    }
+    if (btnWith) {
+      btnWith.style.background = '#ffffff';
+      btnWith.style.color = '#475569';
+      btnWith.style.borderColor = '#cbd5e1';
+      btnWith.style.fontWeight = '600';
+    }
+    if (hintEl) hintEl.textContent = 'Non-GST Account (0% Tax / Bill of Supply)';
+  }
+  window.calculateAllocKhata();
+};
+
 window.calculateAllocKhata = function() {
   const keys = [
     'gsm_sms-domestic', 'normal-domestic', 'dp-domestic', 'cta-domestic', 'dp_cta-domestic', 'own_number-domestic',
     'gsm_sms-international', 'normal-international', 'dp-international', 'cta-international', 'dp_cta-international', 'own_number-international'
   ];
   let totalCredits = 0;
-  let totalBill = 0;
+  let baseSubtotal = 0;
 
   keys.forEach(k => {
     const qtyInp = document.getElementById(`alloc-${k}`);
@@ -5663,27 +5740,47 @@ window.calculateAllocKhata = function() {
     }
 
     totalCredits += qty;
-    totalBill += channelCost;
+    baseSubtotal += channelCost;
   });
 
-  totalBill = Math.round(totalBill * 100) / 100;
+  baseSubtotal = Math.round(baseSubtotal * 100) / 100;
+  const taxMode = document.getElementById('alloc-tax-mode')?.value || 'non_gst';
+
+  let gstAmount = 0.00;
+  let grossTotal = baseSubtotal;
+
+  if (taxMode === 'with_gst') {
+    gstAmount = Math.round(baseSubtotal * 0.18 * 100) / 100;
+    grossTotal = Math.round((baseSubtotal + gstAmount) * 100) / 100;
+  }
+
+  const baseEl = document.getElementById('alloc-calc-base');
+  if (baseEl) baseEl.textContent = `₹${baseSubtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const gstEl = document.getElementById('alloc-calc-gst');
+  if (gstEl) gstEl.textContent = `₹${gstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const taxLabel = document.getElementById('alloc-tax-percent-label');
+  if (taxLabel) {
+    taxLabel.textContent = taxMode === 'with_gst' ? '+18% GST' : '0% Non-GST';
+  }
 
   const totalBillDisplay = document.getElementById('alloc-total-bill-display');
   if (totalBillDisplay) {
-    totalBillDisplay.textContent = `₹${totalBill.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    totalBillDisplay.textContent = `₹${grossTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
 
   const status = document.getElementById('alloc-payment-status')?.value || 'unpaid';
   const paidInp = document.getElementById('alloc-paid-amount');
   let received = 0;
   if (status === 'paid') {
-    received = totalBill;
+    received = grossTotal;
   } else if (status === 'partial') {
     received = parseFloat(paidInp ? paidInp.value : 0) || 0;
   } else {
     received = 0;
   }
-  const due = Math.max(0, Math.round((totalBill - received) * 100) / 100);
+  const due = Math.max(0, Math.round((grossTotal - received) * 100) / 100);
 
   const calcCr = document.getElementById('alloc-calc-credits');
   if (calcCr) calcCr.textContent = totalCredits.toLocaleString();
@@ -5697,6 +5794,14 @@ window.openAllotCreditsModal = async function(userId, email) {
   window.setAllocMode('credit');
   const userGroup = document.getElementById('modal-allot-user-group');
   const userSelect = document.getElementById('modal-allot-user-select');
+
+  let targetTaxMode = 'non_gst';
+  if (userId) {
+    const targetObj = (allUsers || []).find(u => String(u.id) === String(userId));
+    if (targetObj && (targetObj.taxMode === 'with_gst' || (targetObj.gstin && String(targetObj.gstin).trim()))) {
+      targetTaxMode = 'with_gst';
+    }
+  }
 
   if (userId) {
     modalAllotUserId.value = userId;
@@ -5722,6 +5827,8 @@ window.openAllotCreditsModal = async function(userId, email) {
     }
     window.applyChannelRates({});
   }
+
+  window.setAllocTaxMode(targetTaxMode);
 
   // Clear quantity inputs
   const keys = [
@@ -5751,9 +5858,16 @@ window.onAllotUserSelectChange = async function() {
   if (userSelect) {
     modalAllotUserId.value = userSelect.value;
     if (userSelect.value) {
+      const selectedObj = (allUsers || []).find(u => String(u.id) === String(userSelect.value));
+      if (selectedObj && (selectedObj.taxMode === 'with_gst' || (selectedObj.gstin && String(selectedObj.gstin).trim()))) {
+        window.setAllocTaxMode('with_gst');
+      } else {
+        window.setAllocTaxMode('non_gst');
+      }
       await window.loadTargetUserRates(userSelect.value);
     } else {
       window.applyChannelRates({});
+      window.setAllocTaxMode('non_gst');
       window.calculateAllocKhata();
     }
   }
@@ -5803,6 +5917,7 @@ if (btnModalSaveCredits) {
       const paidAmount = parseFloat(document.getElementById('alloc-paid-amount')?.value) || 0;
       const totalBillEl = document.getElementById('alloc-total-bill-display');
       const totalBill = totalBillEl ? (parseFloat(totalBillEl.textContent.replace(/[^0-9.]/g, '')) || 0) : 0;
+      const tax_mode = document.getElementById('alloc-tax-mode')?.value || 'non_gst';
 
       const res = await apiFetch(`/users/${userId}/credits`, {
         method: 'POST',
@@ -5813,7 +5928,8 @@ if (btnModalSaveCredits) {
           mode,
           payment_status: paymentStatus,
           paid_amount: paidAmount,
-          total_bill: totalBill
+          total_bill: totalBill,
+          tax_mode
         })
       });
       showToast('success', mode === 'debit' ? 'Credits Deducted!' : 'Credits Transferred!', res.message);
@@ -9208,19 +9324,93 @@ window.openRechargeReceiptModal = function(txId) {
   };
 
   const credits = Math.abs(Number(tx.amount) || 0);
+  const rawReason = String(tx.reason || '').toLowerCase();
+  const isRefund = Boolean(tx.refund_campaign_id) || rawReason.includes('refund') || rawReason.includes('auto-refund');
+
   const estRate = (tx.destination === 'international') ? 2.50 : 0.15;
-  const grossInr = Math.round(credits * estRate);
-  const taxableInr = grossInr / 1.18;
-  const gstInr = grossInr - taxableInr;
+  const computedGross = Number(tx.base_amount || 0) > 0 ? (Number(tx.base_amount) + Number(tx.gst_amount || 0)) : Math.round(credits * estRate);
+
+  const isWithGst = !isRefund && (tx.tax_mode === 'with_gst' || Number(tx.gst_amount) > 0);
+
+  const baseVal = Number(tx.base_amount || 0) > 0 ? Number(tx.base_amount) : (isWithGst ? (computedGross / 1.18) : computedGross);
+  const gstVal = isWithGst ? (Number(tx.gst_amount || 0) > 0 ? Number(tx.gst_amount) : (computedGross - baseVal)) : 0;
+  const grossVal = isWithGst ? (baseVal + gstVal) : baseVal;
+
+  const titleEl = document.getElementById('receipt-modal-title');
+  const pillEl = document.getElementById('receipt-status-pill');
+  const pillTxt = document.getElementById('receipt-status-text');
+  const taxMeta = document.getElementById('receipt-company-tax-meta');
+  const unitsLabel = document.getElementById('receipt-label-units');
+  const subUnits = document.getElementById('receipt-sub-units');
+  const taxHeader = document.getElementById('receipt-tax-header');
+  const taxRow1Label = document.getElementById('receipt-tax-label-1');
+  const taxRow2 = document.getElementById('receipt-tax-row-2');
+  const taxRow3Label = document.getElementById('receipt-tax-label-3');
+
+  if (isRefund) {
+    if (titleEl) titleEl.textContent = 'Telecom Credit Reversal Voucher';
+    if (pillEl) {
+      pillEl.style.background = '#eff6ff';
+      pillEl.style.color = '#1d4ed8';
+      pillEl.style.borderColor = '#bfdbfe';
+    }
+    if (pillTxt) pillTxt.textContent = 'CARRIER REVERSAL / FAILED AUTO-REFUND';
+    if (taxMeta) taxMeta.innerHTML = 'Delivery Reconciliation Ledger &bull; Internal Credit Reversal &bull; Non-Taxable';
+    if (unitsLabel) unitsLabel.textContent = 'Refunded Credits Restored';
+    if (subUnits) subUnits.textContent = 'Undelivered Mobile Broadcast Balance Credited Back';
+    if (taxHeader) taxHeader.textContent = 'Credit Reversal Reconciliation (Exempt from GST)';
+    if (taxRow1Label) taxRow1Label.textContent = 'Reversed Balance Valuation:';
+    if (taxRow2) taxRow2.style.display = 'none';
+    if (taxRow3Label) taxRow3Label.textContent = 'Net Statutory Tax Impact:';
+
+    setTxt('receipt-taxable-val', '₹0.00 (Telecom Balance Restored)');
+    setTxt('receipt-gst-val', '₹0.00 (Exempt)');
+    setTxt('receipt-total-val', '₹0.00 (Exempt Reversal)');
+  } else if (!isWithGst) {
+    if (titleEl) titleEl.textContent = 'Commercial Credit Voucher (Non-GST)';
+    if (pillEl) {
+      pillEl.style.background = '#ecfdf5';
+      pillEl.style.color = '#059669';
+      pillEl.style.borderColor = '#bbf7d0';
+    }
+    if (pillTxt) pillTxt.textContent = 'VERIFIED & CREDITED TO VAULT';
+    if (taxMeta) taxMeta.innerHTML = 'Bill of Supply (Section 31(3)(c) of CGST Act) &bull; Retail Non-GST Telecom Supply';
+    if (unitsLabel) unitsLabel.textContent = 'Credits Credited';
+    if (subUnits) subUnits.textContent = 'Direct Telecom Balance Added';
+    if (taxHeader) taxHeader.textContent = 'Commercial Invoicing (Non-GST / Bill of Supply)';
+    if (taxRow1Label) taxRow1Label.textContent = 'Commercial Service Value:';
+    if (taxRow2) taxRow2.style.display = 'none';
+    if (taxRow3Label) taxRow3Label.textContent = 'Total Commercial Invoice Value:';
+
+    setTxt('receipt-taxable-val', `₹${grossVal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+    setTxt('receipt-gst-val', '₹0.00 (0% Exempt)');
+    setTxt('receipt-total-val', `₹${grossVal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  } else {
+    if (titleEl) titleEl.textContent = 'Credit Voucher & GST Tax Statement';
+    if (pillEl) {
+      pillEl.style.background = '#ecfdf5';
+      pillEl.style.color = '#059669';
+      pillEl.style.borderColor = '#bbf7d0';
+    }
+    if (pillTxt) pillTxt.textContent = 'VERIFIED & CREDITED TO VAULT';
+    if (taxMeta) taxMeta.innerHTML = 'GSTIN: <strong>08AABCM1234F1Z5</strong> &bull; State: 08 (Rajasthan / India) &bull; SAC: <strong>998413</strong>';
+    if (unitsLabel) unitsLabel.textContent = 'Credits Credited';
+    if (subUnits) subUnits.textContent = 'Direct Telecom Balance Added';
+    if (taxHeader) taxHeader.textContent = 'Statutory Tax Breakdown (SAC 998413)';
+    if (taxRow1Label) taxRow1Label.textContent = 'Taxable Service Base Value:';
+    if (taxRow2) taxRow2.style.display = 'flex';
+    if (taxRow3Label) taxRow3Label.textContent = 'Total Invoice Gross Value:';
+
+    setTxt('receipt-taxable-val', `₹${baseVal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+    setTxt('receipt-gst-val', `₹${gstVal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+    setTxt('receipt-total-val', `₹${grossVal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  }
 
   setTxt('receipt-tx-id', `MS-REC-${tx.id}`);
   setTxt('receipt-timestamp', new Date(tx.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
   setTxt('receipt-account', tx.counterparty_email || currentUser?.email || 'MessageSphere Account');
   setTxt('receipt-channel', `${(tx.credit_type || 'normal').toUpperCase()} (${tx.destination === 'international' ? 'International' : 'Domestic'})`);
   setTxt('receipt-amount', `+${credits.toLocaleString()}`);
-  setTxt('receipt-taxable-val', `₹${taxableInr.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-  setTxt('receipt-gst-val', `₹${gstInr.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-  setTxt('receipt-total-val', `₹${grossInr.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
   setTxt('receipt-notes', tx.reason || 'Telecom credit allotment approved & verified');
 
   modal.style.display = 'flex';
@@ -10569,6 +10759,7 @@ window.openUser360Modal = async function(userId, evt) {
     }
 
     // Tab 4: Business & Security Details
+    current360User = user;
     document.getElementById('u360-info-name').textContent = user.fullName || '—';
     document.getElementById('u360-info-company').textContent = user.companyName || '—';
     document.getElementById('u360-info-gstin').textContent = user.gstin || '—';
@@ -10581,6 +10772,24 @@ window.openUser360Modal = async function(userId, evt) {
     document.getElementById('u360-info-status').textContent = user.isBlocked ? 'Blocked / Suspended' : 'Active & Verified';
     document.getElementById('u360-info-created').textContent = new Date(user.createdAt).toLocaleString();
 
+    const taxEl = document.getElementById('u360-info-tax-mode');
+    if (taxEl) {
+      const isWithGst = user.taxMode === 'with_gst';
+      taxEl.textContent = isWithGst ? 'With GST (+18%)' : 'Non-GST (0%)';
+      taxEl.style.background = isWithGst ? '#eff6ff' : '#ecfdf5';
+      taxEl.style.color = isWithGst ? '#1d4ed8' : '#065f46';
+      taxEl.style.borderColor = isWithGst ? '#bfdbfe' : '#bbf7d0';
+    }
+
+    const destEl = document.getElementById('u360-info-refund-dest');
+    if (destEl) {
+      const isResellerRefund = user.refundDestination === 'reseller';
+      destEl.textContent = isResellerRefund ? 'Reseller Wallet' : 'Client Wallet';
+      destEl.style.background = isResellerRefund ? '#fffbeb' : '#f0fdf4';
+      destEl.style.color = isResellerRefund ? '#b45309' : '#166534';
+      destEl.style.borderColor = isResellerRefund ? '#fde68a' : '#bbf7d0';
+    }
+
     document.getElementById('u360-footer-meta').textContent = `Account #${user.id} • Registered ${new Date(user.createdAt).toLocaleDateString()}`;
 
     if (window.lucide) {
@@ -10589,6 +10798,65 @@ window.openUser360Modal = async function(userId, evt) {
   } catch (err) {
     console.error('User 360 profile load error:', err);
     showToast('error', 'Profile Error', err.message);
+  }
+};
+
+let current360User = null;
+
+window.quickToggleTaxMode = async function() {
+  if (!current360User) return;
+  const newMode = current360User.taxMode === 'with_gst' ? 'non_gst' : 'with_gst';
+  const label = newMode === 'with_gst' ? 'With GST (+18% B2B Tax Invoice)' : 'Non-GST (0% Retail Bill of Supply)';
+  if (!confirm(`Switch tax mode for ${current360User.email} to:\n${label}?`)) return;
+
+  try {
+    await apiFetch(`/users/${current360User.id}/settings`, {
+      method: 'PATCH',
+      body: JSON.stringify({ tax_mode: newMode })
+    });
+    current360User.taxMode = newMode;
+    showToast('success', 'Tax Invoicing Mode Updated', `Account is now configured as: ${label}`);
+    
+    const taxEl = document.getElementById('u360-info-tax-mode');
+    if (taxEl) {
+      taxEl.textContent = newMode === 'with_gst' ? 'With GST (+18%)' : 'Non-GST (0%)';
+      taxEl.style.background = newMode === 'with_gst' ? '#eff6ff' : '#ecfdf5';
+      taxEl.style.color = newMode === 'with_gst' ? '#1d4ed8' : '#065f46';
+      taxEl.style.borderColor = newMode === 'with_gst' ? '#bfdbfe' : '#bbf7d0';
+    }
+    if (typeof loadUsers === 'function') loadUsers();
+  } catch (err) {
+    showToast('error', 'Update Failed', err.message);
+  }
+};
+
+window.quickToggleRefundDestination = async function() {
+  if (!current360User) return;
+  const newDest = current360User.refundDestination === 'reseller' ? 'user' : 'reseller';
+  const label = newDest === 'reseller' ? 'Route Refund to Reseller Wallet' : 'Refund to Client Wallet';
+  const notice = newDest === 'reseller' 
+    ? 'When routed to Reseller, refunds for undelivered messages are credited to your reseller stock. The client user will NOT see any refund notifications.'
+    : 'When set to Client, refunds for undelivered messages are credited back to the client.';
+  if (!confirm(`Switch auto-refund destination for ${current360User.email} to:\n${label}?\n\nNote: ${notice}`)) return;
+
+  try {
+    await apiFetch(`/users/${current360User.id}/settings`, {
+      method: 'PATCH',
+      body: JSON.stringify({ refund_destination: newDest })
+    });
+    current360User.refundDestination = newDest;
+    showToast('success', 'Refund Rule Updated', `Auto-refunds will now go to: ${label}`);
+
+    const destEl = document.getElementById('u360-info-refund-dest');
+    if (destEl) {
+      destEl.textContent = newDest === 'reseller' ? 'Reseller Wallet' : 'Client Wallet';
+      destEl.style.background = newDest === 'reseller' ? '#fffbeb' : '#f0fdf4';
+      destEl.style.color = newDest === 'reseller' ? '#b45309' : '#166534';
+      destEl.style.borderColor = newDest === 'reseller' ? '#fde68a' : '#bbf7d0';
+    }
+    if (typeof loadUsers === 'function') loadUsers();
+  } catch (err) {
+    showToast('error', 'Update Failed', err.message);
   }
 };
 

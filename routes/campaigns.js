@@ -952,17 +952,42 @@ router.patch('/:id/status', authenticate, requireRoles('admin', 'reseller'), asy
       const alreadyRefunded = campaign.failed_refunded ? (campaign.failed_count || 0) : 0;
       const refundAmount = Math.max(0, campaign.total_numbers - alreadyRefunded);
       if (refundAmount > 0) {
-        // Auto-refund remaining credits to the user
+        let refundMultiplier = 1;
+        if (campaign.channel_type === 'sms' && typeof calculateSmsMetrics === 'function') {
+          const smsMetrics = calculateSmsMetrics(campaign.message_text);
+          refundMultiplier = smsMetrics.parts_count || 1;
+        }
+        const totalRefundCredits = refundAmount * refundMultiplier;
+
+        const ownerRes = await client.query(
+          `SELECT id, email, role, reseller_id, refund_destination FROM users WHERE id = $1`,
+          [campaign.user_id]
+        );
+        const owner = ownerRes.rows[0];
+
+        let refundRecipientId = campaign.user_id;
+        let isRoutedToReseller = false;
+
+        if (owner && owner.refund_destination === 'reseller' && owner.reseller_id) {
+          refundRecipientId = owner.reseller_id;
+          isRoutedToReseller = true;
+        }
+
+        // Auto-refund remaining credits to the beneficiary wallet (reseller or user)
         await client.query(`
           UPDATE user_credits 
           SET balance = balance + $1 
           WHERE user_id = $2 AND credit_type = $3 AND destination = $4
-        `, [refundAmount, campaign.user_id, campaign.campaign_type, campaign.destination]);
+        `, [totalRefundCredits, refundRecipientId, campaign.campaign_type, campaign.destination]);
+
+        const rejectReason = isRoutedToReseller
+          ? `Automatic refund for rejected campaign #${campaignId} ("${campaign.title}") of client ${owner.email} (${totalRefundCredits} credits)`
+          : `Automatic refund for rejected campaign #${campaignId} (${totalRefundCredits} credits)`;
 
         await client.query(`
-          INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason)
-          VALUES ($1, $2, $3, $4, $5, $6)
-        `, [req.user.id, campaign.user_id, campaign.campaign_type, campaign.destination, refundAmount, `Automatic refund for rejected campaign #${campaignId}`]);
+          INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, refund_client_email, refund_campaign_id)
+          VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8)
+        `, [req.user.id, refundRecipientId, campaign.campaign_type, campaign.destination, totalRefundCredits, rejectReason, owner ? owner.email : null, campaignId]);
       }
       await client.query(`UPDATE campaigns SET failed_refunded = TRUE WHERE id = $1`, [campaignId]);
     }
@@ -1225,16 +1250,38 @@ router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.sin
       const refundCredits = actualFailed * refundMultiplier;
       refundedFailedCount = refundCredits;
 
+      // Check campaign owner's refund destination rule
+      const ownerRes = await client.query(
+        `SELECT id, email, role, reseller_id, refund_destination FROM users WHERE id = $1`,
+        [campaign.user_id]
+      );
+      const owner = ownerRes.rows[0];
+
+      let refundRecipientId = campaign.user_id;
+      let isRoutedToReseller = false;
+
+      if (owner && owner.refund_destination === 'reseller' && owner.reseller_id) {
+        refundRecipientId = owner.reseller_id;
+        isRoutedToReseller = true;
+      }
+
+      // Add credits to beneficiary wallet (reseller or user)
       await client.query(`
         UPDATE user_credits 
         SET balance = balance + $1 
         WHERE user_id = $2 AND credit_type = $3 AND destination = $4
-      `, [refundCredits, campaign.user_id, campaign.campaign_type, campaign.destination]);
+      `, [refundCredits, refundRecipientId, campaign.campaign_type, campaign.destination]);
 
+      // Reason note: clear attribution
+      const refundReason = isRoutedToReseller
+        ? `Auto-refund for ${actualFailed} failed deliveries in Campaign #${campaignId} ("${campaign.title}") of client ${owner.email} (${refundCredits} credits)`
+        : `Auto-refund for ${actualFailed} failed deliveries in campaign #${campaignId} (${refundCredits} credits)`;
+
+      // Passbook ledger entry: created ONLY for the recipient who actually receives the refund!
       await client.query(`
-        INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason)
-        VALUES ($1, $2, $3, $4, $5, $6)
-      `, [req.user.id, campaign.user_id, campaign.campaign_type, campaign.destination, refundCredits, `Auto-refund for ${actualFailed} failed deliveries in campaign #${campaignId} (${refundCredits} credits)`]);
+        INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, refund_client_email, refund_campaign_id)
+        VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8)
+      `, [req.user.id, refundRecipientId, campaign.campaign_type, campaign.destination, refundCredits, refundReason, owner ? owner.email : null, campaignId]);
 
       await client.query(`UPDATE campaigns SET failed_refunded = TRUE WHERE id = $1`, [campaignId]);
     }
