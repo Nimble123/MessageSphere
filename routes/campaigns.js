@@ -805,7 +805,7 @@ router.get('/:id/export', authenticate, async (req, res) => {
   if (isNaN(campaignId)) return res.status(400).json({ error: 'Invalid campaign ID' });
 
   try {
-    const campResult = await query(`SELECT user_id, title FROM campaigns WHERE id = $1`, [campaignId]);
+    const campResult = await query(`SELECT user_id, title, status, report_processed_at FROM campaigns WHERE id = $1`, [campaignId]);
     if (campResult.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
 
     const campaign = campResult.rows[0];
@@ -825,7 +825,17 @@ router.get('/:id/export', authenticate, async (req, res) => {
 
     let csvContent = 'Phone Number,Status,Timestamp\n';
     recipients.rows.forEach(r => {
-      csvContent += `${r.phone_number},${r.status},${new Date(r.updated_at).toISOString()}\n`;
+      let exportStatus = r.status || 'Pending';
+      if (exportStatus === 'Pending') {
+        if (campaign.status === 'Completed') {
+          exportStatus = campaign.report_processed_at ? 'Delivered' : 'Dispatched to Carrier (DLR Processing)';
+        } else if (campaign.status === 'Approved') {
+          exportStatus = 'In Dispatch Queue';
+        } else if (campaign.status === 'Submitted') {
+          exportStatus = 'Queued';
+        }
+      }
+      csvContent += `${r.phone_number},${exportStatus},${new Date(r.updated_at).toISOString()}\n`;
     });
 
     return res.send(csvContent);

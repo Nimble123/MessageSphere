@@ -4020,7 +4020,7 @@ function renderCampaignsTable() {
         </div>
       `;
     } else if (c.status === 'Completed') {
-      progressHTML = `<span class="status-badge" style="background:#e0f2fe;color:#0284c7;border:1px solid #bae6fd;font-size:0.75rem;"><i data-lucide="send" style="width:12px;height:12px;"></i> Dispatched • Awaiting Report</span>`;
+      progressHTML = `<span class="status-badge" style="background:#e0f2fe;color:#0284c7;border:1px solid #bae6fd;font-size:0.75rem;"><i data-lucide="send" style="width:12px;height:12px;"></i> Dispatched • Awaiting DLR</span>`;
     } else if (c.status === 'Approved') {
       progressHTML = `<span class="status-badge badge-approved" style="font-size:0.75rem;"><i data-lucide="check-circle" style="width:12px;height:12px;"></i> In Dispatch Queue</span>`;
     } else if (c.status === 'Rejected') {
@@ -4544,7 +4544,7 @@ window.openCampaignDetailModal = async function(campaignId) {
         statusBadgeEl.style.background = '#e0f2fe';
         statusBadgeEl.style.color = '#0369a1';
         statusBadgeEl.style.border = '1px solid #bae6fd';
-        statusBadgeEl.innerHTML = '<i data-lucide="send" style="width:12px;height:12px;"></i> Dispatched • Awaiting Report';
+        statusBadgeEl.innerHTML = '<i data-lucide="send" style="width:12px;height:12px;"></i> Dispatched • Awaiting DLR';
       } else if (c.status === 'Report Updated') {
         statusBadgeEl.className = 'status-badge badge-updated';
         statusBadgeEl.innerHTML = '<i data-lucide="check-check" style="width:12px;height:12px;"></i> Report Reconciled';
@@ -4653,8 +4653,88 @@ window.openCampaignDetailModal = async function(campaignId) {
     }
 
     detailCountTotal.textContent = (c.total_numbers || 0).toLocaleString();
-    detailCountDelivered.textContent = (c.delivered_count || 0).toLocaleString();
-    detailCountFailed.textContent = (c.failed_count || 0).toLocaleString();
+
+    const isCompleted = c.status === 'Completed';
+    const isReportReconciled = c.status === 'Report Updated' || Boolean(c.report_processed_at);
+
+    const kpiDeliveredCard = document.getElementById('detail-card-delivered');
+    const kpiDeliveredLabel = document.getElementById('detail-kpi-delivered-label');
+    const kpiDeliveredIcon = document.getElementById('detail-kpi-delivered-icon');
+    const kpiFailedCard = document.getElementById('detail-card-failed');
+    const kpiFailedLabel = document.getElementById('detail-kpi-failed-label');
+    const kpiFailedIcon = document.getElementById('detail-kpi-failed-icon');
+    const dlrBanner = document.getElementById('detail-camp-dlr-banner');
+    const dlrText = document.getElementById('detail-camp-dlr-text');
+
+    if (isCompleted && !isReportReconciled) {
+      if (kpiDeliveredLabel) {
+        kpiDeliveredLabel.textContent = 'CARRIER DISPATCHED';
+        kpiDeliveredLabel.style.color = '#0284c7';
+      }
+      if (kpiDeliveredCard) {
+        kpiDeliveredCard.style.borderColor = '#bae6fd';
+        kpiDeliveredCard.style.background = '#f0f9ff';
+      }
+      if (kpiDeliveredIcon) {
+        kpiDeliveredIcon.setAttribute('data-lucide', 'send');
+        kpiDeliveredIcon.style.color = '#0284c7';
+      }
+      detailCountDelivered.textContent = (c.total_numbers || 0).toLocaleString();
+      detailCountDelivered.style.color = '#0369a1';
+
+      if (kpiFailedLabel) {
+        kpiFailedLabel.textContent = 'CARRIER DLR STATUS';
+        kpiFailedLabel.style.color = '#4f46e5';
+      }
+      if (kpiFailedCard) {
+        kpiFailedCard.style.borderColor = '#c7d2fe';
+        kpiFailedCard.style.background = '#f5f3ff';
+      }
+      if (kpiFailedIcon) {
+        kpiFailedIcon.setAttribute('data-lucide', 'clock');
+        kpiFailedIcon.style.color = '#6366f1';
+      }
+      detailCountFailed.innerHTML = '<span style="font-size:0.92rem;font-weight:700;color:#4f46e5;display:inline-flex;align-items:center;gap:5px;"><i data-lucide="radio" style="width:13px;height:13px;animation:pulseSubtle 1.8s infinite;"></i> In Transit (Awaiting DLR)</span>';
+
+      if (dlrBanner) {
+        dlrBanner.style.display = 'flex';
+        if (dlrText) {
+          dlrText.innerHTML = `All <strong>${(c.total_numbers || 0).toLocaleString()}</strong> messages have been transmitted to telecom operator queues. Detailed carrier delivery receipts (DLR) typically sync within 2-4 hours.`;
+        }
+      }
+    } else {
+      if (kpiDeliveredLabel) {
+        kpiDeliveredLabel.textContent = 'DELIVERED';
+        kpiDeliveredLabel.style.color = '#166534';
+      }
+      if (kpiDeliveredCard) {
+        kpiDeliveredCard.style.borderColor = '#dcfce7';
+        kpiDeliveredCard.style.background = '#ffffff';
+      }
+      if (kpiDeliveredIcon) {
+        kpiDeliveredIcon.setAttribute('data-lucide', 'check-circle-2');
+        kpiDeliveredIcon.style.color = '#16a34a';
+      }
+      detailCountDelivered.textContent = (c.delivered_count || 0).toLocaleString();
+      detailCountDelivered.style.color = '#15803d';
+
+      if (kpiFailedLabel) {
+        kpiFailedLabel.textContent = 'FAILED (REFUNDED)';
+        kpiFailedLabel.style.color = '#991b1b';
+      }
+      if (kpiFailedCard) {
+        kpiFailedCard.style.borderColor = '#fee2e2';
+        kpiFailedCard.style.background = '#ffffff';
+      }
+      if (kpiFailedIcon) {
+        kpiFailedIcon.setAttribute('data-lucide', 'alert-octagon');
+        kpiFailedIcon.style.color = '#ef4444';
+      }
+      detailCountFailed.textContent = (c.failed_count || 0).toLocaleString();
+      detailCountFailed.style.color = '#dc2626';
+
+      if (dlrBanner) dlrBanner.style.display = 'none';
+    }
 
     // Export Audience Numbers Buttons
     const btnExportTxt = document.getElementById('btn-export-numbers-txt');
@@ -4761,17 +4841,33 @@ window.openCampaignDetailModal = async function(campaignId) {
     if (data.recipients.length === 0) {
       detailRecipientsTbody.innerHTML = `<tr><td colspan="3" style="text-align:center;padding:15px;color:var(--slate-400);">No recipients found.</td></tr>`;
     } else {
-      detailRecipientsTbody.innerHTML = data.recipients.map(r => `
-        <tr>
-          <td><code>${r.phone_number}</code></td>
-          <td>
-            <span class="status-badge ${r.status === 'Delivered' ? 'badge-updated' : (r.status === 'Failed' ? 'badge-rejected' : 'badge-submitted')}">
-              ${r.status}
-            </span>
-          </td>
-          <td><span style="font-size:0.75rem;color:var(--slate-500);">${new Date(r.updated_at).toLocaleTimeString()}</span></td>
-        </tr>
-      `).join('');
+      detailRecipientsTbody.innerHTML = data.recipients.map(r => {
+        const rawStatus = r.status || 'Pending';
+        let statusBadge = '';
+
+        if (rawStatus === 'Delivered') {
+          statusBadge = `<span class="status-badge badge-updated" style="display:inline-flex;align-items:center;gap:4px;"><i data-lucide="check-check" style="width:11px;height:11px;"></i> Delivered</span>`;
+        } else if (rawStatus === 'Failed') {
+          statusBadge = `<span class="status-badge badge-rejected" style="display:inline-flex;align-items:center;gap:4px;"><i data-lucide="x-circle" style="width:11px;height:11px;"></i> Failed</span>`;
+        } else {
+          // Status is 'Pending'
+          if (c.status === 'Completed') {
+            statusBadge = `<span class="status-badge" style="background:#e0f2fe;color:#0284c7;border:1px solid #bae6fd;display:inline-flex;align-items:center;gap:4px;padding:3px 8px;font-size:0.75rem;font-weight:600;"><i data-lucide="send" style="width:11px;height:11px;"></i> Dispatched</span>`;
+          } else if (c.status === 'Approved') {
+            statusBadge = `<span class="status-badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;display:inline-flex;align-items:center;gap:4px;padding:3px 8px;font-size:0.75rem;font-weight:600;"><i data-lucide="package-check" style="width:11px;height:11px;"></i> In Dispatch Queue</span>`;
+          } else {
+            statusBadge = `<span class="status-badge badge-submitted" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;font-size:0.75rem;font-weight:600;"><i data-lucide="clock" style="width:11px;height:11px;"></i> Queued</span>`;
+          }
+        }
+
+        return `
+          <tr>
+            <td><code style="font-weight:600;font-size:0.84rem;color:#1e293b;">${r.phone_number}</code></td>
+            <td>${statusBadge}</td>
+            <td><span style="font-size:0.75rem;color:var(--slate-500);">${new Date(r.updated_at).toLocaleTimeString()}</span></td>
+          </tr>
+        `;
+      }).join('');
     }
 
     if (window.lucide) {
@@ -11036,6 +11132,21 @@ function renderSmsCampaignsTable() {
     const creditsUsed = c.credits_used !== undefined ? c.credits_used : ((parseInt(c.total_numbers, 10) || 0) * parts);
     const canDelete = c.status === 'Submitted';
 
+    let statusBadgeHtml = '';
+    if (c.status === 'Completed') {
+      statusBadgeHtml = `<span style="background:#e0f2fe;color:#0284c7;border:1px solid #bae6fd;padding:3px 9px;border-radius:20px;font-size:0.75rem;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="send" style="width:11px;height:11px;"></i> Completed</span>`;
+    } else if (c.status === 'Report Updated') {
+      statusBadgeHtml = `<span style="background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;padding:3px 9px;border-radius:20px;font-size:0.75rem;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="check-check" style="width:11px;height:11px;"></i> Reported</span>`;
+    } else if (c.status === 'Submitted') {
+      statusBadgeHtml = `<span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;padding:3px 9px;border-radius:20px;font-size:0.75rem;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="clock" style="width:11px;height:11px;"></i> Submitted</span>`;
+    } else if (c.status === 'Approved') {
+      statusBadgeHtml = `<span style="background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;padding:3px 9px;border-radius:20px;font-size:0.75rem;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="package-check" style="width:11px;height:11px;"></i> Approved</span>`;
+    } else if (c.status === 'Rejected') {
+      statusBadgeHtml = `<span style="background:#fee2e2;color:#dc2626;border:1px solid #fecaca;padding:3px 9px;border-radius:20px;font-size:0.75rem;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="x-circle" style="width:11px;height:11px;"></i> Rejected</span>`;
+    } else {
+      statusBadgeHtml = `<span style="background:${statusColor}22;color:${statusColor};padding:3px 9px;border-radius:20px;font-size:0.75rem;font-weight:700;white-space:nowrap;">${c.status}</span>`;
+    }
+
     return `<tr>
       <td>
         <a href="javascript:void(0)" onclick="openCampaignDetailModal(${c.id})" style="font-family:monospace;font-size:0.82rem;font-weight:700;color:#4f46e5;text-decoration:none;">
@@ -11075,7 +11186,7 @@ function renderSmsCampaignsTable() {
       </td>
       <td style="text-align:right;font-weight:800;color:#4f46e5;">${creditsUsed.toLocaleString()}</td>
       <td style="font-size:0.78rem;">${scheduledDisplay}</td>
-      <td><span style="background:${statusColor}22;color:${statusColor};padding:2px 8px;border-radius:20px;font-size:0.75rem;font-weight:700;white-space:nowrap;">${c.status}</span></td>
+      <td>${statusBadgeHtml}</td>
       <td style="font-size:0.78rem;color:var(--text-muted);">${createdDisplay}</td>
       <td>
         <div style="display:flex;gap:5px;justify-content:center;align-items:center;">
