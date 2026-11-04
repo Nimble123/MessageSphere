@@ -292,48 +292,109 @@ function formatLiveMessagePreview(text) {
   return preview.replace(/\n/g, '<br>');
 }
 
-// --- NAVIGATION & ROUTER ---
+// --- NAVIGATION & ROUTER WITH VIEW TRANSITIONS API ---
 const navItems = document.querySelectorAll('.nav-item');
 const views = document.querySelectorAll('.app-view');
 
-window.switchView = function(viewId) {
-  views.forEach(v => v.classList.remove('active'));
-  navItems.forEach(n => n.classList.remove('active'));
+// High-performance smooth Count-Up animation for KPIs & Fintech metrics
+window.animateCountUp = function(element, target, duration = 500, isCurrency = false) {
+  if (!element) return;
+  const targetNum = Number(target) || 0;
+  if (targetNum === 0) {
+    element.textContent = isCurrency ? '₹0.00' : '0';
+    return;
+  }
+  const startTime = performance.now();
+  const startNum = 0;
 
-  const targetView = document.getElementById(viewId);
-  if (targetView) targetView.classList.add('active');
+  function step(currentTime) {
+    const elapsed = currentTime - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    // Cubic ease-out curve
+    const ease = 1 - Math.pow(1 - progress, 3);
+    const current = Math.round(startNum + (targetNum - startNum) * ease);
 
-  const activeNav = document.querySelector(`.nav-item[data-view="${viewId}"]`);
-  if (activeNav) activeNav.classList.add('active');
+    if (isCurrency) {
+      element.textContent = `₹${current.toLocaleString('en-IN')}`;
+    } else {
+      element.textContent = current.toLocaleString('en-IN');
+    }
 
-  // Always reset scroll to the top of the content area
-  const appMain = document.querySelector('.app-main');
-  if (appMain) appMain.scrollTop = 0;
-  window.scrollTo(0, 0);
-
-  const titles = {
-    'view-dashboard': { title: 'Dashboard Overview', breadcrumb: 'MessageSphere / Overview' },
-    'view-new-campaign': { title: 'Create WhatsApp Campaign', breadcrumb: 'MessageSphere / WhatsApp / New' },
-    'view-campaigns': { title: 'WhatsApp Campaigns & Reports', breadcrumb: 'MessageSphere / WhatsApp / Campaigns' },
-    'view-contacts': { title: 'Phonebook & DND Blacklist', breadcrumb: 'MessageSphere / Audience / Phonebook' },
-    'view-templates': { title: 'Message Templates', breadcrumb: 'MessageSphere / Content / Templates' },
-    'view-headers': { title: 'Sender Headers (Alpha IDs)', breadcrumb: 'MessageSphere / Gateways / Headers' },
-    'view-wallet': { title: 'Credit Wallets & Ledger Statement', breadcrumb: 'MessageSphere / Billing / Passbook' },
-    'view-billing': { title: 'Top-up Requests & Orders', breadcrumb: 'MessageSphere / Billing / Orders' },
-    'view-users': { title: 'User & Reseller Management', breadcrumb: 'MessageSphere / Administration / Users' },
-    'view-operations': { title: 'Operations Audit & Controls', breadcrumb: 'MessageSphere / Administration / Operations Audit' },
-    'view-resellers': { title: 'Reseller Network', breadcrumb: 'MessageSphere / Administration / Resellers' },
-    'view-branding': { title: 'White-label Brand', breadcrumb: 'MessageSphere / Reseller / Brand' },
-    'view-settings': { title: 'Account Settings', breadcrumb: 'MessageSphere / Settings / Profile' },
-    'view-sms-new': { title: 'Create GSM Bulk SMS Campaign', breadcrumb: 'MessageSphere / GSM SMS / New Broadcast' },
-    'view-sms': { title: 'GSM Bulk SMS Broadcasts', breadcrumb: 'MessageSphere / GSM SMS / Broadcasts' }
-  };
-
-  if (titles[viewId]) {
-    topbarPageTitle.textContent = titles[viewId].title;
-    topbarBreadcrumb.textContent = titles[viewId].breadcrumb;
+    if (progress < 1) {
+      requestAnimationFrame(step);
+    } else {
+      element.textContent = isCurrency 
+        ? `₹${targetNum.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : targetNum.toLocaleString('en-IN');
+    }
   }
 
+  requestAnimationFrame(step);
+};
+
+// Shimmer Skeleton Table Loader Helper
+window.renderTableSkeleton = function(tbodyId, colCount = 8, rowCount = 4) {
+  const tbody = typeof tbodyId === 'string' ? document.getElementById(tbodyId) : tbodyId;
+  if (!tbody) return;
+  const rows = [];
+  for (let i = 0; i < rowCount; i++) {
+    const cols = [];
+    for (let j = 0; j < colCount; j++) {
+      const widthPct = j === 0 ? '70%' : (j === colCount - 1 ? '40%' : `${50 + (j * 7) % 35}%`);
+      cols.push(`<td style="padding:14px 16px;"><div class="skeleton-shimmer" style="height:14px;width:${widthPct};border-radius:4px;"></div></td>`);
+    }
+    rows.push(`<tr>${cols.join('')}</tr>`);
+  }
+  tbody.innerHTML = rows.join('');
+};
+
+window.switchView = function(viewId) {
+  const executeSwitch = () => {
+    views.forEach(v => v.classList.remove('active'));
+    navItems.forEach(n => n.classList.remove('active'));
+
+    const targetView = document.getElementById(viewId);
+    if (targetView) targetView.classList.add('active');
+
+    const activeNav = document.querySelector(`.nav-item[data-view="${viewId}"]`);
+    if (activeNav) activeNav.classList.add('active');
+
+    const appMain = document.querySelector('.app-main');
+    if (appMain) appMain.scrollTop = 0;
+    window.scrollTo(0, 0);
+
+    const titles = {
+      'view-dashboard': { title: 'Dashboard Overview', breadcrumb: 'MessageSphere / Overview' },
+      'view-new-campaign': { title: 'Create WhatsApp Campaign', breadcrumb: 'MessageSphere / WhatsApp / New' },
+      'view-campaigns': { title: 'WhatsApp Campaigns & Reports', breadcrumb: 'MessageSphere / WhatsApp / Campaigns' },
+      'view-contacts': { title: 'Phonebook & DND Blacklist', breadcrumb: 'MessageSphere / Audience / Phonebook' },
+      'view-templates': { title: 'Message Templates', breadcrumb: 'MessageSphere / Content / Templates' },
+      'view-headers': { title: 'Sender Headers (Alpha IDs)', breadcrumb: 'MessageSphere / Gateways / Headers' },
+      'view-wallet': { title: 'Credit Wallets & Ledger Statement', breadcrumb: 'MessageSphere / Billing / Passbook' },
+      'view-billing': { title: 'Top-up Requests & Orders', breadcrumb: 'MessageSphere / Billing / Orders' },
+      'view-users': { title: 'User & Reseller Management', breadcrumb: 'MessageSphere / Administration / Users' },
+      'view-operations': { title: 'Operations Audit & Controls', breadcrumb: 'MessageSphere / Administration / Operations Audit' },
+      'view-resellers': { title: 'Reseller Network', breadcrumb: 'MessageSphere / Administration / Resellers' },
+      'view-branding': { title: 'White-label Brand', breadcrumb: 'MessageSphere / Reseller / Brand' },
+      'view-settings': { title: 'Account Settings', breadcrumb: 'MessageSphere / Settings / Profile' },
+      'view-sms-new': { title: 'Create GSM Bulk SMS Campaign', breadcrumb: 'MessageSphere / GSM SMS / New Broadcast' },
+      'view-sms': { title: 'GSM Bulk SMS Broadcasts', breadcrumb: 'MessageSphere / GSM SMS / Broadcasts' }
+    };
+
+    if (titles[viewId]) {
+      topbarPageTitle.textContent = titles[viewId].title;
+      topbarBreadcrumb.textContent = titles[viewId].breadcrumb;
+    }
+  };
+
+  // Single-Page View Transitions API (Fallback to executeSwitch if not supported)
+  if (document.startViewTransition) {
+    document.startViewTransition(() => executeSwitch());
+  } else {
+    executeSwitch();
+  }
+
+  // Trigger view data loaders
   if (viewId === 'view-dashboard') refreshDashboardMetrics();
   if (viewId === 'view-campaigns') {
     campaignChannelScope = 'whatsapp';
@@ -1158,8 +1219,7 @@ window.exportLedgerCsv = async function() {
 async function loadLedgerTransactions() {
   const tbody = document.getElementById('ledger-table-tbody');
   if (!tbody) return;
-  tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--slate-400);"><i data-lucide="loader-2" class="spin"></i> Loading statement...</td></tr>`;
-  if (window.lucide) lucide.createIcons();
+  window.renderTableSkeleton(tbody, 9, 4);
 
   const search = (document.getElementById('ledger-search-input')?.value || '').trim();
   const channel = document.getElementById('ledger-filter-channel')?.value || 'all';
@@ -2667,6 +2727,10 @@ btnSubmitCampaignSaas.addEventListener('click', async () => {
 // --- CAMPAIGNS LIST & REPORTING ---
 async function loadCampaigns() {
   if (!currentUser) return;
+  const tbody = document.getElementById('campaigns-table-tbody');
+  if (tbody && (!allCampaigns || allCampaigns.length === 0)) {
+    window.renderTableSkeleton(tbody, 8, 3);
+  }
   try {
     allCampaigns = await apiFetch('/campaigns');
     populateCampaignUserFilter();
@@ -3084,12 +3148,12 @@ async function refreshDashboardMetrics() {
     if (role === 'admin') {
       // === SUPER ADMIN VIEW ===
       if (card1Title) card1Title.textContent = 'Total Platform Campaigns';
-      if (card1Val) card1Val.textContent = (kpi.total_campaigns || 0).toLocaleString();
+      if (card1Val) window.animateCountUp(card1Val, kpi.total_campaigns || 0);
       if (card1Sub) card1Sub.textContent = 'All-time system dispatches';
       if (card1Box) card1Box.innerHTML = '<i data-lucide="radio" style="width:24px;height:24px;"></i>';
 
       if (card2Title) card2Title.textContent = 'Total Messages Processed';
-      if (card2Val) card2Val.textContent = Number(kpi.total_recipients || 0).toLocaleString();
+      if (card2Val) window.animateCountUp(card2Val, kpi.total_recipients || 0);
       if (card2Sub) card2Sub.textContent = 'Platform volume reached';
       if (card2Box) card2Box.innerHTML = '<i data-lucide="smartphone" style="width:24px;height:24px;"></i>';
 
@@ -3111,7 +3175,7 @@ async function refreshDashboardMetrics() {
     } else if (role === 'reseller') {
       // === RESELLER AGENCY VIEW ===
       if (card1Title) card1Title.textContent = 'Client Campaigns';
-      if (card1Val) card1Val.textContent = (kpi.client_campaigns || 0).toLocaleString();
+      if (card1Val) window.animateCountUp(card1Val, kpi.client_campaigns || 0);
       if (card1Sub) card1Sub.textContent = 'Dispatched by your agency clients';
       if (card1Box) card1Box.innerHTML = '<i data-lucide="radio" style="width:24px;height:24px;"></i>';
 
@@ -3121,12 +3185,12 @@ async function refreshDashboardMetrics() {
       if (card2Box) card2Box.innerHTML = '<i data-lucide="users" style="width:24px;height:24px;"></i>';
 
       if (card3Title) card3Title.textContent = 'Reseller Wallet Balance';
-      if (card3Val) card3Val.textContent = Number(kpi.reseller_domestic_stock || 0).toLocaleString();
+      if (card3Val) window.animateCountUp(card3Val, kpi.reseller_domestic_stock || 0);
       if (card3Sub) card3Sub.textContent = `Available stock (Intl: ${Number(kpi.reseller_intl_stock || 0).toLocaleString()})`;
       if (card3Box) card3Box.innerHTML = '<i data-lucide="coins" style="width:24px;height:24px;"></i>';
 
       if (card4Title) card4Title.textContent = 'Credits in Circulation';
-      if (card4Val) card4Val.textContent = Number(kpi.credits_in_circulation || 0).toLocaleString();
+      if (card4Val) window.animateCountUp(card4Val, kpi.credits_in_circulation || 0);
       if (card4Sub) card4Sub.textContent = 'Distributed in client wallets';
       if (card4Box) card4Box.innerHTML = '<i data-lucide="credit-card" style="width:24px;height:24px;"></i>';
 
@@ -3140,12 +3204,12 @@ async function refreshDashboardMetrics() {
         : ((kpi.my_campaigns || 0) > 0 ? 'In Progress' : '—');
 
       if (card1Title) card1Title.textContent = 'My Campaigns';
-      if (card1Val) card1Val.textContent = (kpi.my_campaigns || 0).toLocaleString();
+      if (card1Val) window.animateCountUp(card1Val, kpi.my_campaigns || 0);
       if (card1Sub) card1Sub.textContent = 'Total campaigns created';
       if (card1Box) card1Box.innerHTML = '<i data-lucide="radio" style="width:24px;height:24px;"></i>';
 
       if (card2Title) card2Title.textContent = 'Audience Reached';
-      if (card2Val) card2Val.textContent = Number(kpi.total_recipients || 0).toLocaleString();
+      if (card2Val) window.animateCountUp(card2Val, kpi.total_recipients || 0);
       if (card2Sub) card2Sub.textContent = 'Total unique mobile numbers reached';
       if (card2Box) card2Box.innerHTML = '<i data-lucide="smartphone" style="width:24px;height:24px;"></i>';
 
@@ -3157,7 +3221,7 @@ async function refreshDashboardMetrics() {
       const domBal = Number(kpi.domestic_balance || 0);
       const intlBal = Number(kpi.intl_balance || 0);
       if (card4Title) card4Title.textContent = 'Total Available Wallet';
-      if (card4Val) card4Val.textContent = domBal.toLocaleString();
+      if (card4Val) window.animateCountUp(card4Val, domBal);
       if (card4Sub) card4Sub.textContent = `Dom: ${domBal.toLocaleString()} · Intl: ${intlBal.toLocaleString()}`;
       if (card4Box) card4Box.innerHTML = '<i data-lucide="wallet" style="width:24px;height:24px;"></i>';
     }
@@ -5068,6 +5132,10 @@ window.filterByUserReseller = function(resellerId) {
 
 async function loadUsers() {
   if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'reseller')) return;
+  const tbody = document.getElementById('users-table-tbody');
+  if (tbody && (!allUsers || allUsers.length === 0)) {
+    window.renderTableSkeleton(tbody, 8, 3);
+  }
   try {
     allUsers = await apiFetch('/users');
     populateResellerFilterDropdown();
@@ -12387,8 +12455,9 @@ window.filterSmsCampaigns = function() {
 window.loadSmsCampaigns = async function() {
   const tbody = document.getElementById('sms-campaigns-tbody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-muted);"><i data-lucide="loader-2" class="spin"></i> Loading SMS campaigns...</td></tr>';
-  if (window.lucide) lucide.createIcons();
+  if (!allSmsCampaigns || allSmsCampaigns.length === 0) {
+    window.renderTableSkeleton(tbody, 8, 3);
+  }
 
   // Always sync fresh user balance in background
   try {

@@ -622,9 +622,142 @@
       margin: 0 auto;
       width: 100%;
     }
-    .app-view { display: none; }
-    .app-view.active { display: block; animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    /* VIEW ENTRANCE & VIEW TRANSITIONS */
+    .app-view {
+      display: none;
+      opacity: 0;
+    }
+    .app-view.active {
+      display: block;
+      animation: viewSlideIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes viewSlideIn {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* MICRO-INTERACTIONS: HAPTIC-FEEL BUTTON PRESS */
+    button,
+    .btn-action,
+    .btn-primary,
+    .btn-action-primary,
+    .btn-secondary,
+    .user-seg-btn,
+    .btn-new-campaign-top,
+    .status-badge[onclick] {
+      transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1) !important;
+      user-select: none;
+    }
+
+    button:active,
+    .btn-action:active,
+    .btn-primary:active,
+    .btn-action-primary:active,
+    .btn-secondary:active,
+    .user-seg-btn:active,
+    .btn-new-campaign-top:active,
+    .status-badge[onclick]:active {
+      transform: scale(0.96) !important;
+    }
+
+    /* SUBTLE LIGHT SWEEP SHIMMER ON PRIMARY ACTIONS */
+    .btn-action-primary,
+    .btn-new-campaign-top,
+    .btn-primary {
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-action-primary::after,
+    .btn-new-campaign-top::after,
+    .btn-primary::after {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -60%;
+      width: 45%;
+      height: 200%;
+      background: linear-gradient(
+        60deg,
+        rgba(255, 255, 255, 0) 15%,
+        rgba(255, 255, 255, 0.25) 50%,
+        rgba(255, 255, 255, 0) 85%
+      );
+      transform: rotate(25deg);
+      animation: sweepGlow 4.8s infinite;
+      pointer-events: none;
+    }
+    @keyframes sweepGlow {
+      0%, 75% { transform: translateX(0) rotate(25deg); }
+      100% { transform: translateX(450%) rotate(25deg); }
+    }
+
+    /* MODERN FOCUS ILLUMINATION ON INPUTS */
+    input[type="text"]:focus,
+    input[type="password"]:focus,
+    input[type="email"]:focus,
+    input[type="number"]:focus,
+    input[type="date"]:focus,
+    textarea:focus,
+    select:focus {
+      border-color: #4f46e5 !important;
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.16) !important;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+    }
+
+    /* TABLE ROW MICRO-HOVER */
+    table tbody tr {
+      transition: background-color 0.15s ease, transform 0.15s ease;
+    }
+    table tbody tr:hover {
+      background-color: rgba(241, 245, 249, 0.65) !important;
+    }
+
+    /* SHIMMER SKELETON LOADER */
+    .skeleton-shimmer {
+      background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+      background-size: 200% 100%;
+      animation: skeletonPulse 1.6s infinite ease-in-out;
+      border-radius: 6px;
+      display: inline-block;
+    }
+    @keyframes skeletonPulse {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* ACTION DROPDOWN SPRING POP */
+    .action-dropdown-menu.show {
+      display: block;
+      animation: dropdownPop 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      box-shadow: 0 12px 28px -4px rgba(15, 23, 42, 0.16), 0 0 0 1px rgba(15, 23, 42, 0.08) !important;
+      transform-origin: top right;
+    }
+    @keyframes dropdownPop {
+      from {
+        opacity: 0;
+        transform: scale(0.94) translateY(-4px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+
+    /* REDUCED MOTION ACCESSIBILITY */
+    @media (prefers-reduced-motion: reduce) {
+      *, ::after, ::before {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
 
     /* METRICS CARDS */
     .metrics-grid {
@@ -1467,27 +1600,44 @@
     }
 
     /* MODALS */
+    /* MODALS: ULTRA-PREMIUM GLASSMORPHISM & SPRING POP */
     .modal-overlay {
       position: fixed;
       inset: 0;
-      background: rgba(15, 23, 42, 0.65);
-      backdrop-filter: blur(5px);
+      background: rgba(15, 23, 42, 0.65) !important;
+      backdrop-filter: blur(10px) saturate(180%) !important;
+      -webkit-backdrop-filter: blur(10px) saturate(180%) !important;
       display: none;
       align-items: center;
       justify-content: center;
       z-index: 10000;
       padding: 20px;
+      animation: modalOverlayFade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes modalOverlayFade {
+      from { opacity: 0; }
+      to { opacity: 1; }
     }
     .modal-card {
       background: white;
       width: 100%;
       max-width: 540px;
       border-radius: var(--radius-lg);
-      box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(15, 23, 42, 0.08);
+      box-shadow: 0 30px 60px -12px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.2) inset, 0 1px 3px rgba(15, 23, 42, 0.08);
       overflow: hidden;
-      animation: modalScale 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+      animation: modalSpringPop 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+      transform-origin: center center;
     }
-    @keyframes modalScale { from { transform: scale(0.96); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    @keyframes modalSpringPop {
+      from {
+        opacity: 0;
+        transform: scale(0.94) translateY(12px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
     .modal-header-saas {
       padding: 18px 22px;
       border-bottom: 1px solid var(--border-color);
@@ -7397,6 +7547,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=1793817000000"></script>
+  <script src="app.js?v=1793818000000"></script>
 </body>
 </html>
