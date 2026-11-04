@@ -1847,19 +1847,33 @@
       </div>
       
       <nav class="sidebar-nav">
-        <div class="nav-category">Main Menu</div>
+        <div class="nav-category">Overview</div>
         <div class="nav-item active" data-view="view-dashboard">
           <span class="nav-icon"><i data-lucide="layout-dashboard" style="width:18px;height:18px;"></i></span>
           <span class="nav-text">Dashboard</span>
         </div>
+
+        <div class="nav-category">WhatsApp Messaging</div>
         <div class="nav-item" data-view="view-new-campaign">
-          <span class="nav-icon"><i data-lucide="send" style="width:18px;height:18px;"></i></span>
-          <span class="nav-text">New Campaign</span>
+          <span class="nav-icon"><i data-lucide="message-circle" style="width:18px;height:18px;color:#22c55e;"></i></span>
+          <span class="nav-text">New WhatsApp Campaign</span>
         </div>
-        <div class="nav-item" data-view="view-campaigns">
-          <span class="nav-icon"><i data-lucide="folder-kanban" style="width:18px;height:18px;"></i></span>
-          <span class="nav-text">Campaigns</span>
+        <div class="nav-item" data-view="view-campaigns" onclick="if(window.setCampaignChannelScope)window.setCampaignChannelScope('whatsapp')">
+          <span class="nav-icon"><i data-lucide="messages-square" style="width:18px;height:18px;color:#16a34a;"></i></span>
+          <span class="nav-text">WhatsApp Campaigns</span>
         </div>
+
+        <div class="nav-category">GSM Bulk SMS</div>
+        <div class="nav-item" data-view="view-sms-new">
+          <span class="nav-icon"><i data-lucide="send" style="width:18px;height:18px;color:#6366f1;"></i></span>
+          <span class="nav-text">New Bulk SMS</span>
+        </div>
+        <div class="nav-item" data-view="view-sms">
+          <span class="nav-icon"><i data-lucide="radio" style="width:18px;height:18px;color:#6366f1;"></i></span>
+          <span class="nav-text">Bulk SMS Broadcasts</span>
+        </div>
+
+        <div class="nav-category">Audience & Templates</div>
         <div class="nav-item" data-view="view-contacts">
           <span class="nav-icon"><i data-lucide="book-user" style="width:18px;height:18px;"></i></span>
           <span class="nav-text">Phonebook & DND</span>
@@ -1867,10 +1881,6 @@
         <div class="nav-item" data-view="view-templates">
           <span class="nav-icon"><i data-lucide="file-text" style="width:18px;height:18px;"></i></span>
           <span class="nav-text">Templates</span>
-        </div>
-        <div class="nav-item" data-view="view-sms">
-          <span class="nav-icon"><i data-lucide="message-square-text" style="width:18px;height:18px;"></i></span>
-          <span class="nav-text">Bulk SMS</span>
         </div>
 
         <div class="nav-category">Billing & Credits</div>
@@ -2524,8 +2534,9 @@
                       <div>
                         <label style="font-size:0.8rem;font-weight:600;margin-bottom:4px;display:block;">Website URL</label>
                         <input type="url" id="cta-url-link" class="form-input" placeholder="https://yourwebsite.com">
-                        <div style="font-size:0.72rem;color:#b45309;margin-top:4px;font-weight:600;line-height:1.3;">
-                          ⚠️ Must start with <span style="font-family:monospace;background:#fef3c7;padding:1px 4px;border-radius:3px;">https://</span> &bull; Direct WhatsApp links (<span style="font-family:monospace;">wa.me</span>) not supported
+                        <div style="font-size:0.72rem;color:#b45309;margin-top:4px;font-weight:600;line-height:1.3;display:flex;align-items:center;gap:4px;">
+                          <i data-lucide="info" style="width:13px;height:13px;color:#d97706;flex-shrink:0;"></i>
+                          <span>Must start with <span style="font-family:monospace;background:#fef3c7;padding:1px 4px;border-radius:3px;">https://</span> &bull; Direct WhatsApp links (<span style="font-family:monospace;">wa.me</span>) not supported</span>
                         </div>
                       </div>
                     </div>
@@ -2748,10 +2759,36 @@
         <!-- 3. ALL CAMPAIGNS VIEW -->
         <section id="view-campaigns" class="app-view">
           
+          <!-- Channel Switcher Strip (WhatsApp vs GSM SMS) -->
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;background:white;padding:12px 18px;border-radius:10px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,0.03);flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="width:36px;height:36px;border-radius:8px;background:#dcfce7;color:#16a34a;display:flex;align-items:center;justify-content:center;">
+                <i data-lucide="message-circle" style="width:20px;height:20px;"></i>
+              </div>
+              <div>
+                <h3 style="margin:0;font-size:1.05rem;font-weight:700;color:#0f172a;" id="campaigns-view-heading">WhatsApp Campaign History & Reports</h3>
+                <div style="font-size:0.75rem;color:#64748b;margin-top:2px;">Track delivery performance, recipient status, and dispatch reports</div>
+              </div>
+            </div>
+
+            <!-- Channel Scope Switcher Tabs -->
+            <div style="display:inline-flex;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;padding:3px;gap:3px;">
+              <button type="button" class="btn-action" id="scope-chan-whatsapp" onclick="setCampaignChannelScope('whatsapp', this)" style="padding:5px 12px;font-size:0.78rem;border:none;background:#16a34a;color:#ffffff;border-radius:6px;font-weight:700;display:inline-flex;align-items:center;gap:5px;cursor:pointer;">
+                <i data-lucide="message-circle" style="width:13px;height:13px;"></i> WhatsApp
+              </button>
+              <button type="button" class="btn-action" id="scope-chan-sms" onclick="setCampaignChannelScope('sms', this)" style="padding:5px 12px;font-size:0.78rem;border:none;background:transparent;color:#475569;border-radius:6px;font-weight:600;display:inline-flex;align-items:center;gap:5px;cursor:pointer;">
+                <i data-lucide="radio" style="width:13px;height:13px;"></i> GSM Bulk SMS
+              </button>
+              <button type="button" class="btn-action" id="scope-chan-all" onclick="setCampaignChannelScope('all', this)" style="padding:5px 12px;font-size:0.78rem;border:none;background:transparent;color:#475569;border-radius:6px;font-weight:600;display:inline-flex;align-items:center;gap:5px;cursor:pointer;">
+                <i data-lucide="layers" style="width:13px;height:13px;"></i> All Broadcasts
+              </button>
+            </div>
+          </div>
+
           <div class="filter-bar" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
             <div class="tab-pills" id="campaign-status-tabs">
               <button class="tab-pill active" data-filter="all">All <span class="tab-badge" id="badge-camp-all" style="margin-left:4px;padding:2px 6px;border-radius:10px;font-size:0.7rem;background:#e2e8f0;color:#334155;">0</span></button>
-              <button class="tab-pill" data-filter="Scheduled">⏰ Scheduled <span class="tab-badge" id="badge-camp-scheduled" style="margin-left:4px;padding:2px 6px;border-radius:10px;font-size:0.7rem;background:#fef3c7;color:#92400e;">0</span></button>
+              <button class="tab-pill" data-filter="Scheduled"><i data-lucide="clock" style="width:12px;height:12px;display:inline-block;vertical-align:-1px;margin-right:3px;"></i> Scheduled <span class="tab-badge" id="badge-camp-scheduled" style="margin-left:4px;padding:2px 6px;border-radius:10px;font-size:0.7rem;background:#fef3c7;color:#92400e;">0</span></button>
               <button class="tab-pill" data-filter="Submitted">Submitted <span class="tab-badge" id="badge-camp-submitted" style="margin-left:4px;padding:2px 6px;border-radius:10px;font-size:0.7rem;background:#fef3c7;color:#92400e;">0</span></button>
               <button class="tab-pill" data-filter="Approved">Approved <span class="tab-badge" id="badge-camp-approved" style="margin-left:4px;padding:2px 6px;border-radius:10px;font-size:0.7rem;background:#dcfce7;color:#166534;">0</span></button>
               <button class="tab-pill" data-filter="Completed">Completed <span class="tab-badge" id="badge-camp-completed" style="margin-left:4px;padding:2px 6px;border-radius:10px;font-size:0.7rem;background:#e0f2fe;color:#0369a1;">0</span></button>
@@ -2760,7 +2797,7 @@
             </div>
             <div>
               <button id="btn-open-operator-queue" class="btn-action" style="display:none;background:linear-gradient(135deg,#059669,#10b981);color:white;border:none;border-radius:6px;font-weight:600;font-size:0.85rem;padding:7px 14px;box-shadow:0 2px 8px rgba(16,185,129,0.3);align-items:center;gap:6px;cursor:pointer;">
-                <i data-lucide="package-check" style="width:16px;height:16px;"></i> ⚡ Operator Dispatch Queue (<span id="operator-queue-badge">0</span>)
+                <i data-lucide="package-check" style="width:16px;height:16px;"></i> Operator Dispatch Queue (<span id="operator-queue-badge">0</span>)
               </button>
             </div>
           </div>
@@ -2770,14 +2807,14 @@
             <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;">
               <!-- Client / User Filter (Admin & Reseller Only) -->
               <select id="campaign-filter-user" class="form-input" style="display:none;padding:5px 10px;font-size:0.8rem;border-radius:6px;min-width:160px;background:#ffffff;height:34px;">
-                <option value="all">👥 All Clients</option>
+                <option value="all">All Clients</option>
               </select>
 
               <!-- Route / Channel Filter -->
               <select id="campaign-filter-route" class="form-input" style="padding:5px 10px;font-size:0.8rem;border-radius:6px;min-width:150px;background:#ffffff;height:34px;">
-                <option value="all">🛣️ All Routes (Default)</option>
-                <option value="domestic">🇮🇳 Domestic</option>
-                <option value="international">🌍 International</option>
+                <option value="all">All Routes (Default)</option>
+                <option value="domestic">Domestic Route (India +91)</option>
+                <option value="international">International Route</option>
                 <option value="normal">Normal Gateway</option>
                 <option value="dp">Profile Picture (DP)</option>
                 <option value="cta">CTA Interactive Buttons</option>
@@ -2787,7 +2824,7 @@
 
               <!-- Date Preset Filter -->
               <select id="campaign-filter-date" class="form-input" style="padding:5px 10px;font-size:0.8rem;border-radius:6px;min-width:130px;background:#ffffff;height:34px;">
-                <option value="all">📅 All Time</option>
+                <option value="all">All Time</option>
                 <option value="today">Today</option>
                 <option value="yesterday">Yesterday</option>
                 <option value="last7">Last 7 Days</option>
@@ -2836,8 +2873,8 @@
               <i data-lucide="filter" style="width:12px;height:12px;color:var(--primary);"></i> Active Filters:
             </span>
             <div id="campaign-filter-chips-list" style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:6px;"></div>
-            <button type="button" onclick="document.getElementById('btn-reset-campaign-filters').click()" style="margin-left:auto;background:none;border:none;color:#ef4444;font-weight:700;cursor:pointer;font-size:0.75rem;padding:2px 6px;">
-              Clear All ✕
+            <button type="button" onclick="document.getElementById('btn-reset-campaign-filters').click()" style="margin-left:auto;background:none;border:none;color:#ef4444;font-weight:700;cursor:pointer;font-size:0.75rem;padding:2px 6px;display:inline-flex;align-items:center;gap:3px;">
+              <i data-lucide="x" style="width:12px;height:12px;"></i> Clear All
             </button>
           </div>
 
@@ -2904,7 +2941,7 @@
                 
                 <!-- Legend Chips -->
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:0.72rem;">
-                  <span class="calendar-chip calendar-chip-scheduled" style="cursor:default;pointer-events:none;"><i data-lucide="clock" style="width:11px;height:11px;"></i> ⏰ Scheduled</span>
+                  <span class="calendar-chip calendar-chip-scheduled" style="cursor:default;pointer-events:none;"><i data-lucide="clock" style="width:11px;height:11px;"></i> Scheduled</span>
                   <span class="calendar-chip calendar-chip-submitted" style="cursor:default;pointer-events:none;"><i data-lucide="clock" style="width:11px;height:11px;"></i> Submitted</span>
                   <span class="calendar-chip calendar-chip-approved" style="cursor:default;pointer-events:none;"><i data-lucide="check" style="width:11px;height:11px;"></i> In Queue</span>
                   <span class="calendar-chip calendar-chip-completed" style="cursor:default;pointer-events:none;"><i data-lucide="send" style="width:11px;height:11px;"></i> Dispatched</span>
@@ -3009,10 +3046,10 @@
               <!-- Vault Route Selector Segmented Pill -->
               <div style="background: rgba(15, 23, 42, 0.75); padding: 2px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.15); display: inline-flex; gap: 2px;">
                 <button type="button" id="vault-tab-domestic" onclick="switchVaultRoute('domestic')" style="background: #4f46e5; color: #fff; border: none; padding: 5px 12px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 5px;">
-                  🇮🇳 Domestic
+                  <i data-lucide="map-pin" style="width:12px;height:12px;"></i> Domestic (India +91)
                 </button>
                 <button type="button" id="vault-tab-intl" onclick="switchVaultRoute('international')" style="background: transparent; color: #94a3b8; border: none; padding: 5px 12px; border-radius: 8px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 5px;">
-                  🌐 Intl (+Route)
+                  <i data-lucide="globe" style="width:12px;height:12px;"></i> International
                 </button>
               </div>
             </div>
@@ -3359,8 +3396,8 @@
 
                 <select id="ledger-filter-flow" class="form-input" onchange="onLedgerFilterChange()" style="font-size: 0.8rem; height: 34px; padding: 4px 10px; max-width: 140px; border-radius: 8px;">
                   <option value="all">All Flows (In & Out)</option>
-                  <option value="credit">🟢 Credit In (+)</option>
-                  <option value="debit">🔴 Debit Out (-)</option>
+                  <option value="credit">Credit In (+)</option>
+                  <option value="debit">Debit Out (-)</option>
                 </select>
               </div>
 
@@ -3866,14 +3903,14 @@
                 <button type="button" class="btn-action btn-action-secondary billing-tab-pill active" onclick="filterBillingTab('all', this)" style="padding: 5px 12px; font-size: 0.75rem; font-weight: 700;">
                   All Invoices (<span id="tab-cnt-all">0</span>)
                 </button>
-                <button type="button" class="btn-action btn-action-secondary billing-tab-pill" onclick="filterBillingTab('due', this)" style="padding: 5px 12px; font-size: 0.75rem; font-weight: 600; color: #dc2626;">
-                  🔴 Balance Due (<span id="tab-cnt-due">0</span>)
+                <button type="button" class="btn-action btn-action-secondary billing-tab-pill" onclick="filterBillingTab('due', this)" style="padding: 5px 12px; font-size: 0.75rem; font-weight: 600; color: #dc2626; display: inline-flex; align-items: center; gap: 4px;">
+                  <i data-lucide="alert-circle" style="width: 12px; height: 12px;"></i> Balance Due (<span id="tab-cnt-due">0</span>)
                 </button>
-                <button type="button" class="btn-action btn-action-secondary billing-tab-pill" onclick="filterBillingTab('partial', this)" style="padding: 5px 12px; font-size: 0.75rem; font-weight: 600; color: #d97706;">
-                  🟡 Partial Paid (<span id="tab-cnt-partial">0</span>)
+                <button type="button" class="btn-action btn-action-secondary billing-tab-pill" onclick="filterBillingTab('partial', this)" style="padding: 5px 12px; font-size: 0.75rem; font-weight: 600; color: #d97706; display: inline-flex; align-items: center; gap: 4px;">
+                  <i data-lucide="clock" style="width: 12px; height: 12px;"></i> Partial Paid (<span id="tab-cnt-partial">0</span>)
                 </button>
-                <button type="button" class="btn-action btn-action-secondary billing-tab-pill" onclick="filterBillingTab('paid', this)" style="padding: 5px 12px; font-size: 0.75rem; font-weight: 600; color: #059669;">
-                  🟢 Fully Cleared (<span id="tab-cnt-paid">0</span>)
+                <button type="button" class="btn-action btn-action-secondary billing-tab-pill" onclick="filterBillingTab('paid', this)" style="padding: 5px 12px; font-size: 0.75rem; font-weight: 600; color: #059669; display: inline-flex; align-items: center; gap: 4px;">
+                  <i data-lucide="check-circle-2" style="width: 12px; height: 12px;"></i> Fully Cleared (<span id="tab-cnt-paid">0</span>)
                 </button>
               </div>
 
@@ -4141,7 +4178,7 @@
                     <div style="display: flex; align-items: center; gap: 10px;">
                       <i data-lucide="shield-check" style="width: 20px; height: 20px; color: #16a34a;"></i>
                       <div>
-                        <strong style="font-size: 0.85rem; color: #166534;">🇮🇳 Domestic GSM Direct Route (India +91)</strong>
+                        <strong style="font-size: 0.85rem; color: #166534;">Domestic GSM Direct Route (India +91)</strong>
                         <div style="font-size: 0.72rem; color: #15803d;">Instant high-speed mobile delivery • Direct Telecom Gateway</div>
                       </div>
                     </div>
@@ -4253,8 +4290,9 @@
                   <!-- Cost Calculation & Live Wallet Check Banner -->
                   <div id="sms-credit-estimate" style="background: linear-gradient(135deg, #f5f3ff, #eef2ff); border: 1.5px solid #c7d2fe; border-radius: 10px; padding: 14px 18px; margin-bottom: 18px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                      <div style="font-size: 0.88rem; color: #1e1b4b;">
-                        <strong>📊 Dispatch Calculation:</strong> <span id="sms-est-numbers">0</span> recipients × <span id="sms-est-parts">1</span> part = <strong id="sms-est-total-credits" style="color: #4f46e5; font-size: 1rem;">0</strong> credits
+                      <div style="font-size: 0.88rem; color: #1e1b4b; display: inline-flex; align-items: center; gap: 6px;">
+                        <i data-lucide="calculator" style="width: 15px; height: 15px; color: #4f46e5;"></i>
+                        <strong>Dispatch Calculation:</strong> <span id="sms-est-numbers">0</span> recipients × <span id="sms-est-parts">1</span> part = <strong id="sms-est-total-credits" style="color: #4f46e5; font-size: 1rem;">0</strong> credits
                       </div>
                       <div id="sms-est-balance-check" style="font-size: 0.82rem;"></div>
                     </div>
@@ -4794,9 +4832,9 @@
                 Payment Terms
               </label>
               <select id="alloc-payment-status" class="form-input" onchange="onAllocPaymentStatusChange()" style="height:38px;font-size:0.82rem;">
-                <option value="unpaid">🔴 Unpaid (Full Invoice Balance Due)</option>
-                <option value="paid">🟢 Paid in Full (Settled)</option>
-                <option value="partial">🟡 Partial Payment (Balance Remaining)</option>
+                <option value="unpaid">Unpaid (Full Invoice Balance Due)</option>
+                <option value="paid">Paid in Full (Settled)</option>
+                <option value="partial">Partial Payment (Balance Remaining)</option>
               </select>
             </div>
           </div>
@@ -5331,8 +5369,9 @@
             <div>
               <label style="font-size:0.75rem;font-weight:600;margin-bottom:2px;display:block;">Website Target URL</label>
               <input type="url" id="modal-tpl-create-url-link" class="form-input" placeholder="https://yourstore.com">
-              <div style="font-size:0.68rem;color:#b45309;margin-top:2px;font-weight:600;">
-                ⚠️ Starts with <span style="font-family:monospace;">https://</span> &bull; No <span style="font-family:monospace;">wa.me</span> links
+              <div style="font-size:0.68rem;color:#b45309;margin-top:2px;font-weight:600;display:flex;align-items:center;gap:4px;">
+                <i data-lucide="info" style="width:12px;height:12px;flex-shrink:0;"></i>
+                <span>Starts with <span style="font-family:monospace;">https://</span> &bull; No <span style="font-family:monospace;">wa.me</span> links</span>
               </div>
             </div>
           </div>
@@ -5427,8 +5466,8 @@
               <span style="font-weight:700;font-size:0.83rem;color:#1e293b;display:flex;align-items:center;gap:6px;">
                 <i data-lucide="languages" style="width:15px;height:15px;color:#4f46e5;"></i> SMS Character Encoding
               </span>
-              <span id="tpl-create-enc-detected" style="font-size:0.75rem;font-weight:700;padding:2px 10px;border-radius:20px;background:#ecfdf5;color:#15803d;border:1px solid #bbf7d0;">
-                🟢 GSM-7 Active (160 chars/credit)
+              <span id="tpl-create-enc-detected" style="font-size:0.75rem;font-weight:700;padding:2px 10px;border-radius:20px;background:#ecfdf5;color:#15803d;border:1px solid #bbf7d0;display:inline-flex;align-items:center;gap:4px;">
+                <i data-lucide="check-circle" style="width:12px;height:12px;"></i> GSM-7 Active (160 chars/credit)
               </span>
             </div>
 
@@ -5681,8 +5720,9 @@
             <div>
               <label style="font-size:0.75rem;font-weight:600;margin-bottom:2px;display:block;">Website Target URL</label>
               <input type="url" id="modal-tpl-edit-url-link" class="form-input" placeholder="https://yourstore.com">
-              <div style="font-size:0.68rem;color:#b45309;margin-top:2px;font-weight:600;">
-                ⚠️ Starts with <span style="font-family:monospace;">https://</span> &bull; No <span style="font-family:monospace;">wa.me</span> links
+              <div style="font-size:0.68rem;color:#b45309;margin-top:2px;font-weight:600;display:flex;align-items:center;gap:4px;">
+                <i data-lucide="info" style="width:12px;height:12px;flex-shrink:0;"></i>
+                <span>Starts with <span style="font-family:monospace;">https://</span> &bull; No <span style="font-family:monospace;">wa.me</span> links</span>
               </div>
             </div>
           </div>
@@ -5777,8 +5817,8 @@
               <span style="font-weight:700;font-size:0.83rem;color:#1e293b;display:flex;align-items:center;gap:6px;">
                 <i data-lucide="languages" style="width:15px;height:15px;color:#4f46e5;"></i> SMS Character Encoding
               </span>
-              <span id="tpl-edit-enc-detected" style="font-size:0.75rem;font-weight:700;padding:2px 10px;border-radius:20px;background:#ecfdf5;color:#15803d;border:1px solid #bbf7d0;">
-                🟢 GSM-7 Active (160 chars/credit)
+              <span id="tpl-edit-enc-detected" style="font-size:0.75rem;font-weight:700;padding:2px 10px;border-radius:20px;background:#ecfdf5;color:#15803d;border:1px solid #bbf7d0;display:inline-flex;align-items:center;gap:4px;">
+                <i data-lucide="check-circle" style="width:12px;height:12px;"></i> GSM-7 Active (160 chars/credit)
               </span>
             </div>
 
@@ -6082,8 +6122,8 @@
         <div style="text-align: center; border-bottom: 2px dashed #e2e8f0; padding-bottom: 16px; margin-bottom: 16px;">
           <div style="font-size: 1.3rem; font-weight: 900; color: #0f172a; letter-spacing: -0.5px;">MessageSphere Technologies Pvt Ltd</div>
           <div style="font-size: 0.74rem; color: #475569; margin-top: 2px;">GSTIN: <strong>08AABCM1234F1Z5</strong> &bull; State: 08 (Rajasthan / India) &bull; SAC: <strong>998413</strong></div>
-          <div style="margin-top: 10px; display: inline-block; background: #ecfdf5; color: #059669; font-weight: 800; font-size: 0.72rem; padding: 3px 12px; border-radius: 20px; border: 1px solid #bbf7d0;">
-            ✓ VERIFIED & CREDITED TO VAULT
+          <div style="margin-top: 10px; display: inline-flex; align-items: center; gap: 4px; background: #ecfdf5; color: #059669; font-weight: 800; font-size: 0.72rem; padding: 3px 12px; border-radius: 20px; border: 1px solid #bbf7d0;">
+            <i data-lucide="check" style="width:12px;height:12px;"></i> VERIFIED & CREDITED TO VAULT
           </div>
         </div>
 
@@ -6166,7 +6206,7 @@
             <span>Offline dispatcher bundle includes <b>DISPATCH_MANIFEST.csv</b>, per-campaign folders with clean <b>numbers.txt</b> (one per line), complete <b>message_content.txt</b>, and all <b>media files (DP, Gallery Images, Video, PDF)</b>.</span>
           </div>
           <button id="btn-operator-download-all-zip" class="btn-action" style="background:#059669;color:white;font-weight:600;font-size:0.85rem;padding:9px 18px;border:none;border-radius:6px;display:flex;align-items:center;gap:8px;cursor:pointer;box-shadow:0 2px 6px rgba(5,150,105,0.25);">
-            <i data-lucide="download-cloud" style="width:16px;height:16px;"></i> ⚡ Download Complete Package (All Pending)
+            <i data-lucide="download-cloud" style="width:16px;height:16px;"></i> Download Complete Package (All Pending)
           </button>
         </div>
 
@@ -6682,6 +6722,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=1793793000001"></script>
+  <script src="app.js?v=1793796000001"></script>
 </body>
 </html>

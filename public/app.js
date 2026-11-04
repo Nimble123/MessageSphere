@@ -297,6 +297,14 @@ const navItems = document.querySelectorAll('.nav-item');
 const views = document.querySelectorAll('.app-view');
 
 window.switchView = function(viewId) {
+  if (viewId === 'view-sms-new') {
+    switchView('view-sms');
+    setTimeout(() => {
+      if (typeof openNewSmsModal === 'function') openNewSmsModal();
+    }, 120);
+    return;
+  }
+
   views.forEach(v => v.classList.remove('active'));
   navItems.forEach(n => n.classList.remove('active'));
 
@@ -313,8 +321,8 @@ window.switchView = function(viewId) {
 
   const titles = {
     'view-dashboard': { title: 'Dashboard Overview', breadcrumb: 'MessageSphere / Overview' },
-    'view-new-campaign': { title: 'Create New Campaign', breadcrumb: 'MessageSphere / Campaigns / New' },
-    'view-campaigns': { title: 'Campaign History & Reports', breadcrumb: 'MessageSphere / Campaigns / History' },
+    'view-new-campaign': { title: 'Create WhatsApp Campaign', breadcrumb: 'MessageSphere / WhatsApp / New' },
+    'view-campaigns': { title: 'WhatsApp Campaigns & Reports', breadcrumb: 'MessageSphere / WhatsApp / Campaigns' },
     'view-contacts': { title: 'Phonebook & DND Blacklist', breadcrumb: 'MessageSphere / Audience / Phonebook' },
     'view-templates': { title: 'Message Templates', breadcrumb: 'MessageSphere / Content / Templates' },
     'view-headers': { title: 'Sender Headers (Alpha IDs)', breadcrumb: 'MessageSphere / Gateways / Headers' },
@@ -325,7 +333,7 @@ window.switchView = function(viewId) {
     'view-resellers': { title: 'Reseller Network', breadcrumb: 'MessageSphere / Administration / Resellers' },
     'view-branding': { title: 'White-label Brand', breadcrumb: 'MessageSphere / Reseller / Brand' },
     'view-settings': { title: 'Account Settings', breadcrumb: 'MessageSphere / Settings / Profile' },
-    'view-sms': { title: 'GSM Bulk SMS Campaigns', breadcrumb: 'MessageSphere / SMS / Campaigns' }
+    'view-sms': { title: 'GSM Bulk SMS Gateway', breadcrumb: 'MessageSphere / GSM SMS / Broadcasts' }
   };
 
   if (titles[viewId]) {
@@ -334,7 +342,11 @@ window.switchView = function(viewId) {
   }
 
   if (viewId === 'view-dashboard') refreshDashboardMetrics();
-  if (viewId === 'view-campaigns') renderCampaignsTable();
+  if (viewId === 'view-campaigns') {
+    campaignChannelScope = 'whatsapp';
+    renderCampaignsTable();
+    updateCampaignTabBadges();
+  }
   if (viewId === 'view-users') loadUsers();
   if (viewId === 'view-wallet') { updateWalletView(); loadLedgerTransactions(); }
   if (viewId === 'view-new-campaign') {
@@ -780,18 +792,19 @@ function updateWalletView() {
       healthBadge.style.background = '#ecfdf5';
       healthBadge.style.color = '#15803d';
       healthBadge.style.borderColor = '#bbf7d0';
-      healthBadge.textContent = '🟢 Healthy Stock';
+      healthBadge.innerHTML = '<i data-lucide="check-circle" style="width:13px;height:13px;display:inline-block;vertical-align:-1px;margin-right:4px;"></i> Healthy Stock';
     } else if (activeTotal >= 1000) {
       healthBadge.style.background = '#fefce8';
       healthBadge.style.color = '#a16207';
       healthBadge.style.borderColor = '#fef08a';
-      healthBadge.textContent = '🟡 Refill Recommended';
+      healthBadge.innerHTML = '<i data-lucide="alert-circle" style="width:13px;height:13px;display:inline-block;vertical-align:-1px;margin-right:4px;"></i> Refill Recommended';
     } else {
       healthBadge.style.background = '#fef2f2';
       healthBadge.style.color = '#b91c1c';
       healthBadge.style.borderColor = '#fecaca';
-      healthBadge.textContent = '🔴 Low Balance Alert';
+      healthBadge.innerHTML = '<i data-lucide="alert-triangle" style="width:13px;height:13px;display:inline-block;vertical-align:-1px;margin-right:4px;"></i> Low Balance Alert';
     }
+    if (window.lucide) setTimeout(() => lucide.createIcons(), 20);
   }
 
   // Channel Grid Cards
@@ -2325,7 +2338,7 @@ async function setupComposerTargetSelector() {
     const clients = nonAdmins.filter(u => u.role === 'user');
     
     if (resellers.length > 0) {
-      optionsHtml += `<optgroup label="🏢 Resellers">`;
+      optionsHtml += `<optgroup label="Resellers">`;
       resellers.forEach(r => {
         optionsHtml += `<option value="${r.id}">Reseller: ${escapeHtml(r.email)} (${escapeHtml(r.companyName || r.fullName || 'Partner')})</option>`;
       });
@@ -2333,7 +2346,7 @@ async function setupComposerTargetSelector() {
     }
     
     if (clients.length > 0) {
-      optionsHtml += `<optgroup label="👤 End Users & Clients">`;
+      optionsHtml += `<optgroup label="End Users & Clients">`;
       clients.forEach(c => {
         const resellerTag = c.resellerEmail ? ` [Under: ${c.resellerEmail}]` : ' [Direct]';
         optionsHtml += `<option value="${c.id}">Client: ${escapeHtml(c.email)}${escapeHtml(resellerTag)}</option>`;
@@ -2361,9 +2374,9 @@ async function setupComposerTargetSelector() {
     }
     
     const myClients = (allUsers || []).filter(u => (u.resellerId === currentUser.id || u.reseller_id === currentUser.id || u.resellerEmail === currentUser.email) && !u.isBlocked);
-    let optionsHtml = `<option value="self">👤 My Reseller Account (${escapeHtml(currentUser.email)})</option>`;
+    let optionsHtml = `<option value="self">My Reseller Account (${escapeHtml(currentUser.email)})</option>`;
     if (myClients.length > 0) {
-      optionsHtml += `<optgroup label="👥 My Managed Clients">`;
+      optionsHtml += `<optgroup label="My Managed Clients">`;
       myClients.forEach(c => {
         optionsHtml += `<option value="${c.id}">Client: ${escapeHtml(c.email)} (${escapeHtml(c.companyName || c.fullName || 'Client')})</option>`;
       });
@@ -2587,11 +2600,66 @@ async function loadCampaigns() {
   }
 }
 
+let campaignChannelScope = 'whatsapp';
+
+window.setCampaignChannelScope = function(scope, btn) {
+  campaignChannelScope = scope;
+  
+  const btnWa = document.getElementById('scope-chan-whatsapp');
+  const btnSms = document.getElementById('scope-chan-sms');
+  const btnAll = document.getElementById('scope-chan-all');
+  const heading = document.getElementById('campaigns-view-heading');
+
+  [btnWa, btnSms, btnAll].forEach(b => {
+    if (b) {
+      b.style.background = 'transparent';
+      b.style.color = '#475569';
+      b.style.fontWeight = '600';
+    }
+  });
+
+  if (scope === 'whatsapp') {
+    if (btnWa) {
+      btnWa.style.background = '#16a34a';
+      btnWa.style.color = '#ffffff';
+      btnWa.style.fontWeight = '700';
+    }
+    if (heading) heading.textContent = 'WhatsApp Campaign History & Reports';
+  } else if (scope === 'sms') {
+    if (btnSms) {
+      btnSms.style.background = '#4f46e5';
+      btnSms.style.color = '#ffffff';
+      btnSms.style.fontWeight = '700';
+    }
+    if (heading) heading.textContent = 'GSM Bulk SMS Broadcast History';
+  } else {
+    if (btnAll) {
+      btnAll.style.background = '#0f172a';
+      btnAll.style.color = '#ffffff';
+      btnAll.style.fontWeight = '700';
+    }
+    if (heading) heading.textContent = 'All Messaging Campaigns & Reports';
+  }
+
+  campaignCurrentPage = 1;
+  renderCampaignsTable();
+  updateCampaignTabBadges();
+  if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
+};
+
 function updateCampaignTabBadges() {
   if (!allCampaigns) return;
   const now = new Date();
+  
+  const scopeCampaigns = allCampaigns.filter(c => {
+    const isSms = c.channel_type === 'sms' || c.campaign_type === 'gsm_sms';
+    if (campaignChannelScope === 'whatsapp' && isSms) return false;
+    if (campaignChannelScope === 'sms' && !isSms) return false;
+    return true;
+  });
+
   const counts = {
-    all: allCampaigns.length,
+    all: scopeCampaigns.length,
     Scheduled: 0,
     Submitted: 0,
     Approved: 0,
@@ -2599,7 +2667,7 @@ function updateCampaignTabBadges() {
     'Report Updated': 0,
     Rejected: 0
   };
-  allCampaigns.forEach(c => {
+  scopeCampaigns.forEach(c => {
     const isScheduled = Boolean(c.scheduled_at && new Date(c.scheduled_at) > now && c.status === 'Submitted');
     if (isScheduled) {
       counts.Scheduled++;
@@ -2687,7 +2755,7 @@ window.loadAdminScheduledReminders = async function(force = false) {
           alertedReminderIds.add(r.id);
           const timeText = diffMins > 0 ? `in ${diffMins} min${diffMins > 1 ? 's' : ''}` : 'due now / ready';
           if (typeof showToast === 'function') {
-            showToast('info', '⏰ Scheduled Campaign Alert', `Campaign #${r.campaign_id} "${r.campaign_title || ''}" is ${timeText}!`);
+            showToast('info', 'Scheduled Campaign Alert', `Campaign #${r.campaign_id} "${r.campaign_title || ''}" is ${timeText}!`);
           }
         }
       }
@@ -3660,7 +3728,7 @@ window.populateCampaignUserFilter = function() {
     return;
   }
   select.style.display = 'inline-block';
-  const roleLabel = currentUser.role === 'admin' ? '🌐 All Platform Users' : '👥 All My Clients';
+  const roleLabel = currentUser.role === 'admin' ? 'All Platform Users' : 'All My Clients';
   
   const emails = [...new Set(allCampaigns.map(c => c.owner_email).filter(Boolean))].sort();
   let html = `<option value="all">${roleLabel}</option>`;
@@ -3770,6 +3838,11 @@ function renderCampaignsTable() {
   const toDateVal = campaignToDate ? campaignToDate.value : null;
 
   let filtered = allCampaigns.filter(c => {
+    // 0. Channel Scope Filter (WhatsApp vs GSM SMS)
+    const isSms = c.channel_type === 'sms' || c.campaign_type === 'gsm_sms';
+    if (campaignChannelScope === 'whatsapp' && isSms) return false;
+    if (campaignChannelScope === 'sms' && !isSms) return false;
+
     // 1. Status Filter
     if (campaignFilter === 'Scheduled') {
       const isSched = Boolean(c.scheduled_at && new Date(c.scheduled_at) > now && c.status === 'Submitted');
@@ -7380,7 +7453,7 @@ function computeGsmMetrics(text, channel = 'whatsapp', forceUnicode = false) {
   }
 
   const carrierWarning = (parts >= 5) 
-    ? `⚠️ High Parts Warning: Message requires ${parts} SMS parts (${parts} credits per number). Carriers may throttle messages exceeding 4 parts.` 
+    ? `High Parts Warning: Message requires ${parts} SMS parts (${parts} credits per number). Carriers may throttle messages exceeding 4 parts.` 
     : null;
 
   return {
@@ -7390,7 +7463,7 @@ function computeGsmMetrics(text, channel = 'whatsapp', forceUnicode = false) {
     charsLeft,
     carrierWarning,
     infoText: isUnicode 
-      ? `⚠️ Unicode (Emojis/Hindi) • ${parts || 1} Part(s) (75 chars/part) • ${charsLeft} left in part`
+      ? `Unicode (Hindi/Regional) • ${parts || 1} Part(s) (75 chars/part) • ${charsLeft} left in part`
       : `GSM-7 Latin • ${parts || 1} Part(s) (160 chars/part) • ${charsLeft} left in part`,
     badgeText: isUnicode 
       ? `${effectiveCharCount} chars • ${parts || 1} Part${parts > 1 ? 's' : ''} (Unicode)`
@@ -7582,7 +7655,7 @@ function updateTplGsmUi(mode, text, selChannel) {
       if (uniLbl) { uniLbl.style.border = '2px solid #d97706'; uniLbl.style.background = '#fffbeb'; }
       if (gsmLbl) { gsmLbl.style.border = '1.5px solid #cbd5e1'; gsmLbl.style.background = '#ffffff'; }
       if (encDetected) {
-        encDetected.textContent = '🟡 Unicode Active (75 chars/credit)';
+        encDetected.innerHTML = '<i data-lucide="info" style="width:12px;height:12px;display:inline-block;vertical-align:-1px;margin-right:3px;"></i> Unicode Active (75 chars/credit)';
         encDetected.style.background = '#fef3c7';
         encDetected.style.color = '#92400e';
         encDetected.style.border = '1px solid #fde68a';
@@ -7593,12 +7666,13 @@ function updateTplGsmUi(mode, text, selChannel) {
       if (gsmLbl) { gsmLbl.style.border = '2px solid #16a34a'; gsmLbl.style.background = '#f0fdf4'; }
       if (uniLbl) { uniLbl.style.border = '1.5px solid #cbd5e1'; uniLbl.style.background = '#ffffff'; }
       if (encDetected) {
-        encDetected.textContent = '🟢 GSM-7 Active (160 chars/credit)';
+        encDetected.innerHTML = '<i data-lucide="check-circle" style="width:12px;height:12px;display:inline-block;vertical-align:-1px;margin-right:3px;"></i> GSM-7 Active (160 chars/credit)';
         encDetected.style.background = '#ecfdf5';
         encDetected.style.color = '#15803d';
         encDetected.style.border = '1px solid #bbf7d0';
       }
     }
+    if (window.lucide) setTimeout(() => lucide.createIcons(), 20);
   }
 
   if (warnBox && warnText) {
@@ -9618,8 +9692,8 @@ async function populateComposerSelectors() {
       const prevVal = templateSelect.value;
       templateSelect.innerHTML = '<option value="">Insert Template...</option>' + 
         templates.map(t => {
-          const chIcon = (t.channel === 'sms') ? '📱 [SMS]' : (t.template_type === 'cta' ? '💬 [WA-CTA]' : '💬 [WA]');
-          const attTag = t.attachment_url ? ' 📎' : '';
+          const chIcon = (t.channel === 'sms') ? '[SMS]' : (t.template_type === 'cta' ? '[WA-CTA]' : '[WA]');
+          const attTag = t.attachment_url ? ' (Attachment)' : '';
           return `<option value="${encodeURIComponent(t.content || t.body)}" data-id="${t.id}">${chIcon} ${escapeHtml(t.title)}${attTag}</option>`;
         }).join('');
       if (prevVal) templateSelect.value = prevVal;
@@ -9712,7 +9786,7 @@ async function populateComposerSelectors() {
       const smsTemplates = templates.filter(t => t.channel === 'sms');
       const prevTplVal = smsTemplateSelect.value;
       smsTemplateSelect.innerHTML = '<option value="">— Or insert saved SMS Template... —</option>' +
-        smsTemplates.map(t => `<option value="${encodeURIComponent(t.content || t.body)}" data-title="${escapeHtml(t.title)}">📱 ${escapeHtml(t.title)} (${t.parts_count || 1} Part${(t.parts_count || 1) > 1 ? 's' : ''})</option>`).join('');
+        smsTemplates.map(t => `<option value="${encodeURIComponent(t.content || t.body)}" data-title="${escapeHtml(t.title)}">[SMS] ${escapeHtml(t.title)} (${t.parts_count || 1} Part${(t.parts_count || 1) > 1 ? 's' : ''})</option>`).join('');
       if (prevTplVal) smsTemplateSelect.value = prevTplVal;
     }
   } catch (e) {
@@ -10079,7 +10153,8 @@ function openBulkConfirmModal(status) {
     if (scheduledItems.length > 0) {
       warningEl.style.display = 'block';
       const sampleNames = scheduledItems.slice(0, 2).map(c => `#${c.id} (${new Date(c.scheduled_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })})`).join(', ');
-      warningEl.innerHTML = `⚠️ <strong>Scheduled Campaign Alert:</strong> ${scheduledItems.length} selected campaign(s) [${sampleNames}${scheduledItems.length > 2 ? '...' : ''}] are scheduled for future release. Changing status to <strong>${status}</strong> will dispatch them ahead of time!`;
+      warningEl.innerHTML = `<i data-lucide="alert-triangle" style="width:14px;height:14px;color:#d97706;display:inline-block;vertical-align:-2px;margin-right:4px;"></i> <strong>Scheduled Campaign Alert:</strong> ${scheduledItems.length} selected campaign(s) [${sampleNames}${scheduledItems.length > 2 ? '...' : ''}] are scheduled for future release. Changing status to <strong>${status}</strong> will dispatch them ahead of time!`;
+      if (window.lucide) setTimeout(() => lucide.createIcons(), 20);
     } else {
       warningEl.style.display = 'none';
       warningEl.innerHTML = '';
@@ -10104,7 +10179,7 @@ if (btnModalSubmitBulk) {
       selectedOperatorCampaignIds.has(c.id) && c.scheduled_at && new Date(c.scheduled_at) > now
     );
     if (scheduledItems.length > 0 && (status === 'Completed' || status === 'Approved')) {
-      const confirmEarly = confirm(`⚠️ Warning: Your selection includes ${scheduledItems.length} campaign(s) scheduled for future release.\n\nAre you sure you want to mark them as "${status}" ahead of their scheduled release time?`);
+      const confirmEarly = confirm(`Warning: Your selection includes ${scheduledItems.length} campaign(s) scheduled for future release.\n\nAre you sure you want to mark them as "${status}" ahead of their scheduled release time?`);
       if (!confirmEarly) return;
     }
 
@@ -10303,12 +10378,12 @@ window.openUser360Modal = async function(userId, evt) {
 
     // Tab 1: Credit Portfolio Table
     const channels = [
-      { key: 'gsm_sms', name: '📡 GSM Bulk SMS (Cellular Telecom Route)' },
-      { key: 'normal', name: '💬 Normal WhatsApp (Standard Text)' },
-      { key: 'dp', name: '🖼️ WhatsApp Profile / Media (DP)' },
-      { key: 'cta', name: '🔘 WhatsApp Call-to-Action (CTA Buttons)' },
-      { key: 'dp_cta', name: '⚡ WhatsApp Combo (DP + CTA)' },
-      { key: 'own_number', name: '📲 WhatsApp Own Dedicated SIM' }
+      { key: 'gsm_sms', name: 'GSM Bulk SMS (Cellular Telecom Route)', icon: 'radio' },
+      { key: 'normal', name: 'Normal WhatsApp (Standard Text)', icon: 'message-circle' },
+      { key: 'dp', name: 'WhatsApp Profile / Media (DP)', icon: 'image' },
+      { key: 'cta', name: 'WhatsApp Call-to-Action (CTA Buttons)', icon: 'mouse-pointer' },
+      { key: 'dp_cta', name: 'WhatsApp Combo (DP + CTA)', icon: 'layers' },
+      { key: 'own_number', name: 'WhatsApp Own Dedicated SIM', icon: 'smartphone' }
     ];
 
     const creditsTbody = document.getElementById('u360-credits-tbody');
@@ -10318,7 +10393,7 @@ window.openUser360Modal = async function(userId, evt) {
       const total = dom + intl;
       return `
         <tr>
-          <td><strong>${ch.name}</strong></td>
+          <td><strong style="display:inline-flex;align-items:center;gap:6px;"><i data-lucide="${ch.icon}" style="width:14px;height:14px;color:#4f46e5;"></i> ${ch.name}</strong></td>
           <td style="font-weight:600;color:#4f46e5;">${dom.toLocaleString()}</td>
           <td style="font-weight:600;color:#0891b2;">${intl.toLocaleString()}</td>
           <td><strong style="color:var(--slate-800);">${total.toLocaleString()}</strong></td>
@@ -10453,7 +10528,7 @@ function computeSmsMetrics(text, forcedEncoding) {
     parts = Math.ceil(effectiveLen / 160) || 1;
   }
   let warning = null;
-  if (parts >= 5) warning = `⚠️ ${parts} parts per number — carriers may throttle messages over 4 parts.`;
+  if (parts >= 5) warning = `${parts} parts per number — carriers may throttle messages over 4 parts.`;
   return { effectiveLen, isUnicode, parts, warning, autoDetectedUnicode: hasUnicodeChars };
 }
 
@@ -10673,7 +10748,8 @@ window.onSmsFileSelect = function() {
   reader.onload = function(e) {
     const raw = e.target.result;
     smsFileNumbers = parseSmsNumbers(raw);
-    preview.textContent = `📁 File loaded: ${smsFileNumbers.length.toLocaleString()} numbers found`;
+    preview.innerHTML = `<i data-lucide="file-check" style="width:13px;height:13px;color:#4f46e5;display:inline-block;vertical-align:-1px;margin-right:4px;"></i> File loaded: ${smsFileNumbers.length.toLocaleString()} numbers found`;
+    if (window.lucide) setTimeout(() => lucide.createIcons(), 20);
     updateSmsCreditsPreview();
   };
   reader.readAsText(file);
@@ -10716,10 +10792,11 @@ window.updateSmsCreditsPreview = function() {
   const balCheckEl = document.getElementById('sms-est-balance-check');
   if (balCheckEl) {
     if (userBal >= totalCost) {
-      balCheckEl.innerHTML = `<span style="color:#059669;font-weight:700;margin-left:8px;">✅ ${accountLabel}: ${userBal.toLocaleString()} credits</span>`;
+      balCheckEl.innerHTML = `<span style="color:#059669;font-weight:700;margin-left:8px;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="check-circle" style="width:14px;height:14px;"></i> ${accountLabel}: ${userBal.toLocaleString()} credits</span>`;
     } else {
-      balCheckEl.innerHTML = `<span style="color:#dc2626;font-weight:700;margin-left:8px;">❌ Insufficient: ${accountLabel} has ${userBal.toLocaleString()} credits (need ${totalCost.toLocaleString()})</span>`;
+      balCheckEl.innerHTML = `<span style="color:#dc2626;font-weight:700;margin-left:8px;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="alert-circle" style="width:14px;height:14px;"></i> Insufficient: ${accountLabel} has ${userBal.toLocaleString()} credits (need ${totalCost.toLocaleString()})</span>`;
     }
+    if (window.lucide) setTimeout(() => lucide.createIcons(), 20);
   }
 };
 
@@ -10806,7 +10883,7 @@ window.submitSmsCampaign = async function(e) {
 
     // Success State animation in overlay
     if (overlay) {
-      if (overlayTitle) overlayTitle.textContent = '✅ Campaign Queued Successfully!';
+      if (overlayTitle) overlayTitle.innerHTML = '<i data-lucide="check-circle" style="width:22px;height:22px;color:#10b981;display:inline-block;vertical-align:-4px;margin-right:6px;"></i> Campaign Queued Successfully!';
       if (overlayDesc) overlayDesc.textContent = `${(data.total_numbers || allNumbers.length).toLocaleString()} recipients successfully queued for dispatch.`;
       if (overlayStep) {
         overlayStep.textContent = 'Ready for Carrier Broadcast';
