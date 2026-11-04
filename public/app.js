@@ -618,6 +618,13 @@ async function checkSession() {
 
 function updateCreditDisplays() {
   if (!currentUser) return;
+  window.currentUser = currentUser;
+
+  const smsBalEl = document.getElementById('sms-kpi-balance');
+  if (smsBalEl) {
+    smsBalEl.textContent = Number(currentUser.credits_gsm_sms_domestic || 0).toLocaleString();
+  }
+
   const domTotal = (currentUser.credits_gsm_sms_domestic || 0) + (currentUser.credits_normal_domestic || 0) + (currentUser.credits_dp_domestic || 0) + (currentUser.credits_cta_domestic || 0) + (currentUser.credits_dp_cta_domestic || 0) + (currentUser.credits_own_number_domestic || 0);
   const intlTotal = (currentUser.credits_gsm_sms_international || 0) + (currentUser.credits_normal_international || 0) + (currentUser.credits_dp_international || 0) + (currentUser.credits_cta_international || 0) + (currentUser.credits_dp_cta_international || 0) + (currentUser.credits_own_number_international || 0);
 
@@ -10352,7 +10359,8 @@ window.openSmsComposer = function() {
 
   // Admin: populate user selector
   const tug = document.getElementById('sms-target-user-group');
-  if (window.currentUser && window.currentUser.role === 'admin') {
+  const activeUser = currentUser || window.currentUser;
+  if (activeUser && activeUser.role === 'admin') {
     tug.style.display = 'block';
     populateSmsUserSelector();
   } else {
@@ -10528,16 +10536,22 @@ window.updateSmsCreditsPreview = function() {
   // Check if proxy target user is selected by Admin/Reseller
   let userBal = 0;
   let accountLabel = 'Available';
+  const activeUser = currentUser || window.currentUser;
+  const destination = document.getElementById('sms-destination')?.value || 'domestic';
   const targetSel = document.getElementById('sms-target-user');
   if (targetSel && targetSel.value && smsAvailableUsers.length > 0) {
     const targetId = parseInt(targetSel.value, 10);
     const foundUser = smsAvailableUsers.find(u => Number(u.id) === targetId);
     if (foundUser) {
-      userBal = foundUser.credits_gsm_sms_domestic || 0;
+      userBal = destination === 'international'
+        ? Number(foundUser.credits_gsm_sms_international || 0)
+        : Number(foundUser.credits_gsm_sms_domestic || 0);
       accountLabel = `${foundUser.email.split('@')[0]} Available`;
     }
-  } else if (window.currentUser) {
-    userBal = (window.currentUser.credits_gsm_sms_domestic || 0);
+  } else if (activeUser) {
+    userBal = destination === 'international'
+      ? Number(activeUser.credits_gsm_sms_international || 0)
+      : Number(activeUser.credits_gsm_sms_domestic || 0);
   }
 
   const balCheckEl = document.getElementById('sms-est-balance-check');
@@ -10569,7 +10583,8 @@ window.submitSmsCampaign = async function(e) {
   if (!title) { errEl.textContent = 'Campaign title required.'; errEl.style.display = 'block'; return; }
   if (!message) { errEl.textContent = 'Message text required.'; errEl.style.display = 'block'; return; }
   if (allNumbers.length === 0) { errEl.textContent = 'At least one valid phone number required.'; errEl.style.display = 'block'; return; }
-  if (window.currentUser && window.currentUser.role === 'admin' && !targetUserId) {
+  const activeSubmitUser = currentUser || window.currentUser;
+  if (activeSubmitUser && activeSubmitUser.role === 'admin' && !targetUserId) {
     errEl.textContent = 'Admin must select a target user account.'; errEl.style.display = 'block'; return;
   }
 
@@ -10628,6 +10643,16 @@ window.loadSmsCampaigns = async function() {
   tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--text-muted);"><i data-lucide="loader-2" class="spin"></i> Loading SMS campaigns...</td></tr>';
   if (window.lucide) lucide.createIcons();
 
+  // Always sync fresh user balance in background
+  try {
+    const me = await apiFetch('/auth/me');
+    if (me) {
+      currentUser = me;
+      window.currentUser = me;
+      updateCreditDisplays();
+    }
+  } catch(e) {}
+
   try {
     const data = await apiFetch('/sms');
     smsCampaignsData = Array.isArray(data) ? data : (data.campaigns || []);
@@ -10663,9 +10688,10 @@ window.loadSmsCampaigns = async function() {
     const compEl = document.getElementById('sms-kpi-completed');
     if (compEl) compEl.textContent = completed.toLocaleString();
 
+    const activeUser = currentUser || window.currentUser;
     const balEl = document.getElementById('sms-kpi-balance');
-    if (balEl && window.currentUser) {
-      const smsBal = (window.currentUser.credits_gsm_sms_domestic || 0);
+    if (balEl && activeUser) {
+      const smsBal = Number(activeUser.credits_gsm_sms_domestic || 0);
       balEl.textContent = smsBal.toLocaleString();
     }
 
