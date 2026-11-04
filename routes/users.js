@@ -139,7 +139,32 @@ router.get('/:id/360', authenticate, async (req, res) => {
       else if (r.destination === 'international') totalInternational += bal;
     });
 
-    // 3. Campaign Performance Stats
+    // Sub-clients & White-label profile if this user is a reseller
+    let resellerClients = [];
+    let resellerProfile = null;
+    let targetUserIds = [targetId];
+
+    if (user.role === 'reseller') {
+      const clientsResult = await query(`
+        SELECT u.id, u.email, u.full_name, u.company_name, u.phone, u.is_blocked, u.created_at,
+          COALESCE((SELECT SUM(balance) FROM user_credits WHERE user_id = u.id AND destination = 'domestic'), 0)::bigint AS dom_balance,
+          COALESCE((SELECT SUM(balance) FROM user_credits WHERE user_id = u.id AND destination = 'international'), 0)::bigint AS intl_balance,
+          (SELECT COUNT(*) FROM campaigns WHERE user_id = u.id)::int AS campaign_count,
+          COALESCE((SELECT SUM(total_numbers) FROM campaigns WHERE user_id = u.id), 0)::bigint AS total_recipients
+        FROM users u
+        WHERE u.reseller_id = $1
+        ORDER BY u.created_at DESC
+      `, [targetId]);
+      resellerClients = clientsResult.rows;
+      if (resellerClients.length > 0) {
+        targetUserIds = [targetId, ...resellerClients.map(c => c.id)];
+      }
+
+      const rpRes = await query(`SELECT * FROM reseller_profiles WHERE reseller_id = $1`, [targetId]);
+      resellerProfile = rpRes.rows[0] || null;
+    }
+
+    // 3. Campaign Performance Stats (Self + Clients for Reseller)
     const campaignStatsResult = await query(`
       SELECT 
         COUNT(*)::int AS total_campaigns,
@@ -152,33 +177,36 @@ router.get('/:id/360', authenticate, async (req, res) => {
         COUNT(CASE WHEN status = 'Report Updated' THEN 1 END)::int AS reported_count,
         COUNT(CASE WHEN status = 'Rejected' THEN 1 END)::int AS rejected_count
       FROM campaigns
-      WHERE user_id = $1
-    `, [targetId]);
+      WHERE user_id = ANY($1::int[])
+    `, [targetUserIds]);
     const campaignStats = campaignStatsResult.rows[0] || {};
     const totalDelivered = Number(campaignStats.delivered_count || 0);
     const totalSent = Number(campaignStats.total_numbers || 0);
     const deliveryRate = totalSent > 0 ? Math.round((totalDelivered / totalSent) * 100) : 0;
 
-    // 4. Recent Campaigns (up to 8)
+    // 4. Recent Campaigns (up to 12)
     const recentCampaignsResult = await query(`
-      SELECT id, title, campaign_type, destination, total_numbers, status, delivered_count, failed_count, created_at
-      FROM campaigns
-      WHERE user_id = $1
-      ORDER BY created_at DESC
-      LIMIT 8
-    `, [targetId]);
+      SELECT c.id, c.user_id, c.title, c.campaign_type, c.destination, c.total_numbers, c.status, c.delivered_count, c.failed_count, c.created_at,
+             u.email AS user_email, u.full_name AS user_name
+      FROM campaigns c
+      JOIN users u ON c.user_id = u.id
+      WHERE c.user_id = ANY($1::int[])
+      ORDER BY c.created_at DESC
+      LIMIT 12
+    `, [targetUserIds]);
 
-    // 5. Recent Credit Transactions (up to 25)
+    // 5. Recent Credit Transactions (up to 50)
     const transactionsResult = await query(`
       SELECT ct.id, ct.from_user_id, ct.to_user_id, ct.credit_type, ct.destination, ct.amount, ct.reason, ct.created_at,
-             ct.refund_campaign_id,
-             fu.email AS from_email, tu.email AS to_email
+             ct.refund_campaign_id, ct.refund_client_email,
+             fu.email AS from_email, tu.email AS to_email,
+             fu.full_name AS from_name, tu.full_name AS to_name
       FROM credit_transactions ct
       LEFT JOIN users fu ON ct.from_user_id = fu.id
       LEFT JOIN users tu ON ct.to_user_id = tu.id
       WHERE ct.to_user_id = $1 OR ct.from_user_id = $1
       ORDER BY ct.created_at DESC
-      LIMIT 25
+      LIMIT 50
     `, [targetId]);
 
     // 6. Audience & Assets summary
@@ -210,6 +238,7 @@ router.get('/:id/360', authenticate, async (req, res) => {
       const reasonLower = String(t.reason || '').toLowerCase();
       const isRefund = Boolean(t.refund_campaign_id) || reasonLower.includes('refund') || reasonLower.includes('auto-refund');
       const isDeduction = reasonLower.includes('deduction') || reasonLower.includes('debit') || reasonLower.includes('burn') || reasonLower.includes('cost');
+      const isTransferredOut = Number(t.from_user_id) === Number(targetId) && Number(t.to_user_id) !== Number(targetId);
       const amt = Math.abs(Number(t.amount) || 0);
 
       let category = 'allotment';
@@ -228,6 +257,14 @@ router.get('/:id/360', authenticate, async (req, res) => {
         badgeBg = '#f0f9ff';
         badgeBorder = '#bae6fd';
         isCredit = true;
+      } else if (isTransferredOut) {
+        category = 'allotment_out';
+        signedAmount = -amt;
+        badgeText = 'Transferred to Client (-)';
+        badgeColor = '#d97706';
+        badgeBg = '#fffbeb';
+        badgeBorder = '#fde68a';
+        isCredit = false;
       } else if (isDeduction) {
         category = 'campaign_deduction';
         signedAmount = -amt;
@@ -236,20 +273,14 @@ router.get('/:id/360', authenticate, async (req, res) => {
         badgeBg = '#fef2f2';
         badgeBorder = '#fecaca';
         isCredit = false;
-      } else if (Number(t.from_user_id) === Number(targetId) && Number(t.to_user_id) !== Number(targetId)) {
-        category = 'allotment_out';
-        signedAmount = -amt;
-        badgeText = 'Transferred Out (-)';
-        badgeColor = '#d97706';
-        badgeBg = '#fffbeb';
-        badgeBorder = '#fde68a';
-        isCredit = false;
       }
 
       return {
         ...t,
         reason,
         from_email: fromEmail,
+        to_email: t.to_email,
+        to_name: t.to_name,
         category,
         signed_amount: signedAmount,
         badge_text: badgeText,
@@ -299,6 +330,8 @@ router.get('/:id/360', authenticate, async (req, res) => {
       },
       recentCampaigns: recentCampaignsResult.rows,
       recentTransactions: sanitizedTransactions,
+      resellerClients: resellerClients,
+      resellerProfile: resellerProfile,
       assets: {
         totalGroups: Number(assets.total_groups || 0),
         totalContacts: Number(assets.total_contacts || 0),

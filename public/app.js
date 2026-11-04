@@ -11106,6 +11106,7 @@ document.querySelectorAll('.u360-tab-btn').forEach(btn => {
     document.querySelectorAll('.u360-tab-pane').forEach(pane => {
       pane.style.display = pane.id === targetTab ? 'block' : 'none';
     });
+    if (window.lucide) setTimeout(() => lucide.createIcons(), 20);
   });
 });
 
@@ -11235,12 +11236,76 @@ window.openUser360Modal = async function(userId, evt) {
     // KPI Metrics
     document.getElementById('u360-dom-credits').textContent = (credits.totalDomestic || 0).toLocaleString();
     document.getElementById('u360-intl-credits').textContent = (credits.totalInternational || 0).toLocaleString();
-    document.getElementById('u360-sent-count').textContent = (campaignStats.totalNumbers || 0).toLocaleString();
-    const delivRate = campaignStats.deliveryRate || 0;
-    const delivCount = (campaignStats.deliveredCount || 0).toLocaleString();
-    document.getElementById('u360-delivery-rate').innerHTML = `<span style="color:#059669;font-weight:700;">${delivRate}% Delivery Success</span> &bull; ${delivCount} delivered`;
-    document.getElementById('u360-contacts-count').textContent = (assets.totalContacts || 0).toLocaleString();
-    document.getElementById('u360-groups-count').textContent = `${assets.totalGroups || 0} Groups • ${assets.approvedTemplates || 0} Templates`;
+
+    if (user.role === 'reseller') {
+      const clientCount = (data.resellerClients || []).length;
+      const netCampaigns = campaignStats.totalCampaigns || 0;
+      const netNumbers = (campaignStats.totalNumbers || 0).toLocaleString();
+      const rp = data.resellerProfile || {};
+      
+      document.getElementById('u360-sent-count').textContent = netNumbers;
+      document.getElementById('u360-delivery-rate').innerHTML = `<span style="color:#4f46e5;font-weight:700;">${netCampaigns} Broadcasts</span> &bull; Network Audience`;
+      
+      document.getElementById('u360-contacts-count').textContent = `${clientCount} Clients`;
+      document.getElementById('u360-groups-count').textContent = `Brand: ${escapeHtml(rp.brand_name || user.companyName || 'exhume')} • ${rp.custom_domain || 'No Domain'}`;
+    } else {
+      document.getElementById('u360-sent-count').textContent = (campaignStats.totalNumbers || 0).toLocaleString();
+      const delivRate = campaignStats.deliveryRate || 0;
+      const delivCount = (campaignStats.deliveredCount || 0).toLocaleString();
+      document.getElementById('u360-delivery-rate').innerHTML = `<span style="color:#059669;font-weight:700;">${delivRate}% Delivery Success</span> &bull; ${delivCount} delivered`;
+      document.getElementById('u360-contacts-count').textContent = (assets.totalContacts || 0).toLocaleString();
+      document.getElementById('u360-groups-count').textContent = `${assets.totalGroups || 0} Groups • ${assets.approvedTemplates || 0} Templates`;
+    }
+
+    // Render Sub-Clients Tab if Reseller
+    const clientsTbody = document.getElementById('u360-clients-tbody');
+    const clientsBtn = document.getElementById('u360-tab-clients-btn');
+    const clientsCountEl = document.getElementById('u360-tab-clients-count');
+
+    if (user.role === 'reseller') {
+      const clients = data.resellerClients || [];
+      if (clientsBtn) clientsBtn.style.display = 'inline-flex';
+      if (clientsCountEl) clientsCountEl.textContent = clients.length;
+
+      if (clientsTbody) {
+        if (clients.length === 0) {
+          clientsTbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:28px;color:#64748b;">No client accounts onboarded under this reseller yet.</td></tr>`;
+        } else {
+          clientsTbody.innerHTML = clients.map(cl => `
+            <tr style="border-bottom:1px solid #f1f5f9;">
+              <td style="padding:10px 14px;">
+                <div style="font-weight:700;color:#0f172a;font-size:0.86rem;">${escapeHtml(cl.full_name || cl.company_name || 'Client Account')}</div>
+                <div style="font-size:0.76rem;color:#475569;font-family:monospace;">${escapeHtml(cl.email)}</div>
+              </td>
+              <td style="padding:10px 14px;font-size:0.8rem;color:#64748b;">
+                ${cl.phone ? `<i data-lucide="phone" style="width:11px;height:11px;display:inline-block;vertical-align:-1px;"></i> ${escapeHtml(cl.phone)}` : '—'}
+                ${cl.company_name ? `<div style="font-size:0.72rem;color:#475569;font-weight:600;">${escapeHtml(cl.company_name)}</div>` : ''}
+              </td>
+              <td style="padding:10px 14px;">
+                <span style="font-size:0.78rem;font-weight:700;color:#059669;background:#ecfdf5;padding:2px 7px;border-radius:4px;">
+                  ${Number(cl.dom_balance || 0).toLocaleString()}
+                </span>
+              </td>
+              <td style="padding:10px 14px;">
+                <span style="font-size:0.78rem;font-weight:700;color:#0284c7;background:#f0f9ff;padding:2px 7px;border-radius:4px;">
+                  ${Number(cl.intl_balance || 0).toLocaleString()}
+                </span>
+              </td>
+              <td style="padding:10px 14px;font-size:0.8rem;color:#334155;font-weight:600;">
+                ${Number(cl.campaign_count || 0)} broadcasts
+              </td>
+              <td style="padding:10px 14px;text-align:right;">
+                <button type="button" class="btn-action btn-action-primary" onclick="openUser360Modal(${cl.id})" style="padding:3px 8px;font-size:0.72rem;font-weight:600;display:inline-flex;align-items:center;gap:3px;" title="Inspect Client 360° Profile">
+                  <i data-lucide="sparkles" style="width:11px;height:11px;"></i> 360° Profile
+                </button>
+              </td>
+            </tr>
+          `).join('');
+        }
+      }
+    } else {
+      if (clientsBtn) clientsBtn.style.display = 'none';
+    }
 
     // Tab 1: Credit Portfolio Table
     const channels = [
@@ -11295,7 +11360,7 @@ window.openUser360Modal = async function(userId, evt) {
           <tr>
             <td>
               <strong style="color:var(--slate-800);">${escapeHtml(c.title || 'Untitled Campaign')}</strong>
-              <div style="font-size:0.75rem;color:var(--slate-400);">ID: #${c.id}</div>
+              <div style="font-size:0.75rem;color:var(--slate-400);">ID: #${c.id} ${c.user_email ? `&bull; ${escapeHtml(c.user_email)}` : ''}</div>
             </td>
             <td>
               <span style="text-transform:uppercase;font-size:0.75rem;font-weight:600;color:var(--slate-600);">${escapeHtml(c.campaign_type || 'normal')}</span>
@@ -11321,10 +11386,10 @@ window.openUser360Modal = async function(userId, evt) {
     window.u360Transactions.forEach(t => {
       const amt = Math.abs(Number(t.amount) || 0);
       const isRef = t.category === 'refund' || Boolean(t.refund_campaign_id) || String(t.reason || '').toLowerCase().includes('refund');
-      const isDed = !isRef && (t.category === 'campaign_deduction' || !t.is_credit || String(t.reason || '').toLowerCase().includes('deduction') || String(t.reason || '').toLowerCase().includes('debit'));
+      const isOut = t.category === 'allotment_out' || t.category === 'campaign_deduction' || !t.is_credit;
       if (isRef) {
         u360Refund += amt;
-      } else if (isDed) {
+      } else if (isOut) {
         u360Debit += amt;
       } else {
         u360Allot += amt;
@@ -11417,7 +11482,9 @@ window.renderU360LedgerTable = function(flowFilter = 'all') {
   const filtered = txs.filter(t => {
     if (!flowFilter || flowFilter === 'all') return true;
     const isRef = t.category === 'refund' || Boolean(t.refund_campaign_id) || String(t.reason || '').toLowerCase().includes('refund');
-    const isDed = !isRef && (t.category === 'campaign_deduction' || !t.is_credit || String(t.reason || '').toLowerCase().includes('deduction') || String(t.reason || '').toLowerCase().includes('debit'));
+    const isClientOut = t.category === 'allotment_out';
+    const isDed = isClientOut || t.category === 'campaign_deduction' || (!isRef && (!t.is_credit || String(t.reason || '').toLowerCase().includes('deduction') || String(t.reason || '').toLowerCase().includes('debit')));
+
     if (flowFilter === 'refund') return isRef;
     if (flowFilter === 'campaign_deduction') return isDed;
     if (flowFilter === 'allotment') return !isRef && !isDed;
@@ -11425,13 +11492,21 @@ window.renderU360LedgerTable = function(flowFilter = 'all') {
   });
 
   if (filtered.length === 0) {
-    ledgerTbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--slate-400);">No transactions found under this category.</td></tr>';
+    ledgerTbody.innerHTML = `<tr>
+      <td colspan="6" style="text-align:center;padding:32px;color:#64748b;">
+        <i data-lucide="receipt" style="width:28px;height:28px;color:#94a3b8;margin-bottom:6px;"></i>
+        <div style="font-weight:600;font-size:0.86rem;">No passbook transactions found under this category.</div>
+        <div style="font-size:0.75rem;color:#94a3b8;margin-top:2px;">All allotments, client transfers, deductions and refunds are logged here.</div>
+      </td>
+    </tr>`;
+    if (window.lucide) setTimeout(() => lucide.createIcons(), 20);
     return;
   }
 
   ledgerTbody.innerHTML = filtered.map(t => {
     const isRef = t.category === 'refund' || Boolean(t.refund_campaign_id) || String(t.reason || '').toLowerCase().includes('refund');
-    const isDed = !isRef && (t.category === 'campaign_deduction' || !t.is_credit || String(t.reason || '').toLowerCase().includes('deduction') || String(t.reason || '').toLowerCase().includes('debit'));
+    const isClientOut = t.category === 'allotment_out';
+    const isDed = !isRef && !isClientOut && (t.category === 'campaign_deduction' || !t.is_credit || String(t.reason || '').toLowerCase().includes('deduction') || String(t.reason || '').toLowerCase().includes('debit'));
     const amt = Math.abs(Number(t.amount) || 0);
 
     let amountBadge = '';
@@ -11440,9 +11515,12 @@ window.renderU360LedgerTable = function(flowFilter = 'all') {
     if (isRef) {
       amountBadge = `<span style="color:#0284c7;font-weight:700;background:#f0f9ff;padding:3px 8px;border-radius:6px;border:1px solid #bae6fd;">+${amt.toLocaleString()}</span>`;
       flowBadge = `<span class="status-badge" style="background:#f0f9ff;color:#0284c7;border:1px solid #bae6fd;font-size:0.72rem;font-weight:700;display:inline-flex;align-items:center;gap:3px;"><i data-lucide="rotate-ccw" style="width:11px;height:11px;"></i> Auto-Refund (+)</span>`;
+    } else if (isClientOut) {
+      amountBadge = `<span style="color:#b45309;font-weight:700;background:#fffbeb;padding:3px 8px;border-radius:6px;border:1px solid #fde68a;">-${amt.toLocaleString()}</span>`;
+      flowBadge = `<span class="status-badge" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;font-size:0.72rem;font-weight:700;display:inline-flex;align-items:center;gap:3px;"><i data-lucide="arrow-up-right" style="width:11px;height:11px;"></i> Client Transfer (-)</span>`;
     } else if (isDed) {
       amountBadge = `<span style="color:#b91c1c;font-weight:700;background:#fef2f2;padding:3px 8px;border-radius:6px;border:1px solid #fecaca;">-${amt.toLocaleString()}</span>`;
-      flowBadge = `<span class="status-badge" style="background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;font-size:0.72rem;font-weight:700;display:inline-flex;align-items:center;gap:3px;"><i data-lucide="arrow-up-right" style="width:11px;height:11px;"></i> Campaign Debit (-)</span>`;
+      flowBadge = `<span class="status-badge" style="background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;font-size:0.72rem;font-weight:700;display:inline-flex;align-items:center;gap:3px;"><i data-lucide="flame" style="width:11px;height:11px;"></i> Campaign Debit (-)</span>`;
     } else {
       amountBadge = `<span style="color:#15803d;font-weight:700;background:#ecfdf5;padding:3px 8px;border-radius:6px;border:1px solid #bbf7d0;">+${amt.toLocaleString()}</span>`;
       flowBadge = `<span class="status-badge" style="background:#ecfdf5;color:#15803d;border:1px solid #bbf7d0;font-size:0.72rem;font-weight:700;display:inline-flex;align-items:center;gap:3px;"><i data-lucide="arrow-down-left" style="width:11px;height:11px;"></i> Allotment (+)</span>`;
@@ -11457,16 +11535,28 @@ window.renderU360LedgerTable = function(flowFilter = 'all') {
         .replace(/\[Created by [^\]]+ on behalf of account\]/gi, '');
     }
 
+    let dateDisplay = '—';
+    if (t.created_at) {
+      try {
+        const d = new Date(t.created_at);
+        dateDisplay = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) + ', ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+      } catch (e) {
+        dateDisplay = String(t.created_at).slice(0, 16);
+      }
+    }
+
     const channelName = (t.credit_type === 'gsm_sms' ? 'GSM Bulk SMS' : (t.credit_type || 'NORMAL').toUpperCase());
 
     return `
-      <tr>
-        <td style="font-size:0.8rem;color:var(--slate-500);white-space:nowrap;">${new Date(t.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}</td>
-        <td>${flowBadge}</td>
-        <td><strong style="font-size:0.76rem;">${escapeHtml(channelName)}</strong></td>
-        <td><span style="font-size:0.75rem;color:var(--slate-600);text-transform:capitalize;">${escapeHtml(t.destination || 'domestic')}</span></td>
-        <td style="text-align:right;">${amountBadge}</td>
-        <td style="font-size:0.8rem;color:var(--slate-600);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(displayReason)}">
+      <tr style="border-bottom:1px solid #f1f5f9;transition:background 0.15s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+        <td style="font-size:0.8rem;color:#475569;white-space:nowrap;padding:10px 12px;font-weight:500;">
+          ${escapeHtml(dateDisplay)}
+        </td>
+        <td style="padding:10px 12px;">${flowBadge}</td>
+        <td style="padding:10px 12px;"><strong style="font-size:0.76rem;color:#334155;">${escapeHtml(channelName)}</strong></td>
+        <td style="padding:10px 12px;"><span style="font-size:0.75rem;color:#64748b;text-transform:capitalize;font-weight:600;">${escapeHtml(t.destination || 'domestic')}</span></td>
+        <td style="text-align:right;padding:10px 12px;">${amountBadge}</td>
+        <td style="font-size:0.8rem;color:#475569;padding:10px 12px;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(displayReason)}">
           ${escapeHtml(displayReason)}
         </td>
       </tr>
