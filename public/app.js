@@ -2461,7 +2461,8 @@ btnSubmitCampaignSaas.addEventListener('click', async () => {
   }
 
   btnSubmitCampaignSaas.disabled = true;
-  btnSubmitCampaignSaas.innerHTML = '<i data-lucide="send" style="width:15px;height:15px;margin-right:6px;"></i> Dispatching Campaign...';
+  btnSubmitCampaignSaas.innerHTML = `<i data-lucide="loader-2" class="spin" style="width:16px;height:16px;margin-right:6px;"></i> Dispatching ${validNumbers.length.toLocaleString()} Recipients...`;
+  if (window.lucide) lucide.createIcons();
 
   const formData = new FormData();
   formData.append('title', title);
@@ -10372,6 +10373,8 @@ window.openSmsComposer = function() {
 };
 
 window.closeSmsComposer = function() {
+  const overlay = document.getElementById('sms-submitting-overlay');
+  if (overlay) overlay.style.display = 'none';
   document.getElementById('modal-compose-sms').style.display = 'none';
 };
 
@@ -10592,6 +10595,42 @@ window.submitSmsCampaign = async function(e) {
   btn.innerHTML = '<i data-lucide="loader-2" style="width:15px;height:15px;animation:spin 1s linear infinite;"></i> Submitting...';
   if (window.lucide) lucide.createIcons();
 
+  // Show High-Volume Submitting Overlay with Smooth Animations
+  const overlay = document.getElementById('sms-submitting-overlay');
+  const overlayTitle = document.getElementById('sms-overlay-title');
+  const overlayDesc = document.getElementById('sms-overlay-desc');
+  const overlayStep = document.getElementById('sms-overlay-status-step');
+  const overlayIcon = document.getElementById('sms-overlay-icon');
+
+  if (overlay) {
+    overlay.style.display = 'flex';
+    if (overlayTitle) overlayTitle.textContent = 'Queueing SMS Broadcast...';
+    if (overlayDesc) overlayDesc.textContent = `Verifying ${allNumbers.length.toLocaleString()} recipients, filtering DND blacklist & locking credits...`;
+    if (overlayStep) {
+      overlayStep.textContent = 'Uploading Recipient List & Processing Handshake...';
+      overlayStep.style.background = '#eef2ff';
+      overlayStep.style.color = '#4f46e5';
+      overlayStep.style.borderColor = '#c7d2fe';
+    }
+    if (overlayIcon) {
+      overlayIcon.setAttribute('data-lucide', 'radio');
+      overlayIcon.style.animation = 'pulseSubtle 1.8s ease-in-out infinite';
+    }
+    if (window.lucide) lucide.createIcons({ root: overlay });
+  }
+
+  let stepIdx = 0;
+  const steps = [
+    'Parsing & verifying recipient numbers...',
+    'Checking DND Blacklist registry...',
+    'Deducting credits & allocating gateway batch slots...',
+    'Finalizing carrier dispatch queue...'
+  ];
+  const stepTimer = setInterval(() => {
+    stepIdx = (stepIdx + 1) % steps.length;
+    if (overlayStep) overlayStep.textContent = steps[stepIdx];
+  }, 1200);
+
   try {
     const payload = {
       title,
@@ -10607,15 +10646,38 @@ window.submitSmsCampaign = async function(e) {
       body: JSON.stringify(payload)
     });
 
+    clearInterval(stepTimer);
+
+    // Success State animation in overlay
+    if (overlay) {
+      if (overlayTitle) overlayTitle.textContent = '✅ Campaign Queued Successfully!';
+      if (overlayDesc) overlayDesc.textContent = `${(data.total_numbers || allNumbers.length).toLocaleString()} recipients successfully queued for dispatch.`;
+      if (overlayStep) {
+        overlayStep.textContent = 'Ready for Carrier Broadcast';
+        overlayStep.style.background = '#ecfdf5';
+        overlayStep.style.color = '#059669';
+        overlayStep.style.borderColor = '#a7f3d0';
+      }
+      if (overlayIcon) {
+        overlayIcon.setAttribute('data-lucide', 'check-circle-2');
+        overlayIcon.style.animation = 'none';
+      }
+      if (window.lucide) lucide.createIcons({ root: overlay });
+    }
+
+    await new Promise(r => setTimeout(r, 650));
+
     closeSmsComposer();
     showToast('success', 'SMS Campaign Submitted', `Campaign "${title}" submitted! ${data.total_numbers ? data.total_numbers.toLocaleString() : ''} numbers queued.`);
     loadSmsCampaigns();
   } catch(err) {
+    clearInterval(stepTimer);
+    if (overlay) overlay.style.display = 'none';
     errEl.textContent = err.message;
     errEl.style.display = 'block';
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<i data-lucide="send" style="width:15px;height:15px;"></i> Submit SMS Campaign';
+    btn.innerHTML = '<i data-lucide="send" style="width:16px;height:16px;"></i> Dispatch SMS Campaign';
     if (window.lucide) lucide.createIcons();
   }
 };
