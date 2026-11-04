@@ -5077,19 +5077,88 @@ async function loadUsers() {
   }
 }
 
+let currentUserSegmentFilter = 'all';
+
+window.setUserSegmentFilter = function(seg) {
+  currentUserSegmentFilter = seg;
+  ['all', 'reseller', 'client', 'direct'].forEach(key => {
+    const btnId = `user-seg-${key === 'client' ? 'clients' : key}`;
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      if (key === seg) {
+        btn.classList.add('active');
+        btn.style.background = '#ffffff';
+        btn.style.color = '#0f172a';
+        btn.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)';
+        btn.style.fontWeight = '700';
+      } else {
+        btn.classList.remove('active');
+        btn.style.background = 'transparent';
+        btn.style.color = '#64748b';
+        btn.style.boxShadow = 'none';
+        btn.style.fontWeight = '600';
+      }
+    }
+  });
+  renderUsersTable();
+};
+
+window.quickToggleTaxModeForUser = async function(userId, currentMode, email) {
+  const newMode = currentMode === 'with_gst' ? 'non_gst' : 'with_gst';
+  const label = newMode === 'with_gst' ? 'With GST (18% B2B Tax Invoice)' : 'Non-GST (0% Retail Bill of Supply)';
+  if (!confirm(`Switch tax invoicing mode for ${email || 'user'} to:\n${label}?`)) return;
+
+  try {
+    await apiFetch(`/users/${userId}/settings`, {
+      method: 'PATCH',
+      body: JSON.stringify({ tax_mode: newMode })
+    });
+    showToast('success', 'Tax Invoicing Mode Updated', `Account is now: ${label}`);
+    if (typeof loadUsers === 'function') loadUsers();
+    if (typeof openUser360Modal === 'function' && document.getElementById('modal-user-360')?.style.display === 'flex') {
+      openUser360Modal(userId);
+    }
+  } catch (err) {
+    showToast('error', 'Tax Mode Update Failed', err.message);
+  }
+};
+
 function renderUsersTable() {
   const tbody = document.getElementById('users-table-tbody');
   if (!tbody) return;
+
+  // Update Segment counts
+  const totalCount = allUsers.length;
+  const resellerCount = allUsers.filter(u => u.role === 'reseller').length;
+  const clientCount = allUsers.filter(u => u.role === 'user' && u.resellerId).length;
+  const directCount = allUsers.filter(u => u.role === 'user' && !u.resellerId).length;
+
+  const elCountAll = document.getElementById('user-count-all');
+  if (elCountAll) elCountAll.textContent = totalCount;
+  const elCountRes = document.getElementById('user-count-reseller');
+  if (elCountRes) elCountRes.textContent = resellerCount;
+  const elCountCli = document.getElementById('user-count-clients');
+  if (elCountCli) elCountCli.textContent = clientCount;
+  const elCountDir = document.getElementById('user-count-direct');
+  if (elCountDir) elCountDir.textContent = directCount;
 
   const search = (userSearchInput ? userSearchInput.value : '').toLowerCase().trim();
   const resellerFilter = document.getElementById('user-reseller-filter') ? document.getElementById('user-reseller-filter').value : 'all';
   const roleFilter = document.getElementById('user-role-filter') ? document.getElementById('user-role-filter').value : 'all';
 
   let filtered = allUsers.filter(u => {
+    // Top segment filter
+    if (currentUserSegmentFilter === 'reseller' && u.role !== 'reseller') return false;
+    if (currentUserSegmentFilter === 'client' && (u.role !== 'user' || !u.resellerId)) return false;
+    if (currentUserSegmentFilter === 'direct' && (u.role !== 'user' || u.resellerId)) return false;
+
+    // Search query
     if (search && ![u.email, u.fullName, u.companyName, u.phone, u.resellerEmail, u.resellerFullName, u.resellerCompanyName].filter(Boolean).some(value => String(value).toLowerCase().includes(search))) return false;
 
+    // Role dropdown filter
     if (roleFilter !== 'all' && u.role !== roleFilter) return false;
 
+    // Reseller dropdown filter
     if (currentUser && currentUser.role === 'admin' && resellerFilter !== 'all') {
       if (resellerFilter === 'direct') {
         if (u.role === 'reseller' || u.resellerId) return false;
@@ -5108,7 +5177,7 @@ function renderUsersTable() {
     tbody.innerHTML = `
       <tr>
         <td colspan="8">
-          <div class="empty-state-box">
+          <div class="empty-state-box" style="padding:40px 20px;">
             <div class="empty-state-icon"><i data-lucide="users" style="width:24px;height:24px;"></i></div>
             <div class="empty-state-title">No user accounts found</div>
             <div class="empty-state-desc">Try clearing search/reseller filters or create a new user account to get started.</div>
@@ -5130,87 +5199,136 @@ function renderUsersTable() {
     const domBreakdown = `GSM SMS: ${(u.credits_gsm_sms_domestic||0).toLocaleString()} • WA Text: ${(u.credits_normal_domestic||0).toLocaleString()} • DP: ${(u.credits_dp_domestic||0).toLocaleString()} • CTA: ${(u.credits_cta_domestic||0).toLocaleString()} • Own: ${(u.credits_own_number_domestic||0).toLocaleString()}`;
     const intlBreakdown = `GSM SMS: ${(u.credits_gsm_sms_international||0).toLocaleString()} • WA Text: ${(u.credits_normal_international||0).toLocaleString()} • DP: ${(u.credits_dp_international||0).toLocaleString()} • CTA: ${(u.credits_cta_international||0).toLocaleString()} • Own: ${(u.credits_own_number_international||0).toLocaleString()}`;
 
-    let parentCellHtml = '';
-    if (u.role === 'reseller') {
-      const childCount = allUsers.filter(x => x.resellerId === u.id).length;
-      parentCellHtml = `
-        <span style="display:inline-flex;align-items:center;gap:5px;background:#f5f3ff;color:#6d28d9;padding:4px 9px;border-radius:6px;font-size:0.75rem;font-weight:700;border:1px solid #ddd6fe;" title="Reseller Partner Entity">
-          <i data-lucide="award" style="width:13px;height:13px;color:#7c3aed;"></i> Reseller (${childCount} Client${childCount === 1 ? '' : 's'})
+    // Col 1: User & Account
+    const initial = escapeHtml(u.email ? u.email.charAt(0).toUpperCase() : 'U');
+    const avatarBg = u.role === 'admin' ? '#0f172a' : (u.role === 'reseller' ? '#7c3aed' : '#2563eb');
+
+    // Col 2: Role & Hierarchy
+    let roleHierarchyHtml = '';
+    if (u.role === 'admin') {
+      roleHierarchyHtml = `
+        <span class="role-badge" style="background:#0f172a;color:#f8fafc;font-weight:700;font-size:0.72rem;padding:3px 8px;border-radius:5px;display:inline-flex;align-items:center;gap:4px;">
+          <i data-lucide="shield" style="width:11px;height:11px;color:#38bdf8;"></i> SUPER ADMIN
         </span>
+        <div style="font-size:0.72rem;color:#64748b;margin-top:3px;font-weight:500;">Master Controller</div>
+      `;
+    } else if (u.role === 'reseller') {
+      const childCount = allUsers.filter(x => x.resellerId === u.id).length;
+      roleHierarchyHtml = `
+        <span class="role-badge" style="background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;font-weight:700;font-size:0.72rem;padding:3px 8px;border-radius:5px;display:inline-flex;align-items:center;gap:4px;">
+          <i data-lucide="award" style="width:11px;height:11px;color:#7c3aed;"></i> RESELLER PARTNER
+        </span>
+        <div style="font-size:0.73rem;color:#7c3aed;margin-top:3px;font-weight:600;display:flex;align-items:center;gap:4px;">
+          <i data-lucide="users" style="width:11px;height:11px;"></i> ${childCount} Managed Client${childCount === 1 ? '' : 's'}
+        </div>
       `;
     } else if (u.resellerId) {
-      parentCellHtml = `
-        <div style="cursor:pointer;" onclick="window.filterByUserReseller(${u.resellerId})" title="Click to filter users under this reseller">
-          <div style="font-size:0.82rem;font-weight:700;color:#4338ca;display:flex;align-items:center;gap:5px;">
-            <i data-lucide="network" style="width:13px;height:13px;color:#4f46e5;"></i> ${escapeHtml(u.resellerFullName || u.resellerCompanyName || u.resellerEmail || ('Reseller #' + u.resellerId))}
-          </div>
-          <div style="font-size:0.72rem;color:#64748b;margin-top:2px;">${escapeHtml(u.resellerEmail || '')}</div>
-          <div style="font-size:0.68rem;color:#4f46e5;font-weight:600;margin-top:1px;">Filter this reseller &rarr;</div>
+      const rName = escapeHtml(u.resellerFullName || u.resellerCompanyName || u.resellerEmail || ('Reseller #' + u.resellerId));
+      roleHierarchyHtml = `
+        <span class="role-badge" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-weight:700;font-size:0.72rem;padding:3px 8px;border-radius:5px;display:inline-flex;align-items:center;gap:4px;">
+          <i data-lucide="user" style="width:11px;height:11px;color:#3b82f6;"></i> CLIENT USER
+        </span>
+        <div style="font-size:0.73rem;color:#475569;margin-top:3px;">
+          Under: <span style="color:#4338ca;font-weight:700;cursor:pointer;text-decoration:underline;" onclick="window.filterByUserReseller(${u.resellerId})" title="Click to filter by ${rName}">${rName}</span>
         </div>
       `;
     } else {
-      parentCellHtml = `
-        <span style="display:inline-flex;align-items:center;gap:5px;background:#f0f9ff;color:#0369a1;padding:4px 9px;border-radius:6px;font-size:0.75rem;font-weight:600;border:1px solid #bae6fd;" title="Direct client created by Super Admin">
-          <i data-lucide="shield-check" style="width:13px;height:13px;color:#0284c7;"></i> Direct (Platform Root)
+      roleHierarchyHtml = `
+        <span class="role-badge" style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;font-weight:700;font-size:0.72rem;padding:3px 8px;border-radius:5px;display:inline-flex;align-items:center;gap:4px;">
+          <i data-lucide="shield-check" style="width:11px;height:11px;color:#64748b;"></i> DIRECT CLIENT
         </span>
+        <div style="font-size:0.72rem;color:#64748b;margin-top:3px;font-weight:500;">Platform Root</div>
       `;
     }
 
+    // Col 3: Dedicated Tax Invoicing Mode
     const isWithGst = u.taxMode === 'with_gst';
-    const taxPill = isWithGst
-      ? '<span style="font-size:0.67rem;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:1px 6px;border-radius:4px;font-weight:700;" title="B2B GST Account (+18% Tax Invoice)">GST 18%</span>'
-      : '<span style="font-size:0.67rem;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;padding:1px 6px;border-radius:4px;font-weight:600;" title="Retail Non-GST Account (0% Bill of Supply)">Non-GST</span>';
+    const taxCellHtml = isWithGst
+      ? `<button type="button" class="btn-action" onclick="quickToggleTaxModeForUser(${u.id}, 'with_gst', '${escapeHtml(u.email)}')" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:3px 8px;border-radius:6px;font-size:0.74rem;font-weight:700;display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Click to switch tax mode: Currently B2B GST 18%">
+          <i data-lucide="receipt" style="width:11px;height:11px;"></i> GST 18%
+         </button>
+         <div style="font-size:0.68rem;color:#1d4ed8;margin-top:2px;font-weight:500;">B2B Tax Invoice</div>`
+      : `<button type="button" class="btn-action" onclick="quickToggleTaxModeForUser(${u.id}, 'non_gst', '${escapeHtml(u.email)}')" style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;padding:3px 8px;border-radius:6px;font-size:0.74rem;font-weight:600;display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Click to switch tax mode: Currently Non-GST 0%">
+          <i data-lucide="tag" style="width:11px;height:11px;"></i> Non-GST (0%)
+         </button>
+         <div style="font-size:0.68rem;color:#15803d;margin-top:2px;font-weight:500;">Bill of Supply</div>`;
 
-    let refundPill = '';
+    // Col 4: Dedicated DLR Refund Routing
+    let refundCellHtml = '';
     if (u.role === 'user' && u.resellerEmail) {
-      refundPill = (u.refundDestination === 'reseller')
-        ? `<span onclick="toggleUserRefundRouting(${u.id}, '${escapeHtml(u.email)}', 'reseller')" style="font-size:0.67rem;background:#fffbeb;color:#b45309;border:1px solid #fde68a;padding:1px 6px;border-radius:4px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px;" title="Click to switch: Currently refunds route to Reseller (${escapeHtml(u.resellerFullName || u.resellerEmail)})">Refund &rarr; Reseller <i data-lucide="refresh-cw" style="width:9px;height:9px;"></i></span>`
-        : `<span onclick="toggleUserRefundRouting(${u.id}, '${escapeHtml(u.email)}', 'user')" style="font-size:0.67rem;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;padding:1px 6px;border-radius:4px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:3px;" title="Click to switch: Currently refunds route to Client wallet">Refund &rarr; Client</span>`;
+      if (u.refundDestination === 'reseller') {
+        refundCellHtml = `
+          <button type="button" class="btn-action" onclick="toggleUserRefundRouting(${u.id}, '${escapeHtml(u.email)}', 'reseller')" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;padding:3px 8px;border-radius:6px;font-size:0.74rem;font-weight:700;display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Failed campaign credits refund back to managing Reseller wallet. Click to switch to Client.">
+            <i data-lucide="refresh-cw" style="width:11px;height:11px;color:#d97706;"></i> To Reseller
+          </button>
+          <div style="font-size:0.68rem;color:#b45309;margin-top:2px;font-weight:600;">Credited to Reseller</div>
+        `;
+      } else {
+        refundCellHtml = `
+          <button type="button" class="btn-action" onclick="toggleUserRefundRouting(${u.id}, '${escapeHtml(u.email)}', 'user')" style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;padding:3px 8px;border-radius:6px;font-size:0.74rem;font-weight:700;display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Failed campaign credits refund to this Client wallet. Click to switch to Reseller.">
+            <i data-lucide="user-check" style="width:11px;height:11px;color:#16a34a;"></i> To Client
+          </button>
+          <div style="font-size:0.68rem;color:#166534;margin-top:2px;font-weight:600;">Direct Client Refund</div>
+        `;
+      }
+    } else if (u.role === 'reseller') {
+      refundCellHtml = `
+        <span style="font-size:0.73rem;color:#64748b;display:inline-flex;align-items:center;gap:4px;background:#f8fafc;padding:3px 8px;border-radius:6px;border:1px solid #e2e8f0;font-weight:600;">
+          <i data-lucide="wallet" style="width:11px;height:11px;color:#7c3aed;"></i> Reseller Vault
+        </span>
+        <div style="font-size:0.68rem;color:#94a3b8;margin-top:2px;">Wholesale Balance</div>
+      `;
+    } else {
+      refundCellHtml = `
+        <span style="font-size:0.73rem;color:#64748b;display:inline-flex;align-items:center;gap:4px;background:#f8fafc;padding:3px 8px;border-radius:6px;border:1px solid #e2e8f0;font-weight:600;">
+          <i data-lucide="shield-check" style="width:11px;height:11px;color:#0284c7;"></i> Direct Wallet
+        </span>
+        <div style="font-size:0.68rem;color:#94a3b8;margin-top:2px;">Direct Root User</div>
+      `;
     }
 
     return `
       <tr>
         <td>
           <div style="display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="openUser360Modal(${u.id}, event)" title="Click to view 360° Profile">
-            <div class="user-avatar" style="width:34px;height:34px;font-size:0.85rem;background:#4f46e5;color:#fff;">${escapeHtml(u.email.charAt(0).toUpperCase())}</div>
-            <div>
-              <div style="font-weight:600;color:var(--primary);">${escapeHtml(u.fullName || u.email)}</div>
-              <div style="font-size:0.75rem;color:var(--slate-500);">${escapeHtml(u.email)}${u.companyName ? ` · ${escapeHtml(u.companyName)}` : ''}${u.phone ? ` · ${escapeHtml(u.phone)}` : ''}</div>
-              ${u.resellerEmail ? `<div style="margin-top:3px;"><span style="font-size:0.7rem;background:#eef2ff;color:#4338ca;padding:1px 6px;border-radius:4px;font-weight:700;display:inline-flex;align-items:center;gap:3px;"><i data-lucide="network" style="width:10px;height:10px;"></i> Under: ${escapeHtml(u.resellerFullName || u.resellerEmail)}</span></div>` : ''}
+            <div class="user-avatar" style="width:36px;height:36px;border-radius:8px;font-size:0.9rem;font-weight:700;background:${avatarBg};color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              ${initial}
+            </div>
+            <div style="min-width:0;">
+              <div style="font-weight:700;color:var(--primary);font-size:0.87rem;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                ${escapeHtml(u.fullName || u.email)}
+                ${u.companyName ? `<span style="font-size:0.72rem;background:#f1f5f9;color:#475569;padding:1px 6px;border-radius:4px;border:1px solid #e2e8f0;font-weight:500;">${escapeHtml(u.companyName)}</span>` : ''}
+              </div>
+              <div style="font-size:0.75rem;color:var(--slate-500);margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <span>${escapeHtml(u.email)}</span>
+                ${u.phone ? `<span>•</span><span style="color:#64748b;">${escapeHtml(u.phone)}</span>` : ''}
+              </div>
             </div>
           </div>
         </td>
+        <td>${roleHierarchyHtml}</td>
+        <td>${taxCellHtml}</td>
+        <td>${refundCellHtml}</td>
         <td>
-          <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
-            <span class="role-badge role-${escapeHtml(u.role)}">${escapeHtml(u.role)}</span>
-            <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:2px;">
-              ${taxPill}
-              ${refundPill}
-            </div>
-          </div>
-        </td>
-        <td>${parentCellHtml}</td>
-        <td>
-          ${u.isBlocked 
-            ? '<span class="status-badge badge-rejected"><i data-lucide="ban" style="width:12px;height:12px;"></i> Blocked</span>' 
-            : '<span class="status-badge badge-updated"><i data-lucide="check-circle" style="width:12px;height:12px;"></i> Active</span>'}
-        </td>
-        <td>
-          <div class="credit-pill credit-pill-primary" title="${domBreakdown}">
+          <div class="credit-pill credit-pill-primary" title="${domBreakdown}" style="cursor:help;">
             <i data-lucide="map-pin" style="width:12px;height:12px;"></i>
             <span>${domTotal.toLocaleString()}</span>
           </div>
         </td>
         <td>
-          <div class="credit-pill credit-pill-intl" title="${intlBreakdown}">
+          <div class="credit-pill credit-pill-intl" title="${intlBreakdown}" style="cursor:help;">
             <i data-lucide="globe" style="width:12px;height:12px;"></i>
             <span>${intlTotal.toLocaleString()}</span>
           </div>
         </td>
-        <td style="font-size:0.8rem;color:var(--slate-500);">${new Date(u.createdAt).toLocaleDateString()}</td>
         <td>
-          <div style="display:flex;align-items:center;gap:6px;">
-            <button type="button" class="btn-action btn-action-primary" onclick="openUser360Modal(${u.id}, event)" style="display:inline-flex;align-items:center;gap:5px;font-weight:600;padding:5px 11px;" title="View User 360° Profile">
+          ${u.isBlocked 
+            ? '<span class="status-badge badge-rejected" style="display:inline-flex;align-items:center;gap:3px;"><i data-lucide="ban" style="width:11px;height:11px;"></i> Blocked</span>' 
+            : '<span class="status-badge badge-updated" style="display:inline-flex;align-items:center;gap:3px;"><i data-lucide="check-circle" style="width:11px;height:11px;"></i> Active</span>'}
+        </td>
+        <td style="text-align:right;">
+          <div style="display:inline-flex;align-items:center;gap:6px;justify-content:flex-end;">
+            <button type="button" class="btn-action btn-action-primary" onclick="openUser360Modal(${u.id}, event)" style="display:inline-flex;align-items:center;gap:5px;font-weight:600;padding:5px 10px;font-size:0.78rem;" title="View User 360° Profile">
               <i data-lucide="sparkles" style="width:13px;height:13px;"></i> 360° Profile
             </button>
 
@@ -5225,13 +5343,16 @@ function renderUsersTable() {
                 <button type="button" class="action-dropdown-item" onclick="closeAllDropdowns(); openResetPasswordModal(${u.id}, '${escapeHtml(u.email)}')">
                   <i data-lucide="key" style="width:14px;height:14px;color:#0891b2;"></i> Reset Password
                 </button>
-                <button type="button" class="action-dropdown-item" onclick="closeAllDropdowns(); toggleBlockUser(${u.id})">
-                  <i data-lucide="${u.isBlocked ? 'unlock' : 'lock'}" style="width:14px;height:14px;color:${u.isBlocked ? '#10b981' : '#f59e0b'};"></i> ${u.isBlocked ? 'Unblock Account' : 'Block Account'}
+                <button type="button" class="action-dropdown-item" onclick="closeAllDropdowns(); quickToggleTaxModeForUser(${u.id}, '${u.taxMode || 'non_gst'}', '${escapeHtml(u.email)}')">
+                  <i data-lucide="receipt" style="width:14px;height:14px;color:#2563eb;"></i> Toggle Tax Mode (${isWithGst ? 'GST 18%' : 'Non-GST'})
                 </button>
                 ${u.role === 'user' && u.resellerEmail ? `
                 <button type="button" class="action-dropdown-item" onclick="closeAllDropdowns(); toggleUserRefundRouting(${u.id}, '${escapeHtml(u.email)}', '${u.refundDestination || 'user'}')">
-                  <i data-lucide="rotate-ccw" style="width:14px;height:14px;color:#0284c7;"></i> ${u.refundDestination === 'reseller' ? 'Route Refund to Client' : 'Route Refund to Reseller'}
+                  <i data-lucide="rotate-ccw" style="width:14px;height:14px;color:#d97706;"></i> ${u.refundDestination === 'reseller' ? 'Route Refund to Client' : 'Route Refund to Reseller'}
                 </button>` : ''}
+                <button type="button" class="action-dropdown-item" onclick="closeAllDropdowns(); toggleBlockUser(${u.id})">
+                  <i data-lucide="${u.isBlocked ? 'unlock' : 'lock'}" style="width:14px;height:14px;color:${u.isBlocked ? '#10b981' : '#f59e0b'};"></i> ${u.isBlocked ? 'Unblock Account' : 'Block Account'}
+                </button>
                 <div style="height:1px;background:#e2e8f0;margin:3px 0;"></div>
                 <button type="button" class="action-dropdown-item danger" onclick="closeAllDropdowns(); deleteUserAccount(${u.id}, '${escapeHtml(u.email)}')">
                   <i data-lucide="trash-2" style="width:14px;height:14px;"></i> Delete User
@@ -5274,18 +5395,27 @@ document.addEventListener('click', (e) => {
 });
 
 async function loadPasswordResetRequests() {
+  const card = document.getElementById('password-reset-queue-card');
   const tbody = document.getElementById('password-reset-requests-tbody');
-  if (!tbody || !currentUser || currentUser.role !== 'admin') return;
+  if (!tbody || !currentUser || currentUser.role !== 'admin') {
+    if (card) card.style.display = 'none';
+    return;
+  }
   try {
     const requests = await apiFetch('/auth/password-reset-requests');
-    tbody.innerHTML = requests.length ? requests.map(request => `<tr>
+    if (!requests || requests.length === 0) {
+      if (card) card.style.display = 'none';
+      return;
+    }
+    if (card) card.style.display = 'block';
+    tbody.innerHTML = requests.map(request => `<tr>
       <td>${new Date(request.requested_at).toLocaleString()}</td>
       <td><strong>${escapeHtml(request.full_name || request.email)}</strong><div style="font-size:0.75rem;color:var(--slate-500);">${escapeHtml(request.email)}</div></td>
       <td>${escapeHtml(request.company_name || '—')}</td>
-      <td><div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn-action btn-action-primary" onclick="openResetPasswordModal(${Number(request.user_id)}, '', ${Number(request.id)})">Verify & reset</button><button class="btn-action btn-action-danger" onclick="rejectPasswordResetRequest(${Number(request.id)})">Reject</button></div></td>
-    </tr>`).join('') : '<tr><td colspan="4" style="text-align:center;padding:22px;color:var(--slate-400);">No pending password-reset requests.</td></tr>';
+      <td style="text-align:right;"><div style="display:inline-flex;gap:6px;justify-content:flex-end;"><button class="btn-action btn-action-primary" onclick="openResetPasswordModal(${Number(request.user_id)}, '', ${Number(request.id)})">Verify & reset</button><button class="btn-action btn-action-danger" onclick="rejectPasswordResetRequest(${Number(request.id)})">Reject</button></div></td>
+    </tr>`).join('');
   } catch (err) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:22px;color:#b91c1c;">Unable to load reset requests.</td></tr>';
+    if (card) card.style.display = 'none';
   }
 }
 

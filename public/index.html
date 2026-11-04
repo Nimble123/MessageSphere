@@ -2984,44 +2984,88 @@
         <!-- 4. USER MANAGEMENT VIEW (ADMIN & RESELLER) -->
         <section id="view-users" class="app-view">
           
-          <div class="filter-bar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <!-- Top Bar: Segment Pills & Create User Action -->
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+            <div class="user-segment-tabs" style="display:inline-flex;background:#f1f5f9;padding:3px;border-radius:10px;border:1px solid #e2e8f0;gap:3px;">
+              <button type="button" class="user-seg-btn active" id="user-seg-all" onclick="setUserSegmentFilter('all')" style="padding:6px 14px;border-radius:7px;border:none;font-size:0.8rem;font-weight:700;cursor:pointer;background:#ffffff;color:#0f172a;box-shadow:0 1px 3px rgba(0,0,0,0.08);transition:all 0.15s;display:inline-flex;align-items:center;gap:6px;">
+                <i data-lucide="users" style="width:13px;height:13px;color:#4f46e5;"></i> All Accounts (<span id="user-count-all">0</span>)
+              </button>
+              <button type="button" class="user-seg-btn" id="user-seg-reseller" onclick="setUserSegmentFilter('reseller')" style="padding:6px 14px;border-radius:7px;border:none;font-size:0.8rem;font-weight:600;cursor:pointer;background:transparent;color:#64748b;transition:all 0.15s;display:inline-flex;align-items:center;gap:6px;">
+                <i data-lucide="award" style="width:13px;height:13px;color:#7c3aed;"></i> Reseller Partners (<span id="user-count-reseller">0</span>)
+              </button>
+              <button type="button" class="user-seg-btn" id="user-seg-clients" onclick="setUserSegmentFilter('client')" style="padding:6px 14px;border-radius:7px;border:none;font-size:0.8rem;font-weight:600;cursor:pointer;background:transparent;color:#64748b;transition:all 0.15s;display:inline-flex;align-items:center;gap:6px;">
+                <i data-lucide="user-check" style="width:13px;height:13px;color:#2563eb;"></i> Client Users (<span id="user-count-clients">0</span>)
+              </button>
+              <button type="button" class="user-seg-btn" id="user-seg-direct" onclick="setUserSegmentFilter('direct')" style="padding:6px 14px;border-radius:7px;border:none;font-size:0.8rem;font-weight:600;cursor:pointer;background:transparent;color:#64748b;transition:all 0.15s;display:inline-flex;align-items:center;gap:6px;">
+                <i data-lucide="shield-check" style="width:13px;height:13px;color:#0284c7;"></i> Direct Root (<span id="user-count-direct">0</span>)
+              </button>
+            </div>
+
+            <button class="btn-action btn-action-primary" id="btn-open-create-user-modal" style="display:flex;align-items:center;gap:6px;padding:8px 16px;font-weight:600;font-size:0.84rem;box-shadow:0 2px 6px rgba(79,70,229,0.25);">
+              <i data-lucide="user-plus" style="width:15px;height:15px;"></i> Create New User
+            </button>
+          </div>
+
+          <!-- Secondary Filter Bar: Universal Search & Reseller Network Filter -->
+          <div class="filter-bar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;background:#ffffff;padding:10px 14px;border-radius:10px;border:1px solid #e2e8f0;">
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:1;">
-              <input type="text" id="user-search-input" class="search-input" style="min-width:260px;max-width:360px;" placeholder="Search users by name, email, company, phone...">
-              <select id="user-reseller-filter" class="form-select super-admin-only" style="min-width:240px;height:38px;padding:6px 12px;font-size:0.83rem;border:1px solid #cbd5e1;border-radius:6px;background:white;color:#1e293b;font-weight:600;display:none;">
-                <option value="all">All Resellers & Accounts</option>
+              <input type="text" id="user-search-input" class="search-input" style="min-width:280px;max-width:380px;border-radius:8px;" placeholder="Search users by name, email, company, phone...">
+              <select id="user-reseller-filter" class="form-select super-admin-only" style="min-width:230px;height:38px;padding:6px 12px;font-size:0.83rem;border:1px solid #cbd5e1;border-radius:8px;background:white;color:#1e293b;font-weight:600;display:none;">
+                <option value="all">All Reseller Networks</option>
                 <option value="direct">Direct Users (Platform Root)</option>
                 <option value="resellers_only">Resellers Only</option>
               </select>
-              <select id="user-role-filter" class="form-select" style="min-width:130px;height:38px;padding:6px 12px;font-size:0.83rem;border:1px solid #cbd5e1;border-radius:6px;background:white;color:#1e293b;font-weight:600;">
+              <select id="user-role-filter" class="form-select" style="min-width:130px;height:38px;padding:6px 12px;font-size:0.83rem;border:1px solid #cbd5e1;border-radius:8px;background:white;color:#1e293b;font-weight:600;">
                 <option value="all">All Roles</option>
                 <option value="user">Users Only</option>
                 <option value="reseller">Resellers Only</option>
               </select>
             </div>
-            <button class="btn-action btn-action-primary" id="btn-open-create-user-modal" style="display:flex;align-items:center;gap:6px;">
-              <i data-lucide="user-plus" style="width:15px;height:15px;"></i> Create New User
-            </button>
           </div>
 
-          <div class="card super-admin-only" id="password-reset-queue-card" style="margin-bottom:18px;display:none;">
-            <div class="card-header"><div><div class="card-title">Password reset verification queue</div><div class="card-desc">Requests are submitted in this portal but verified and completed manually by Super Admin. No reset email is sent.</div></div></div>
-            <div class="card-body" style="padding:0;"><div class="table-container"><table><thead><tr><th>Requested</th><th>Account</th><th>Company</th><th>Actions</th></tr></thead><tbody id="password-reset-requests-tbody"><tr><td colspan="4" style="text-align:center;padding:22px;color:var(--slate-400);">Open User Management to load reset requests.</td></tr></tbody></table></div></div>
-          </div>
-
-          <div class="card">
-            <div class="card-body" style="padding:0;">
+          <!-- Password Reset Queue Card (Only shown if pending requests exist) -->
+          <div class="card" id="password-reset-queue-card" style="margin-bottom:16px;display:none;border-left:4px solid #f59e0b;background:#fffbeb;">
+            <div class="card-header" style="background:transparent;border-bottom:1px solid #fde68a;padding:12px 18px;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <i data-lucide="alert-triangle" style="width:16px;height:16px;color:#d97706;"></i>
+                <div class="card-title" style="color:#92400e;font-size:0.9rem;">Password Reset Verification Queue</div>
+              </div>
+              <div class="card-desc" style="color:#b45309;font-size:0.75rem;">Requests submitted by users requiring Super Admin identity verification and password generation.</div>
+            </div>
+            <div class="card-body" style="padding:0;background:#ffffff;">
               <div class="table-container">
                 <table>
                   <thead>
                     <tr>
-                      <th>User</th>
-                      <th>Role</th>
-                      <th>Associated Reseller</th>
-                      <th>Account Status</th>
-                      <th>Domestic Credits</th>
-                      <th>Intl Credits</th>
-                      <th>Joined</th>
-                      <th>Actions</th>
+                      <th>Requested At</th>
+                      <th>Account</th>
+                      <th>Company</th>
+                      <th style="text-align:right;">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="password-reset-requests-tbody">
+                    <tr><td colspan="4" style="text-align:center;padding:16px;color:var(--slate-400);">No pending password-reset requests.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Modern User Management Data Table -->
+          <div class="card" style="box-shadow:0 4px 14px -2px rgba(15,23,42,0.06);border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+            <div class="card-body" style="padding:0;">
+              <div class="table-container">
+                <table class="table-modern" style="margin:0;width:100%;">
+                  <thead style="background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+                    <tr>
+                      <th style="padding:12px 16px;font-size:0.74rem;font-weight:700;color:#64748b;letter-spacing:0.5px;text-transform:uppercase;min-width:230px;">User & Account</th>
+                      <th style="padding:12px 16px;font-size:0.74rem;font-weight:700;color:#64748b;letter-spacing:0.5px;text-transform:uppercase;min-width:180px;">Role & Hierarchy</th>
+                      <th style="padding:12px 16px;font-size:0.74rem;font-weight:700;color:#64748b;letter-spacing:0.5px;text-transform:uppercase;min-width:125px;">Tax Mode</th>
+                      <th style="padding:12px 16px;font-size:0.74rem;font-weight:700;color:#64748b;letter-spacing:0.5px;text-transform:uppercase;min-width:160px;">DLR Refund Routing</th>
+                      <th style="padding:12px 16px;font-size:0.74rem;font-weight:700;color:#64748b;letter-spacing:0.5px;text-transform:uppercase;min-width:125px;">Domestic Credits</th>
+                      <th style="padding:12px 16px;font-size:0.74rem;font-weight:700;color:#64748b;letter-spacing:0.5px;text-transform:uppercase;min-width:110px;">Intl Credits</th>
+                      <th style="padding:12px 16px;font-size:0.74rem;font-weight:700;color:#64748b;letter-spacing:0.5px;text-transform:uppercase;min-width:95px;">Status</th>
+                      <th style="padding:12px 16px;font-size:0.74rem;font-weight:700;color:#64748b;letter-spacing:0.5px;text-transform:uppercase;min-width:140px;text-align:right;">Actions</th>
                     </tr>
                   </thead>
                   <tbody id="users-table-tbody">
@@ -7308,6 +7352,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=1793815500000"></script>
+  <script src="app.js?v=1793816500000"></script>
 </body>
 </html>
