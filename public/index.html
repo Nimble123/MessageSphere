@@ -3350,13 +3350,16 @@
             <div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 0.8rem;">
               <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                 <span style="background: #f1f5f9; color: #334155; padding: 4px 10px; border-radius: 7px; font-weight: 600; border: 1px solid #e2e8f0;">
-                  Total Records: <strong id="ledger-stat-count" style="color: #0f172a;">0</strong>
+                  Records: <strong id="ledger-stat-count" style="color: #0f172a;">0</strong>
                 </span>
                 <span style="background: #ecfdf5; color: #15803d; padding: 4px 12px; border-radius: 7px; font-weight: 700; border: 1px solid #bbf7d0;">
-                  Inflow: <strong id="ledger-stat-in">+0</strong>
+                  Allotted / Inflow: <strong id="ledger-stat-in">+0</strong>
                 </span>
                 <span style="background: #fef2f2; color: #b91c1c; padding: 4px 12px; border-radius: 7px; font-weight: 700; border: 1px solid #fecaca;">
-                  Outflow: <strong id="ledger-stat-out">-0</strong>
+                  Campaign Usage: <strong id="ledger-stat-out">-0</strong>
+                </span>
+                <span style="background: #f0f9ff; color: #0284c7; padding: 4px 12px; border-radius: 7px; font-weight: 700; border: 1px solid #bae6fd;">
+                  Carrier Refunds: <strong id="ledger-stat-refund">+0</strong>
                 </span>
               </div>
 
@@ -3384,12 +3387,20 @@
             <!-- Ledger Filter Toolbar -->
             <div style="padding: 12px 22px; border-bottom: 1px solid #e2e8f0; background: #ffffff; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
               <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: 1;">
-                <div style="position: relative; min-width: 220px; flex: 1; max-width: 320px;">
+                <!-- Fast Category Tabs: All, Allotment, Campaign Debits, Refunds -->
+                <div class="tab-pills" id="ledger-flow-pills" style="margin: 0;">
+                  <button type="button" class="tab-pill active" onclick="setLedgerFlowPill('all', this)">All Flows</button>
+                  <button type="button" class="tab-pill" onclick="setLedgerFlowPill('allotment', this)" style="font-weight: 600; color: #15803d;">Allotments & Sales (+)</button>
+                  <button type="button" class="tab-pill" onclick="setLedgerFlowPill('campaign_deduction', this)" style="font-weight: 600; color: #b91c1c;">Campaign Usage (-)</button>
+                  <button type="button" class="tab-pill" onclick="setLedgerFlowPill('refund', this)" style="font-weight: 600; color: #0284c7;">Carrier Refunds (+)</button>
+                </div>
+
+                <div style="position: relative; min-width: 200px; flex: 1; max-width: 280px;">
                   <i data-lucide="search" style="position: absolute; left: 10px; top: 9px; width: 14px; height: 14px; color: var(--slate-400);"></i>
                   <input type="text" id="ledger-search-input" class="form-input" placeholder="Search reference, note, account..." oninput="onLedgerFilterChange()" style="padding-left: 32px; font-size: 0.82rem; height: 34px; border-radius: 8px;">
                 </div>
                 
-                <select id="ledger-filter-channel" class="form-input" onchange="onLedgerFilterChange()" style="font-size: 0.8rem; height: 34px; padding: 4px 10px; max-width: 180px; border-radius: 8px;">
+                <select id="ledger-filter-channel" class="form-input" onchange="onLedgerFilterChange()" style="font-size: 0.8rem; height: 34px; padding: 4px 10px; max-width: 170px; border-radius: 8px;">
                   <option value="all">All Channels</option>
                   <option value="gsm_sms">GSM Bulk SMS</option>
                   <option value="normal">Normal WhatsApp Text</option>
@@ -3399,16 +3410,17 @@
                   <option value="own_number">WhatsApp Own SIM</option>
                 </select>
 
-                <select id="ledger-filter-dest" class="form-input" onchange="onLedgerFilterChange()" style="font-size: 0.8rem; height: 34px; padding: 4px 10px; max-width: 140px; border-radius: 8px;">
+                <select id="ledger-filter-dest" class="form-input" onchange="onLedgerFilterChange()" style="font-size: 0.8rem; height: 34px; padding: 4px 10px; max-width: 130px; border-radius: 8px;">
                   <option value="all">All Routes</option>
                   <option value="domestic">Domestic (India)</option>
                   <option value="international">International</option>
                 </select>
 
-                <select id="ledger-filter-flow" class="form-input" onchange="onLedgerFilterChange()" style="font-size: 0.8rem; height: 34px; padding: 4px 10px; max-width: 140px; border-radius: 8px;">
-                  <option value="all">All Flows (In & Out)</option>
-                  <option value="credit">Credit In (+)</option>
-                  <option value="debit">Debit Out (-)</option>
+                <select id="ledger-filter-flow" class="form-input" onchange="onLedgerFlowSelectChange()" style="font-size: 0.8rem; height: 34px; padding: 4px 10px; max-width: 160px; border-radius: 8px;">
+                  <option value="all">All Flows (All)</option>
+                  <option value="allotment">Allotments & Sales (+)</option>
+                  <option value="campaign_deduction">Campaign Debits (-)</option>
+                  <option value="refund">Carrier Refunds (+)</option>
                 </select>
               </div>
 
@@ -6609,18 +6621,42 @@
 
         <!-- TAB 3: PASSBOOK LEDGER -->
         <div id="u360-tab-ledger" class="u360-tab-pane" style="display:none;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <h4 style="margin:0;font-size:0.92rem;font-weight:600;color:var(--slate-700);">Credit Passbook & Transaction Ledger</h4>
-            <span style="font-size:0.75rem;color:var(--slate-500);">Allotments, debits, and auto-refunds</span>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px;">
+            <div>
+              <h4 style="margin:0;font-size:0.92rem;font-weight:700;color:var(--slate-800);">Credit Passbook & Audit Ledger</h4>
+              <span style="font-size:0.75rem;color:var(--slate-500);">Transparent breakdown of top-up allotments, campaign consumption, and auto-refunds</span>
+            </div>
+            <!-- Quick Filter Pills -->
+            <div class="tab-pills" id="u360-ledger-filter-pills" style="margin:0;">
+              <button type="button" class="tab-pill active" onclick="filterU360Ledger('all', this)">All (All)</button>
+              <button type="button" class="tab-pill" onclick="filterU360Ledger('allotment', this)" style="font-weight:600;color:#15803d;">Allotments (+)</button>
+              <button type="button" class="tab-pill" onclick="filterU360Ledger('campaign_deduction', this)" style="font-weight:600;color:#b91c1c;">Campaign Usage (-)</button>
+              <button type="button" class="tab-pill" onclick="filterU360Ledger('refund', this)" style="font-weight:600;color:#0284c7;">Auto-Refunds (+)</button>
+            </div>
           </div>
+
+          <!-- Summary Metric Badges -->
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;font-size:0.76rem;">
+            <span style="background:#ecfdf5;color:#15803d;padding:4px 10px;border-radius:6px;font-weight:700;border:1px solid #bbf7d0;">
+              Total Allotted: <strong id="u360-ledger-total-allot">+0</strong>
+            </span>
+            <span style="background:#fef2f2;color:#b91c1c;padding:4px 10px;border-radius:6px;font-weight:700;border:1px solid #fecaca;">
+              Campaign Debits: <strong id="u360-ledger-total-debit">-0</strong>
+            </span>
+            <span style="background:#f0f9ff;color:#0284c7;padding:4px 10px;border-radius:6px;font-weight:700;border:1px solid #bae6fd;">
+              Auto-Refunds Restored: <strong id="u360-ledger-total-refund">+0</strong>
+            </span>
+          </div>
+
           <div class="table-container" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
             <table>
               <thead>
                 <tr>
-                  <th>Date & Time</th>
-                  <th>Channel</th>
-                  <th>Region</th>
-                  <th>Amount</th>
+                  <th style="width:130px;">Date & Time</th>
+                  <th style="width:120px;">Type / Flow</th>
+                  <th style="width:110px;">Channel</th>
+                  <th style="width:90px;">Region</th>
+                  <th style="text-align:right;width:110px;">Amount</th>
                   <th>Audit Note / Reason</th>
                 </tr>
               </thead>
@@ -6870,6 +6906,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=1793799600001"></script>
+  <script src="app.js?v=1793800050000"></script>
 </body>
 </html>

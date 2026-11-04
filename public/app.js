@@ -1028,6 +1028,36 @@ let ledgerCurrentPage = 1;
 let ledgerPageSize = 50;
 let ledgerTotalCount = 0;
 
+window.setLedgerFlowPill = function(flowVal, btn) {
+  const container = document.getElementById('ledger-flow-pills');
+  if (container) {
+    container.querySelectorAll('.tab-pill').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+  }
+  const flowSelect = document.getElementById('ledger-filter-flow');
+  if (flowSelect) flowSelect.value = flowVal;
+  ledgerCurrentPage = 1;
+  loadLedgerTransactions();
+};
+
+window.onLedgerFlowSelectChange = function() {
+  const flowSelect = document.getElementById('ledger-filter-flow');
+  const flowVal = flowSelect ? flowSelect.value : 'all';
+  const container = document.getElementById('ledger-flow-pills');
+  if (container) {
+    container.querySelectorAll('.tab-pill').forEach(b => {
+      const onclickAttr = b.getAttribute('onclick') || '';
+      const match = onclickAttr.match(/'([^']+)'/);
+      if (match && match[1] === flowVal) {
+        b.classList.add('active');
+      } else {
+        b.classList.remove('active');
+      }
+    });
+  }
+  onLedgerFilterChange();
+};
+
 window.setLedgerDatePreset = function(preset, btn) {
   ledgerDatePreset = preset;
   const container = document.getElementById('ledger-date-presets');
@@ -1193,12 +1223,16 @@ async function loadLedgerTransactions() {
       displayedTxs = displayedTxs.filter(tx => new Date(tx.created_at).getTime() >= startOfMonth);
     }
 
-    // Calculate Summary Strip Totals
+    // Calculate Summary Strip Totals (Separating Sales/Allotments, Campaign Debits & Carrier Refunds)
     let totalIn = 0;
     let totalOut = 0;
+    let totalRefund = 0;
     displayedTxs.forEach(tx => {
       const amt = Math.abs(Number(tx.amount) || 0);
-      if (tx.is_credit) {
+      const isRef = tx.category === 'refund' || tx.direction === 'refund' || Boolean(tx.refund_campaign_id) || String(tx.reason || '').toLowerCase().includes('refund');
+      if (isRef) {
+        totalRefund += amt;
+      } else if (tx.is_credit) {
         totalIn += amt;
       } else {
         totalOut += amt;
@@ -1208,9 +1242,11 @@ async function loadLedgerTransactions() {
     const statCountEl = document.getElementById('ledger-stat-count');
     const statInEl = document.getElementById('ledger-stat-in');
     const statOutEl = document.getElementById('ledger-stat-out');
+    const statRefundEl = document.getElementById('ledger-stat-refund');
     if (statCountEl) statCountEl.textContent = (ledgerTotalCount || displayedTxs.length).toLocaleString();
     if (statInEl) statInEl.textContent = `+${totalIn.toLocaleString()}`;
     if (statOutEl) statOutEl.textContent = `-${totalOut.toLocaleString()}`;
+    if (statRefundEl) statRefundEl.textContent = `+${totalRefund.toLocaleString()}`;
 
     // Update KPI count if present
     const txCountEl = document.getElementById('wallet-summary-tx-count');
@@ -1252,11 +1288,48 @@ async function loadLedgerTransactions() {
     }
 
     tbody.innerHTML = displayedTxs.map(tx => {
-      const isCredit = tx.is_credit;
-      const amountColor = isCredit ? '#15803d' : '#b91c1c';
-      const amountBg = isCredit ? '#ecfdf5' : '#fef2f2';
-      const amountBorder = isCredit ? '#bbf7d0' : '#fecaca';
-      const amountSign = isCredit ? '+' : '-';
+      const reasonLower = String(tx.reason || '').toLowerCase();
+      const isRefund = tx.category === 'refund' || tx.direction === 'refund' || Boolean(tx.refund_campaign_id) || reasonLower.includes('refund') || reasonLower.includes('auto-refund');
+      const isDeduction = !isRefund && (tx.category === 'campaign_deduction' || !tx.is_credit || reasonLower.includes('deduction') || reasonLower.includes('debit') || reasonLower.includes('burn') || reasonLower.includes('cost'));
+
+      let amountColor = '#15803d';
+      let amountBg = '#ecfdf5';
+      let amountBorder = '#bbf7d0';
+      let amountSign = '+';
+      let flowBadgeHtml = '';
+
+      if (isRefund) {
+        amountColor = '#0284c7';
+        amountBg = '#f0f9ff';
+        amountBorder = '#bae6fd';
+        amountSign = '+';
+        flowBadgeHtml = `
+          <span class="status-badge" style="background:#f0f9ff;color:#0284c7;border:1px solid #bae6fd;font-size:0.73rem;font-weight:700;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;">
+            <i data-lucide="rotate-ccw" style="width:13px;height:13px;"></i> Carrier Refund (+)
+          </span>
+        `;
+      } else if (isDeduction) {
+        amountColor = '#b91c1c';
+        amountBg = '#fef2f2';
+        amountBorder = '#fecaca';
+        amountSign = '-';
+        flowBadgeHtml = `
+          <span class="status-badge" style="background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;font-size:0.73rem;font-weight:700;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;">
+            <i data-lucide="arrow-up-right" style="width:13px;height:13px;"></i> Campaign Debit (-)
+          </span>
+        `;
+      } else {
+        amountColor = '#15803d';
+        amountBg = '#ecfdf5';
+        amountBorder = '#bbf7d0';
+        amountSign = '+';
+        flowBadgeHtml = `
+          <span class="status-badge" style="background:#ecfdf5;color:#15803d;border:1px solid #bbf7d0;font-size:0.73rem;font-weight:700;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;">
+            <i data-lucide="arrow-down-left" style="width:13px;height:13px;"></i> Allotment (+)
+          </span>
+        `;
+      }
+
       const rawType = (tx.credit_type || 'normal').toLowerCase();
       let cleanReason = String(tx.reason || 'Manual Adjustment');
       if (!currentUser || currentUser.role !== 'admin') {
@@ -1307,10 +1380,10 @@ async function loadLedgerTransactions() {
         return `<a href="javascript:void(0)" onclick="openCampaignDetailModal(${p1})" style="color:#4f46e5;font-weight:700;text-decoration:underline;" title="View Campaign Details">#${p1}</a>`;
       });
 
-      // Voucher Slip Button for credits/allotments
-      const voucherAction = isCredit ? `
+      // Voucher Slip Button for credits/allotments & refunds
+      const voucherAction = (isRefund || !isDeduction) ? `
         <button type="button" class="btn-action btn-action-secondary" onclick="openRechargeReceiptModal(${tx.id})" title="View & Print Voucher Slip" style="padding: 3px 8px; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 4px; border-radius: 6px;">
-          <i data-lucide="receipt" style="width: 12px; height: 12px; color: #10b981;"></i> Slip
+          <i data-lucide="receipt" style="width: 12px; height: 12px; color: ${isRefund ? '#0284c7' : '#10b981'};"></i> Slip
         </button>
       ` : `<span style="color:#94a3b8;font-size:0.75rem;">—</span>`;
 
@@ -1319,10 +1392,7 @@ async function loadLedgerTransactions() {
           <td><span style="font-family:monospace;font-size:0.78rem;font-weight:700;color:#64748b;">#${tx.id}</span></td>
           <td><span style="font-size:0.8rem;color:var(--slate-600);white-space:nowrap;">${new Date(tx.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}</span></td>
           <td>
-            <span class="status-badge" style="background:${amountBg};color:${amountColor};border:1px solid ${amountBorder};font-size:0.73rem;font-weight:700;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;">
-              <i data-lucide="${isCredit ? 'arrow-down-left' : 'arrow-up-right'}" style="width:13px;height:13px;"></i>
-              ${isCredit ? 'Credit In (+)' : 'Debit Out (-)'}
-            </span>
+            ${flowBadgeHtml}
           </td>
           <td><strong style="font-size:0.82rem;color:#1e293b;display:inline-flex;align-items:center;gap:5px;"><i data-lucide="${channelIcon}" style="width:13px;height:13px;color:#4f46e5;"></i> ${escapeHtml(channelLabel)}</strong></td>
           <td><span style="font-size:0.78rem;color:var(--slate-600);display:inline-flex;align-items:center;gap:4px;"><i data-lucide="${destIcon}" style="width:12px;height:12px;color:#64748b;"></i> ${destLabel}</span></td>
@@ -1335,7 +1405,7 @@ async function loadLedgerTransactions() {
             </div>
           </td>
           <td>
-            <span style="font-size:0.8rem;font-weight:600;color:var(--slate-700);">${escapeHtml((!currentUser || currentUser.role !== 'admin') ? (isCredit ? 'Direct Telecom Platform' : 'Campaign Dispatcher') : (tx.counterparty_email || 'System'))}</span>
+            <span style="font-size:0.8rem;font-weight:600;color:var(--slate-700);">${escapeHtml((!currentUser || currentUser.role !== 'admin') ? (amountSign === '+' ? 'Direct Telecom Platform' : 'Campaign Dispatcher') : (tx.counterparty_email || 'System'))}</span>
           </td>
           <td style="text-align:center;">
             ${voucherAction}
@@ -10761,41 +10831,41 @@ window.openUser360Modal = async function(userId, evt) {
       }).join('');
     }
 
-    // Tab 3: Passbook Ledger Table
-    const ledgerTbody = document.getElementById('u360-ledger-tbody');
-    if (!recentTransactions || recentTransactions.length === 0) {
-      ledgerTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--slate-400);">No credit transactions on record.</td></tr>';
-    } else {
-      ledgerTbody.innerHTML = recentTransactions.map(t => {
-        const reasonLower = String(t.reason || '').toLowerCase();
-        const isDeduction = reasonLower.includes('deduction') || reasonLower.includes('debit') || reasonLower.includes('burn') || reasonLower.includes('cost');
-        const isCredit = !isDeduction && (Number(t.to_user_id) === Number(user.id));
-        const amountBadge = isCredit 
-          ? `<span style="color:#15803d;font-weight:700;background:#ecfdf5;padding:3px 8px;border-radius:6px;border:1px solid #bbf7d0;">+${Number(t.amount).toLocaleString()}</span>` 
-          : `<span style="color:#b91c1c;font-weight:700;background:#fef2f2;padding:3px 8px;border-radius:6px;border:1px solid #fecaca;">-${Number(t.amount).toLocaleString()}</span>`;
+    // Tab 3: Passbook Ledger Table & Flow Categorization
+    window.u360Transactions = recentTransactions || [];
+    let u360Allot = 0;
+    let u360Debit = 0;
+    let u360Refund = 0;
+    window.u360Transactions.forEach(t => {
+      const amt = Math.abs(Number(t.amount) || 0);
+      const isRef = t.category === 'refund' || Boolean(t.refund_campaign_id) || String(t.reason || '').toLowerCase().includes('refund');
+      const isDed = !isRef && (t.category === 'campaign_deduction' || !t.is_credit || String(t.reason || '').toLowerCase().includes('deduction') || String(t.reason || '').toLowerCase().includes('debit'));
+      if (isRef) {
+        u360Refund += amt;
+      } else if (isDed) {
+        u360Debit += amt;
+      } else {
+        u360Allot += amt;
+      }
+    });
 
-        let displayReason = String(t.reason || 'Credit allocation / adjustment');
-        if (!currentUser || currentUser.role !== 'admin') {
-          displayReason = displayReason
-            .replace(/Allotted by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Telecom Balance Allotment: ')
-            .replace(/Deduction by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Balance Adjustment: ')
-            .replace(/\bby reseller\b/gi, 'via Telecom Gateway')
-            .replace(/\[Created by [^\]]+ on behalf of account\]/gi, '');
-        }
+    const allotEl = document.getElementById('u360-ledger-total-allot');
+    const debitEl = document.getElementById('u360-ledger-total-debit');
+    const refundEl = document.getElementById('u360-ledger-total-refund');
+    if (allotEl) allotEl.textContent = `+${u360Allot.toLocaleString()}`;
+    if (debitEl) debitEl.textContent = `-${u360Debit.toLocaleString()}`;
+    if (refundEl) refundEl.textContent = `+${u360Refund.toLocaleString()}`;
 
-        return `
-          <tr>
-            <td style="font-size:0.8rem;color:var(--slate-500);white-space:nowrap;">${new Date(t.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}</td>
-            <td><strong style="text-transform:uppercase;font-size:0.75rem;">${escapeHtml(t.credit_type)}</strong></td>
-            <td><span style="font-size:0.75rem;color:var(--slate-600);text-transform:capitalize;">${escapeHtml(t.destination)}</span></td>
-            <td>${amountBadge}</td>
-            <td style="font-size:0.8rem;color:var(--slate-600);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(displayReason)}">
-              ${escapeHtml(displayReason)}
-            </td>
-          </tr>
-        `;
-      }).join('');
+    // Reset filter pills to All
+    const u360Pills = document.getElementById('u360-ledger-filter-pills');
+    if (u360Pills) {
+      u360Pills.querySelectorAll('.tab-pill').forEach((b, idx) => {
+        if (idx === 0) b.classList.add('active');
+        else b.classList.remove('active');
+      });
     }
+
+    window.renderU360LedgerTable('all');
 
     // Tab 4: Business & Security Details
     current360User = user;
@@ -10845,6 +10915,84 @@ window.openUser360Modal = async function(userId, evt) {
   } catch (err) {
     console.error('User 360 profile load error:', err);
     showToast('error', 'Profile Error', err.message);
+  }
+};
+
+window.filterU360Ledger = function(flowFilter, btn) {
+  const container = document.getElementById('u360-ledger-filter-pills');
+  if (container) {
+    container.querySelectorAll('.tab-pill').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+  }
+  window.renderU360LedgerTable(flowFilter);
+};
+
+window.renderU360LedgerTable = function(flowFilter = 'all') {
+  const ledgerTbody = document.getElementById('u360-ledger-tbody');
+  if (!ledgerTbody) return;
+  const txs = window.u360Transactions || [];
+
+  const filtered = txs.filter(t => {
+    if (!flowFilter || flowFilter === 'all') return true;
+    const isRef = t.category === 'refund' || Boolean(t.refund_campaign_id) || String(t.reason || '').toLowerCase().includes('refund');
+    const isDed = !isRef && (t.category === 'campaign_deduction' || !t.is_credit || String(t.reason || '').toLowerCase().includes('deduction') || String(t.reason || '').toLowerCase().includes('debit'));
+    if (flowFilter === 'refund') return isRef;
+    if (flowFilter === 'campaign_deduction') return isDed;
+    if (flowFilter === 'allotment') return !isRef && !isDed;
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    ledgerTbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--slate-400);">No transactions found under this category.</td></tr>';
+    return;
+  }
+
+  ledgerTbody.innerHTML = filtered.map(t => {
+    const isRef = t.category === 'refund' || Boolean(t.refund_campaign_id) || String(t.reason || '').toLowerCase().includes('refund');
+    const isDed = !isRef && (t.category === 'campaign_deduction' || !t.is_credit || String(t.reason || '').toLowerCase().includes('deduction') || String(t.reason || '').toLowerCase().includes('debit'));
+    const amt = Math.abs(Number(t.amount) || 0);
+
+    let amountBadge = '';
+    let flowBadge = '';
+
+    if (isRef) {
+      amountBadge = `<span style="color:#0284c7;font-weight:700;background:#f0f9ff;padding:3px 8px;border-radius:6px;border:1px solid #bae6fd;">+${amt.toLocaleString()}</span>`;
+      flowBadge = `<span class="status-badge" style="background:#f0f9ff;color:#0284c7;border:1px solid #bae6fd;font-size:0.72rem;font-weight:700;display:inline-flex;align-items:center;gap:3px;"><i data-lucide="rotate-ccw" style="width:11px;height:11px;"></i> Auto-Refund (+)</span>`;
+    } else if (isDed) {
+      amountBadge = `<span style="color:#b91c1c;font-weight:700;background:#fef2f2;padding:3px 8px;border-radius:6px;border:1px solid #fecaca;">-${amt.toLocaleString()}</span>`;
+      flowBadge = `<span class="status-badge" style="background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;font-size:0.72rem;font-weight:700;display:inline-flex;align-items:center;gap:3px;"><i data-lucide="arrow-up-right" style="width:11px;height:11px;"></i> Campaign Debit (-)</span>`;
+    } else {
+      amountBadge = `<span style="color:#15803d;font-weight:700;background:#ecfdf5;padding:3px 8px;border-radius:6px;border:1px solid #bbf7d0;">+${amt.toLocaleString()}</span>`;
+      flowBadge = `<span class="status-badge" style="background:#ecfdf5;color:#15803d;border:1px solid #bbf7d0;font-size:0.72rem;font-weight:700;display:inline-flex;align-items:center;gap:3px;"><i data-lucide="arrow-down-left" style="width:11px;height:11px;"></i> Allotment (+)</span>`;
+    }
+
+    let displayReason = String(t.reason || 'Credit allocation / adjustment');
+    if (!currentUser || currentUser.role !== 'admin') {
+      displayReason = displayReason
+        .replace(/Allotted by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Telecom Balance Allotment: ')
+        .replace(/Deduction by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Balance Adjustment: ')
+        .replace(/\bby reseller\b/gi, 'via Telecom Gateway')
+        .replace(/\[Created by [^\]]+ on behalf of account\]/gi, '');
+    }
+
+    const channelName = (t.credit_type === 'gsm_sms' ? 'GSM Bulk SMS' : (t.credit_type || 'NORMAL').toUpperCase());
+
+    return `
+      <tr>
+        <td style="font-size:0.8rem;color:var(--slate-500);white-space:nowrap;">${new Date(t.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}</td>
+        <td>${flowBadge}</td>
+        <td><strong style="font-size:0.76rem;">${escapeHtml(channelName)}</strong></td>
+        <td><span style="font-size:0.75rem;color:var(--slate-600);text-transform:capitalize;">${escapeHtml(t.destination || 'domestic')}</span></td>
+        <td style="text-align:right;">${amountBadge}</td>
+        <td style="font-size:0.8rem;color:var(--slate-600);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(displayReason)}">
+          ${escapeHtml(displayReason)}
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  if (window.lucide) {
+    try { lucide.createIcons({ root: ledgerTbody }); } catch (e) { lucide.createIcons(); }
   }
 };
 

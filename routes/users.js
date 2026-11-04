@@ -168,16 +168,17 @@ router.get('/:id/360', authenticate, async (req, res) => {
       LIMIT 8
     `, [targetId]);
 
-    // 5. Recent Credit Transactions (up to 15)
+    // 5. Recent Credit Transactions (up to 25)
     const transactionsResult = await query(`
       SELECT ct.id, ct.from_user_id, ct.to_user_id, ct.credit_type, ct.destination, ct.amount, ct.reason, ct.created_at,
+             ct.refund_campaign_id,
              fu.email AS from_email, tu.email AS to_email
       FROM credit_transactions ct
       LEFT JOIN users fu ON ct.from_user_id = fu.id
       LEFT JOIN users tu ON ct.to_user_id = tu.id
       WHERE ct.to_user_id = $1 OR ct.from_user_id = $1
       ORDER BY ct.created_at DESC
-      LIMIT 15
+      LIMIT 25
     `, [targetId]);
 
     // 6. Audience & Assets summary
@@ -191,7 +192,7 @@ router.get('/:id/360', authenticate, async (req, res) => {
     `, [targetId]);
     const assets = assetsResult.rows[0] || {};
 
-    // Sanitize transactions: if viewer is not admin, mask reseller emails and replace "by reseller" references
+    // Sanitize and classify transactions with precise flow types, signs, and badges
     const sanitizedTransactions = transactionsResult.rows.map(t => {
       let reason = t.reason || '';
       let fromEmail = t.from_email || 'System / Platform';
@@ -205,10 +206,57 @@ router.get('/:id/360', authenticate, async (req, res) => {
           fromEmail = 'Direct Telecom Platform';
         }
       }
+
+      const reasonLower = String(t.reason || '').toLowerCase();
+      const isRefund = Boolean(t.refund_campaign_id) || reasonLower.includes('refund') || reasonLower.includes('auto-refund');
+      const isDeduction = reasonLower.includes('deduction') || reasonLower.includes('debit') || reasonLower.includes('burn') || reasonLower.includes('cost');
+      const amt = Math.abs(Number(t.amount) || 0);
+
+      let category = 'allotment';
+      let signedAmount = amt;
+      let badgeText = 'Allotment (+)';
+      let badgeColor = '#15803d';
+      let badgeBg = '#ecfdf5';
+      let badgeBorder = '#bbf7d0';
+      let isCredit = true;
+
+      if (isRefund) {
+        category = 'refund';
+        signedAmount = amt;
+        badgeText = 'Auto-Refund (+)';
+        badgeColor = '#0284c7';
+        badgeBg = '#f0f9ff';
+        badgeBorder = '#bae6fd';
+        isCredit = true;
+      } else if (isDeduction) {
+        category = 'campaign_deduction';
+        signedAmount = -amt;
+        badgeText = 'Campaign Debit (-)';
+        badgeColor = '#b91c1c';
+        badgeBg = '#fef2f2';
+        badgeBorder = '#fecaca';
+        isCredit = false;
+      } else if (Number(t.from_user_id) === Number(targetId) && Number(t.to_user_id) !== Number(targetId)) {
+        category = 'allotment_out';
+        signedAmount = -amt;
+        badgeText = 'Transferred Out (-)';
+        badgeColor = '#d97706';
+        badgeBg = '#fffbeb';
+        badgeBorder = '#fde68a';
+        isCredit = false;
+      }
+
       return {
         ...t,
         reason,
-        from_email: fromEmail
+        from_email: fromEmail,
+        category,
+        signed_amount: signedAmount,
+        badge_text: badgeText,
+        badge_color: badgeColor,
+        badge_bg: badgeBg,
+        badge_border: badgeBorder,
+        is_credit: isCredit
       };
     });
 

@@ -9,30 +9,101 @@ const { authenticate } = require('../middleware/auth');
  * @param {number} viewerUserId - ID of the viewing user
  * @returns {{ direction: 'credit'|'debit', signed_amount: number, is_credit: boolean }}
  */
-function resolveTransactionDirection(tx, viewerUserId) {
+function resolveTransactionDirection(tx, viewerUserId, viewerRole) {
   const reasonLower = String(tx.reason || '').toLowerCase();
-  const isDeduction = reasonLower.includes('deduction') || reasonLower.includes('debit') || reasonLower.includes('cost');
-  const isRefund = reasonLower.includes('refund');
+  const isRefund = Boolean(tx.refund_campaign_id) || reasonLower.includes('refund') || reasonLower.includes('auto-refund');
+  const isDeduction = reasonLower.includes('deduction') || reasonLower.includes('debit') || reasonLower.includes('burn') || reasonLower.includes('cost');
+  const amt = Math.abs(Number(tx.amount) || 0);
 
-  // If the viewer is the recipient (to_user_id)
-  if (Number(tx.to_user_id) === Number(viewerUserId)) {
-    if (isDeduction) {
-      return { direction: 'debit', signed_amount: -Math.abs(Number(tx.amount)), is_credit: false };
-    }
-    return { direction: 'credit', signed_amount: Math.abs(Number(tx.amount)), is_credit: true };
+  // 1. REFUND / REVERSAL FLOW
+  // Any refund or auto-refund restores credits to the user/reseller. It is ALWAYS positive (+).
+  if (isRefund) {
+    return {
+      direction: 'refund',
+      category: 'refund',
+      signed_amount: amt,
+      is_credit: true,
+      flow_type: 'refund',
+      badge_text: 'Refund Restored (+)',
+      badge_color: '#0284c7',
+      badge_bg: '#f0f9ff',
+      badge_border: '#bae6fd'
+    };
   }
 
-  // If the viewer is the sender (from_user_id) allocating to someone else
-  if (Number(tx.from_user_id) === Number(viewerUserId) && Number(tx.to_user_id) !== Number(viewerUserId)) {
-    // If reseller transferred credits to client, it left the reseller's balance
-    return { direction: 'debit', signed_amount: -Math.abs(Number(tx.amount)), is_credit: false };
-  }
-
-  // Default fallback for third-party view (e.g. Admin inspecting client)
+  // 2. CAMPAIGN DEDUCTION / USAGE FLOW
+  // Deductions for campaigns are ALWAYS negative (-) debits, regardless of who views them.
   if (isDeduction) {
-    return { direction: 'debit', signed_amount: -Math.abs(Number(tx.amount)), is_credit: false };
+    return {
+      direction: 'debit',
+      category: 'campaign_deduction',
+      signed_amount: -amt,
+      is_credit: false,
+      flow_type: 'debit',
+      badge_text: 'Campaign Debit (-)',
+      badge_color: '#b91c1c',
+      badge_bg: '#fef2f2',
+      badge_border: '#fecaca'
+    };
   }
-  return { direction: 'credit', signed_amount: Math.abs(Number(tx.amount)), is_credit: true };
+
+  // 3. CREDIT ALLOTMENT / RECHARGE / SALE FLOW
+  // If viewer is recipient (to_user_id):
+  if (Number(tx.to_user_id) === Number(viewerUserId)) {
+    return {
+      direction: 'credit',
+      category: 'allotment',
+      signed_amount: amt,
+      is_credit: true,
+      flow_type: 'credit',
+      badge_text: 'Credit In (+)',
+      badge_color: '#15803d',
+      badge_bg: '#ecfdf5',
+      badge_border: '#bbf7d0'
+    };
+  }
+
+  // If viewer is sender (from_user_id) allocating to a client
+  if (Number(tx.from_user_id) === Number(viewerUserId) && Number(tx.to_user_id) !== Number(viewerUserId)) {
+    if (viewerRole === 'admin') {
+      return {
+        direction: 'credit',
+        category: 'allotment',
+        signed_amount: amt,
+        is_credit: true,
+        flow_type: 'credit',
+        badge_text: 'Allotment (+)',
+        badge_color: '#15803d',
+        badge_bg: '#ecfdf5',
+        badge_border: '#bbf7d0'
+      };
+    }
+
+    return {
+      direction: 'debit',
+      category: 'allotment_out',
+      signed_amount: -amt,
+      is_credit: false,
+      flow_type: 'debit',
+      badge_text: 'Transferred Out (-)',
+      badge_color: '#d97706',
+      badge_bg: '#fffbeb',
+      badge_border: '#fde68a'
+    };
+  }
+
+  // Fallback for third-party view (e.g. Admin inspecting any account's transaction)
+  return {
+    direction: 'credit',
+    category: 'allotment',
+    signed_amount: amt,
+    is_credit: true,
+    flow_type: 'credit',
+    badge_text: 'Credit In (+)',
+    badge_color: '#15803d',
+    badge_bg: '#ecfdf5',
+    badge_border: '#bbf7d0'
+  };
 }
 
 /**
@@ -174,7 +245,7 @@ router.get('/transactions', authenticate, async (req, res) => {
 
     const enriched = result.rows
       .map(tx => {
-        const dir = resolveTransactionDirection(tx, viewerUserId);
+        const dir = resolveTransactionDirection(tx, viewerUserId, req.user.role);
         let safeReason = tx.reason || '';
         let counterparty = Number(tx.to_user_id) === Number(viewerUserId) ? (tx.from_email || 'System / Issuer') : (tx.to_email || 'Recipient Account');
         if (req.user.role !== 'admin') {
@@ -191,6 +262,12 @@ router.get('/transactions', authenticate, async (req, res) => {
           ...tx,
           reason: safeReason,
           direction: dir.direction,
+          category: dir.category,
+          flow_type: dir.flow_type,
+          badge_text: dir.badge_text,
+          badge_color: dir.badge_color,
+          badge_bg: dir.badge_bg,
+          badge_border: dir.badge_border,
           signed_amount: dir.signed_amount,
           is_credit: dir.is_credit,
           counterparty_email: counterparty
@@ -198,15 +275,42 @@ router.get('/transactions', authenticate, async (req, res) => {
       })
       .filter(tx => {
         if (!directionFilter || directionFilter === 'all') return true;
+        if (directionFilter === 'credit' || directionFilter === 'allotment') {
+          return tx.category === 'allotment';
+        }
+        if (directionFilter === 'debit' || directionFilter === 'deduction' || directionFilter === 'campaign_deduction') {
+          return tx.category === 'campaign_deduction' || tx.direction === 'debit';
+        }
+        if (directionFilter === 'refund') {
+          return tx.category === 'refund' || tx.direction === 'refund';
+        }
         return tx.direction === directionFilter;
       });
+
+    let totalInflow = 0;
+    let totalOutflow = 0;
+    let totalRefunds = 0;
+    enriched.forEach(t => {
+      if (t.category === 'refund' || t.direction === 'refund') {
+        totalRefunds += Math.abs(t.signed_amount);
+      } else if (t.is_credit) {
+        totalInflow += Math.abs(t.signed_amount);
+      } else {
+        totalOutflow += Math.abs(t.signed_amount);
+      }
+    });
 
     if (req.query.paginate === 'true' || req.query.page) {
       return res.json({
         transactions: enriched,
         total: totalCount,
         limit: limitVal,
-        offset: offsetVal
+        offset: offsetVal,
+        summary: {
+          totalInflow,
+          totalOutflow,
+          totalRefunds
+        }
       });
     }
 
@@ -228,7 +332,7 @@ router.get('/transactions/export', authenticate, async (req, res) => {
     const directionFilter = req.query.direction;
     const enriched = result.rows
       .map(tx => {
-        const dir = resolveTransactionDirection(tx, viewerUserId);
+        const dir = resolveTransactionDirection(tx, viewerUserId, req.user.role);
         let safeReason = tx.reason || '';
         let counterparty = Number(tx.to_user_id) === Number(viewerUserId) ? (tx.from_email || 'System') : (tx.to_email || 'Recipient');
         if (req.user.role !== 'admin') {
@@ -245,6 +349,9 @@ router.get('/transactions/export', authenticate, async (req, res) => {
           ...tx,
           reason: safeReason,
           direction: dir.direction,
+          category: dir.category,
+          flow_type: dir.flow_type,
+          badge_text: dir.badge_text,
           signed_amount: dir.signed_amount,
           is_credit: dir.is_credit,
           counterparty_email: counterparty
@@ -252,6 +359,15 @@ router.get('/transactions/export', authenticate, async (req, res) => {
       })
       .filter(tx => {
         if (!directionFilter || directionFilter === 'all') return true;
+        if (directionFilter === 'credit' || directionFilter === 'allotment') {
+          return tx.category === 'allotment';
+        }
+        if (directionFilter === 'debit' || directionFilter === 'deduction' || directionFilter === 'campaign_deduction') {
+          return tx.category === 'campaign_deduction' || tx.direction === 'debit';
+        }
+        if (directionFilter === 'refund') {
+          return tx.category === 'refund' || tx.direction === 'refund';
+        }
         return tx.direction === directionFilter;
       });
 
