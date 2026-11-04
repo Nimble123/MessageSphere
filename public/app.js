@@ -11512,7 +11512,13 @@ window.submitSmsCampaign = async function(e) {
   }
 };
 
+smsCampaignsData = [];
 let currentSmsStatusFilter = 'all';
+let currentSmsDateFilter = 'all';
+let currentSmsFormatFilter = 'all';
+let currentSmsDlrFilter = 'all';
+let smsCurrentPage = 1;
+let smsPageSize = 25;
 
 window.setSmsStatusFilter = function(status, btn) {
   currentSmsStatusFilter = status;
@@ -11521,7 +11527,87 @@ window.setSmsStatusFilter = function(status, btn) {
     container.querySelectorAll('.tab-pill').forEach(p => p.classList.remove('active'));
   }
   if (btn) btn.classList.add('active');
+  smsCurrentPage = 1;
   filterSmsCampaigns();
+};
+
+window.onSmsDateFilterChange = function() {
+  const sel = document.getElementById('sms-date-filter');
+  currentSmsDateFilter = sel ? sel.value : 'all';
+  const customBox = document.getElementById('sms-custom-date-box');
+  if (customBox) {
+    customBox.style.display = currentSmsDateFilter === 'custom' ? 'inline-flex' : 'none';
+  }
+  smsCurrentPage = 1;
+  filterSmsCampaigns();
+};
+
+window.clearSmsCustomDate = function() {
+  const fromEl = document.getElementById('sms-from-date');
+  const toEl = document.getElementById('sms-to-date');
+  if (fromEl) fromEl.value = '';
+  if (toEl) toEl.value = '';
+  const sel = document.getElementById('sms-date-filter');
+  if (sel) sel.value = 'all';
+  currentSmsDateFilter = 'all';
+  const customBox = document.getElementById('sms-custom-date-box');
+  if (customBox) customBox.style.display = 'none';
+  smsCurrentPage = 1;
+  filterSmsCampaigns();
+};
+
+window.onSmsPageSizeChange = function() {
+  const sel = document.getElementById('sms-page-size');
+  const val = sel ? sel.value : '25';
+  smsPageSize = val === 'all' ? 'all' : (parseInt(val, 10) || 25);
+  smsCurrentPage = 1;
+  renderSmsCampaignsTable();
+};
+
+window.setSmsPage = function(p) {
+  smsCurrentPage = p;
+  renderSmsCampaignsTable();
+};
+
+window.resetSmsFilters = function() {
+  const searchInput = document.getElementById('sms-search-input');
+  if (searchInput) searchInput.value = '';
+
+  const dateSel = document.getElementById('sms-date-filter');
+  if (dateSel) dateSel.value = 'all';
+  currentSmsDateFilter = 'all';
+
+  const customBox = document.getElementById('sms-custom-date-box');
+  if (customBox) customBox.style.display = 'none';
+  const fromEl = document.getElementById('sms-from-date');
+  const toEl = document.getElementById('sms-to-date');
+  if (fromEl) fromEl.value = '';
+  if (toEl) toEl.value = '';
+
+  const fmtSel = document.getElementById('sms-format-filter');
+  if (fmtSel) fmtSel.value = 'all';
+
+  const dlrSel = document.getElementById('sms-dlr-filter');
+  if (dlrSel) dlrSel.value = 'all';
+
+  const userSel = document.getElementById('sms-user-filter');
+  if (userSel) userSel.value = '';
+
+  const resSel = document.getElementById('sms-reseller-filter');
+  if (resSel) resSel.value = '';
+
+  currentSmsStatusFilter = 'all';
+  const container = document.getElementById('sms-status-filter-pills');
+  if (container) {
+    container.querySelectorAll('.tab-pill').forEach((p, idx) => {
+      if (idx === 0) p.classList.add('active');
+      else p.classList.remove('active');
+    });
+  }
+
+  smsCurrentPage = 1;
+  filterSmsCampaigns();
+  showToast('info', 'Filters Cleared', 'All SMS broadcast filters have been reset.');
 };
 
 window.filterSmsCampaigns = function() {
@@ -11532,7 +11618,7 @@ window.filterSmsCampaigns = function() {
 window.loadSmsCampaigns = async function() {
   const tbody = document.getElementById('sms-campaigns-tbody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--text-muted);"><i data-lucide="loader-2" class="spin"></i> Loading SMS campaigns...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-muted);"><i data-lucide="loader-2" class="spin"></i> Loading SMS campaigns...</td></tr>';
   if (window.lucide) lucide.createIcons();
 
   // Always sync fresh user balance in background
@@ -11549,15 +11635,50 @@ window.loadSmsCampaigns = async function() {
     const data = await apiFetch('/sms');
     smsCampaignsData = Array.isArray(data) ? data : (data.campaigns || []);
 
-    // Setup User Filter for Admin & Reseller
+    // Setup Reseller & User Filters for Admin & Reseller
+    const isAdmin = currentUser && currentUser.role === 'admin';
+    const isReseller = currentUser && currentUser.role === 'reseller';
+
+    const resellerFilter = document.getElementById('sms-reseller-filter');
+    if (resellerFilter) {
+      if (isAdmin) {
+        resellerFilter.style.display = 'inline-block';
+        const resellersMap = new Map();
+        smsCampaignsData.forEach(c => {
+          if (c.reseller_id && (c.reseller_email || c.reseller_name)) {
+            resellersMap.set(String(c.reseller_id), c.reseller_name ? `${c.reseller_name} (${c.reseller_email})` : c.reseller_email);
+          }
+        });
+        const curResVal = resellerFilter.value;
+        let resOptions = '<option value="">All Resellers</option>';
+        resellersMap.forEach((label, id) => {
+          resOptions += `<option value="${id}">${escHtml(label)}</option>`;
+        });
+        resellerFilter.innerHTML = resOptions;
+        if (resellersMap.has(curResVal)) resellerFilter.value = curResVal;
+      } else {
+        resellerFilter.style.display = 'none';
+      }
+    }
+
     const userFilter = document.getElementById('sms-user-filter');
     if (userFilter) {
-      if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'reseller')) {
+      if (isAdmin || isReseller) {
         userFilter.style.display = 'inline-block';
-        const distinctOwners = Array.from(new Set(smsCampaignsData.map(c => c.owner_email).filter(Boolean)));
+        const ownersMap = new Map();
+        smsCampaignsData.forEach(c => {
+          if (c.owner_email) {
+            const label = c.owner_company ? `${c.owner_email} (${c.owner_company})` : (c.owner_name ? `${c.owner_name} (${c.owner_email})` : c.owner_email);
+            ownersMap.set(c.owner_email, label);
+          }
+        });
         const currentVal = userFilter.value;
-        userFilter.innerHTML = '<option value="">All Accounts</option>' + distinctOwners.map(e => `<option value="${escHtml(e)}">${escHtml(e)}</option>`).join('');
-        if (distinctOwners.includes(currentVal)) {
+        let uOptions = '<option value="">All Accounts</option>';
+        ownersMap.forEach((label, email) => {
+          uOptions += `<option value="${escHtml(email)}">${escHtml(label)}</option>`;
+        });
+        userFilter.innerHTML = uOptions;
+        if (ownersMap.has(currentVal)) {
           userFilter.value = currentVal;
         }
       } else {
@@ -11587,124 +11708,461 @@ window.loadSmsCampaigns = async function() {
       balEl.textContent = smsBal.toLocaleString();
     }
 
+    updateSmsFilterCounts();
     renderSmsCampaignsTable();
   } catch(err) {
-    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--danger);">Error: ${escHtml(err.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--danger);">Error: ${escHtml(err.message)}</td></tr>`;
   }
 };
+
+function updateSmsFilterCounts() {
+  const now = new Date();
+  const counts = {
+    all: smsCampaignsData.length,
+    submitted: 0,
+    approved: 0,
+    completed: 0,
+    reported: 0,
+    scheduled: 0,
+    rejected: 0
+  };
+
+  smsCampaignsData.forEach(c => {
+    const isScheduledFuture = Boolean(c.scheduled_at && new Date(c.scheduled_at) > now);
+    if (isScheduledFuture) counts.scheduled++;
+
+    if (c.status === 'Report Updated') counts.reported++;
+    else if (c.status === 'Completed') counts.completed++;
+    else if (c.status === 'Approved') counts.approved++;
+    else if (c.status === 'Submitted') {
+      if (!isScheduledFuture) counts.submitted++;
+    } else if (c.status === 'Rejected') counts.rejected++;
+  });
+
+  const setCnt = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val.toLocaleString();
+  };
+  setCnt('sms-cnt-all', counts.all);
+  setCnt('sms-cnt-submitted', counts.submitted);
+  setCnt('sms-cnt-approved', counts.approved);
+  setCnt('sms-cnt-completed', counts.completed);
+  setCnt('sms-cnt-reported', counts.reported);
+  setCnt('sms-cnt-scheduled', counts.scheduled);
+  setCnt('sms-cnt-rejected', counts.rejected);
+}
+
+function getFilteredSmsCampaigns() {
+  const now = new Date();
+  const q = (document.getElementById('sms-search-input')?.value || '').toLowerCase().trim();
+  const selectedUser = (document.getElementById('sms-user-filter')?.value || '').trim();
+  const selectedReseller = (document.getElementById('sms-reseller-filter')?.value || '').trim();
+  const formatFilter = document.getElementById('sms-format-filter')?.value || 'all';
+  const dlrFilter = document.getElementById('sms-dlr-filter')?.value || 'all';
+  const fromDateVal = document.getElementById('sms-from-date')?.value;
+  const toDateVal = document.getElementById('sms-to-date')?.value;
+
+  return smsCampaignsData.filter(c => {
+    const isScheduledFuture = Boolean(c.scheduled_at && new Date(c.scheduled_at) > now);
+
+    // 1. Status Filter
+    if (currentSmsStatusFilter === 'Scheduled') {
+      if (!isScheduledFuture) return false;
+    } else if (currentSmsStatusFilter === 'Submitted') {
+      if (c.status !== 'Submitted' || isScheduledFuture) return false;
+    } else if (currentSmsStatusFilter !== 'all') {
+      if (c.status !== currentSmsStatusFilter) return false;
+    }
+
+    // 2. Account Filter
+    if (selectedUser && c.owner_email !== selectedUser) return false;
+
+    // 3. Reseller Filter (Admin only)
+    if (selectedReseller && String(c.reseller_id) !== selectedReseller) return false;
+
+    // 4. Message Format / Encoding Filter
+    const parts = c.sms_parts || 1;
+    if (formatFilter === 'single' && (parts > 1 || c.is_unicode)) return false;
+    if (formatFilter === 'multi' && parts <= 1) return false;
+    if (formatFilter === 'unicode' && !c.is_unicode) return false;
+    if (formatFilter === 'gsm7' && c.is_unicode) return false;
+
+    // 5. DLR Outcome Filter
+    const deliv = parseInt(c.delivered_count, 10) || 0;
+    const failed = parseInt(c.failed_count, 10) || 0;
+    const totalNums = parseInt(c.total_numbers, 10) || 0;
+
+    if (dlrFilter === 'reported' && c.status !== 'Report Updated') return false;
+    if (dlrFilter === 'dispatched' && c.status !== 'Completed') return false;
+    if (dlrFilter === 'perfect') {
+      if (c.status !== 'Report Updated' || failed > 0 || deliv === 0) return false;
+    }
+    if (dlrFilter === 'failures') {
+      if (failed <= 0) return false;
+    }
+
+    // 6. Date Filter
+    if (currentSmsDateFilter !== 'all' && c.created_at) {
+      const cDate = new Date(c.created_at);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      if (currentSmsDateFilter === 'today') {
+        if (cDate < today) return false;
+      } else if (currentSmsDateFilter === 'yesterday') {
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        if (cDate < yesterday || cDate >= today) return false;
+      } else if (currentSmsDateFilter === 'last7') {
+        const sevenDaysAgo = new Date(today);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        if (cDate < sevenDaysAgo) return false;
+      } else if (currentSmsDateFilter === 'thisMonth') {
+        const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        if (cDate < firstOfMonth) return false;
+      } else if (currentSmsDateFilter === 'custom') {
+        if (fromDateVal) {
+          const fromD = new Date(fromDateVal);
+          fromD.setHours(0, 0, 0, 0);
+          if (cDate < fromD) return false;
+        }
+        if (toDateVal) {
+          const toD = new Date(toDateVal);
+          toD.setHours(23, 59, 59, 999);
+          if (cDate > toD) return false;
+        }
+      }
+    }
+
+    // 7. Full-text Search
+    if (q) {
+      const cleanQ = q.replace(/^#/, '');
+      const matchId = String(c.id).includes(cleanQ);
+      const matchTitle = (c.title || '').toLowerCase().includes(q);
+      const matchText = (c.message_text || '').toLowerCase().includes(q);
+      const matchEmail = (c.owner_email || '').toLowerCase().includes(q);
+      const matchName = (c.owner_name || '').toLowerCase().includes(q);
+      const matchComp = (c.owner_company || '').toLowerCase().includes(q);
+      const matchPhone = (c.owner_phone || '').toLowerCase().includes(q);
+      if (!matchId && !matchTitle && !matchText && !matchEmail && !matchName && !matchComp && !matchPhone) return false;
+    }
+
+    return true;
+  });
+}
 
 function renderSmsCampaignsTable() {
   const tbody = document.getElementById('sms-campaigns-tbody');
   if (!tbody) return;
 
-  const q = (document.getElementById('sms-search-input')?.value || '').toLowerCase().trim();
-  const selectedUser = (document.getElementById('sms-user-filter')?.value || '').trim();
+  const filtered = getFilteredSmsCampaigns();
 
-  const filtered = smsCampaignsData.filter(c => {
-    if (currentSmsStatusFilter !== 'all' && c.status !== currentSmsStatusFilter) return false;
-    if (selectedUser && c.owner_email !== selectedUser) return false;
-    if (!q) return true;
-    return (
-      String(c.id).includes(q) ||
-      (c.title || '').toLowerCase().includes(q) ||
-      (c.message_text || '').toLowerCase().includes(q) ||
-      (c.owner_email || '').toLowerCase().includes(q)
-    );
-  });
+  // Update Summary Counts
+  const filterCountEl = document.getElementById('sms-filtered-count');
+  const filterNumbersEl = document.getElementById('sms-filtered-numbers');
+  const filterCreditsEl = document.getElementById('sms-filtered-credits');
+  const totNums = filtered.reduce((s, c) => s + (parseInt(c.total_numbers, 10) || 0), 0);
+  const totCreds = filtered.reduce((s, c) => s + (parseInt(c.credits_used, 10) || 0), 0);
+
+  if (filterCountEl) filterCountEl.textContent = filtered.length.toLocaleString();
+  if (filterNumbersEl) filterNumbersEl.textContent = totNums.toLocaleString();
+  if (filterCreditsEl) filterCreditsEl.textContent = totCreds.toLocaleString();
+
+  // Pagination Elements
+  const pageInfoEl = document.getElementById('sms-pagination-info');
+  const pagesContainer = document.getElementById('sms-pagination-controls');
 
   if (filtered.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-muted);">No SMS campaigns found matching current filters. Click <strong>New Broadcast</strong> to launch one.</td></tr>';
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="10" style="text-align: center; padding: 48px 20px;">
+          <div style="display: inline-flex; flex-direction: column; align-items: center; justify-content: center; max-width: 360px;">
+            <div style="width: 52px; height: 52px; border-radius: 50%; background: #f1f5f9; color: #94a3b8; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;">
+              <i data-lucide="radio" style="width: 24px; height: 24px;"></i>
+            </div>
+            <div style="font-size: 1rem; font-weight: 700; color: #1e293b; margin-bottom: 4px;">No Broadcasts Found</div>
+            <div style="font-size: 0.8rem; color: #64748b; line-height: 1.45; margin-bottom: 16px;">
+              No SMS broadcasts match your current search criteria or date filters.
+            </div>
+            <button type="button" class="btn-action btn-action-secondary" onclick="resetSmsFilters()" style="font-size: 0.8rem; padding: 6px 14px;">
+              Clear Filters
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+    if (pageInfoEl) pageInfoEl.innerHTML = 'Showing <strong>0</strong> of <strong>0</strong> broadcasts';
+    if (pagesContainer) pagesContainer.innerHTML = '';
+    if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
     return;
   }
 
-  tbody.innerHTML = filtered.map(c => {
-    const statusColors = {
-      'Submitted': 'var(--warning)',
-      'Approved': 'var(--primary)',
-      'Completed': 'var(--success)',
-      'Report Updated': 'var(--success)',
-      'Rejected': 'var(--danger)',
-      'Cancelled': 'var(--text-muted)'
-    };
-    const statusColor = statusColors[c.status] || 'var(--text-muted)';
+  // Handle Pagination
+  const totalCount = filtered.length;
+  let paged = filtered;
+
+  if (smsPageSize !== 'all') {
+    const size = parseInt(smsPageSize, 10) || 25;
+    const totalPages = Math.ceil(totalCount / size) || 1;
+    if (smsCurrentPage > totalPages) smsCurrentPage = totalPages;
+    if (smsCurrentPage < 1) smsCurrentPage = 1;
+
+    const startIdx = (smsCurrentPage - 1) * size;
+    paged = filtered.slice(startIdx, startIdx + size);
+
+    if (pageInfoEl) {
+      const endIdx = Math.min(startIdx + paged.length, totalCount);
+      pageInfoEl.innerHTML = `Showing <strong>${startIdx + 1}–${endIdx}</strong> of <strong>${totalCount}</strong> broadcasts`;
+    }
+
+    if (pagesContainer) {
+      let pageBtns = '';
+      if (totalPages > 1) {
+        pageBtns += `<button type="button" class="btn-action btn-action-secondary" ${smsCurrentPage === 1 ? 'disabled style="opacity:0.4;cursor:not-allowed;"' : 'onclick="setSmsPage(' + (smsCurrentPage - 1) + ')"'} style="padding:4px 8px;font-size:0.75rem;">Prev</button>`;
+        for (let p = 1; p <= totalPages; p++) {
+          if (p === 1 || p === totalPages || (p >= smsCurrentPage - 1 && p <= smsCurrentPage + 1)) {
+            const activeStyle = p === smsCurrentPage ? 'background:#4f46e5;color:#fff;font-weight:700;border-color:#4f46e5;' : '';
+            pageBtns += `<button type="button" class="btn-action btn-action-secondary" onclick="setSmsPage(${p})" style="padding:4px 9px;font-size:0.75rem;min-width:28px;${activeStyle}">${p}</button>`;
+          } else if (p === smsCurrentPage - 2 || p === smsCurrentPage + 2) {
+            pageBtns += `<span style="padding:0 3px;color:var(--slate-400);font-size:0.75rem;">...</span>`;
+          }
+        }
+        pageBtns += `<button type="button" class="btn-action btn-action-secondary" ${smsCurrentPage === totalPages ? 'disabled style="opacity:0.4;cursor:not-allowed;"' : 'onclick="setSmsPage(' + (smsCurrentPage + 1) + ')"'} style="padding:4px 8px;font-size:0.75rem;">Next</button>`;
+      }
+      pagesContainer.innerHTML = pageBtns;
+    }
+  } else {
+    if (pageInfoEl) pageInfoEl.innerHTML = `Showing all <strong>${totalCount}</strong> broadcasts`;
+    if (pagesContainer) pagesContainer.innerHTML = '';
+  }
+
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  const now = new Date();
+
+  tbody.innerHTML = paged.map(c => {
+    const isScheduledFuture = Boolean(c.scheduled_at && new Date(c.scheduled_at) > now);
     const scheduledDisplay = c.scheduled_at ? new Date(c.scheduled_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '—';
     const createdDisplay = c.created_at ? new Date(c.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '—';
     const parts = c.sms_parts || 1;
-    const creditsUsed = c.credits_used !== undefined ? c.credits_used : ((parseInt(c.total_numbers, 10) || 0) * parts);
-    const canDelete = c.status === 'Submitted';
+    const totalNums = parseInt(c.total_numbers, 10) || 0;
+    const creditsUsed = c.credits_used !== undefined ? c.credits_used : (totalNums * parts);
+    const deliv = parseInt(c.delivered_count, 10) || 0;
+    const failed = parseInt(c.failed_count, 10) || 0;
+    const rate = c.delivery_rate || (totalNums > 0 && (deliv + failed > 0) ? Math.min(100, Math.round((deliv / totalNums) * 1000) / 10) : 0);
 
-    let statusBadgeHtml = '';
-    if (c.status === 'Completed') {
-      statusBadgeHtml = `<span style="background:#e0f2fe;color:#0284c7;border:1px solid #bae6fd;padding:3px 9px;border-radius:20px;font-size:0.75rem;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="send" style="width:11px;height:11px;"></i> Completed</span>`;
-    } else if (c.status === 'Report Updated') {
-      statusBadgeHtml = `<span style="background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;padding:3px 9px;border-radius:20px;font-size:0.75rem;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="check-check" style="width:11px;height:11px;"></i> Reported</span>`;
-    } else if (c.status === 'Submitted') {
-      statusBadgeHtml = `<span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;padding:3px 9px;border-radius:20px;font-size:0.75rem;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="clock" style="width:11px;height:11px;"></i> Submitted</span>`;
+    const canDelete = c.status === 'Submitted' && !isScheduledFuture;
+
+    // Delivery Progress / DLR Column HTML
+    let deliveryColHtml = '';
+    if (c.status === 'Report Updated') {
+      deliveryColHtml = `
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
+            <span style="font-weight:700;font-size:0.78rem;color:#15803d;display:inline-flex;align-items:center;gap:3px;">
+              <i data-lucide="check-circle" style="width:12px;height:12px;"></i> ${rate}% Delivered
+            </span>
+            <span style="font-size:0.7rem;color:#64748b;">${deliv.toLocaleString()} / ${totalNums.toLocaleString()}</span>
+          </div>
+          <div style="width:100%;height:6px;background:#fee2e2;border-radius:10px;overflow:hidden;display:flex;">
+            <div style="width:${rate}%;height:100%;background:#16a34a;border-radius:10px;"></div>
+          </div>
+          ${failed > 0 ? `<div style="font-size:0.68rem;color:#b91c1c;margin-top:2px;">${failed.toLocaleString()} failed • auto-refunded</div>` : ''}
+        </div>
+      `;
+    } else if (c.status === 'Completed') {
+      deliveryColHtml = `
+        <div>
+          <span style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;padding:3px 9px;border-radius:14px;font-size:0.73rem;font-weight:600;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;">
+            <i data-lucide="radio" style="width:11px;height:11px;"></i> Dispatched • Awaiting DLR
+          </span>
+          <div style="font-size:0.7rem;color:#64748b;margin-top:2px;">Carrier delivery in progress</div>
+        </div>
+      `;
     } else if (c.status === 'Approved') {
-      statusBadgeHtml = `<span style="background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;padding:3px 9px;border-radius:20px;font-size:0.75rem;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="package-check" style="width:11px;height:11px;"></i> Approved</span>`;
+      deliveryColHtml = `
+        <span style="background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;padding:3px 8px;border-radius:14px;font-size:0.73rem;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+          <i data-lucide="package-check" style="width:11px;height:11px;"></i> In Dispatch Queue
+        </span>
+      `;
+    } else if (isScheduledFuture) {
+      deliveryColHtml = `
+        <span style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe;padding:3px 8px;border-radius:14px;font-size:0.73rem;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+          <i data-lucide="calendar" style="width:11px;height:11px;"></i> Scheduled: ${scheduledDisplay}
+        </span>
+      `;
     } else if (c.status === 'Rejected') {
-      statusBadgeHtml = `<span style="background:#fee2e2;color:#dc2626;border:1px solid #fecaca;padding:3px 9px;border-radius:20px;font-size:0.75rem;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="x-circle" style="width:11px;height:11px;"></i> Rejected</span>`;
+      deliveryColHtml = `
+        <span style="background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;padding:3px 8px;border-radius:14px;font-size:0.73rem;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+          <i data-lucide="x-circle" style="width:11px;height:11px;"></i> Cancelled / Rejected
+        </span>
+      `;
     } else {
-      statusBadgeHtml = `<span style="background:${statusColor}22;color:${statusColor};padding:3px 9px;border-radius:20px;font-size:0.75rem;font-weight:700;white-space:nowrap;">${c.status}</span>`;
+      deliveryColHtml = `
+        <span style="color:#94a3b8;font-size:0.75rem;display:inline-flex;align-items:center;gap:4px;">
+          <i data-lucide="clock" style="width:12px;height:12px;"></i> Pending Dispatch
+        </span>
+      `;
     }
 
-    return `<tr>
-      <td>
-        <a href="javascript:void(0)" onclick="openCampaignDetailModal(${c.id})" style="font-family:monospace;font-size:0.82rem;font-weight:700;color:#4f46e5;text-decoration:none;">
-          #${c.id}
-        </a>
-      </td>
-      <td>
-        <a href="javascript:void(0)" onclick="openCampaignDetailModal(${c.id})" style="font-weight:700;color:var(--slate-800);text-decoration:none;font-size:0.88rem;display:inline-block;margin-bottom:2px;">
-          ${escHtml(c.title || 'SMS Broadcast #' + c.id)}
-        </a>
-        <div style="max-width:340px;min-width:220px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;margin-top:3px;">
-          ${c.is_unicode ? '<span style="color:#b45309;font-size:0.68rem;font-weight:700;background:#fef3c7;padding:1px 6px;border-radius:4px;margin-bottom:4px;display:inline-block;border:1px solid #fde68a;">Unicode (Regional / Hindi)</span>' : ''}
-          <div id="sms-msg-preview-${c.id}" style="font-size:0.78rem;color:#334155;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;white-space:pre-wrap;">
-            ${escHtml(c.message_text || '—')}
+    // Status Badge
+    let statusBadgeHtml = '';
+    if (c.status === 'Report Updated') {
+      statusBadgeHtml = `<span style="background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;padding:3px 9px;border-radius:20px;font-size:0.74rem;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="check-check" style="width:11px;height:11px;"></i> Reported</span>`;
+    } else if (c.status === 'Completed') {
+      statusBadgeHtml = `<span style="background:#e0f2fe;color:#0284c7;border:1px solid #bae6fd;padding:3px 9px;border-radius:20px;font-size:0.74rem;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="send" style="width:11px;height:11px;"></i> Completed</span>`;
+    } else if (c.status === 'Submitted') {
+      statusBadgeHtml = `<span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;padding:3px 9px;border-radius:20px;font-size:0.74rem;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="clock" style="width:11px;height:11px;"></i> Submitted</span>`;
+    } else if (c.status === 'Approved') {
+      statusBadgeHtml = `<span style="background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;padding:3px 9px;border-radius:20px;font-size:0.74rem;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="package-check" style="width:11px;height:11px;"></i> Approved</span>`;
+    } else if (c.status === 'Rejected') {
+      statusBadgeHtml = `<span style="background:#fee2e2;color:#dc2626;border:1px solid #fecaca;padding:3px 9px;border-radius:20px;font-size:0.74rem;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="x-circle" style="width:11px;height:11px;"></i> Rejected</span>`;
+    } else {
+      statusBadgeHtml = `<span style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:3px 9px;border-radius:20px;font-size:0.74rem;font-weight:700;white-space:nowrap;">${c.status}</span>`;
+    }
+
+    // Owner Account Info
+    const ownerName = c.owner_name || '';
+    const ownerCompany = c.owner_company || '';
+    const ownerEmail = c.owner_email || '—';
+    const resellerBadge = (isAdmin && c.reseller_email)
+      ? `<div style="margin-top:3px;"><span style="font-size:0.68rem;background:#eef2ff;color:#4338ca;padding:1px 6px;border-radius:4px;font-weight:700;display:inline-flex;align-items:center;gap:3px;"><i data-lucide="network" style="width:10px;height:10px;"></i> Under: ${escHtml(c.reseller_name || c.reseller_email)}</span></div>`
+      : '';
+
+    return `
+      <tr>
+        <td>
+          <a href="javascript:void(0)" onclick="openCampaignDetailModal(${c.id})" style="font-family:monospace;font-size:0.84rem;font-weight:800;color:#4f46e5;text-decoration:none;display:inline-block;padding:2px 6px;background:#eef2ff;border-radius:5px;border:1px solid #c7d2fe;">
+            #${c.id}
+          </a>
+        </td>
+        <td>
+          <a href="javascript:void(0)" onclick="openCampaignDetailModal(${c.id})" style="font-weight:800;color:var(--slate-800);text-decoration:none;font-size:0.9rem;display:inline-block;margin-bottom:3px;">
+            ${escHtml(c.title || 'SMS Broadcast #' + c.id)}
+          </a>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
+            <span style="font-size:0.68rem;font-weight:700;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;padding:1px 5px;border-radius:4px;text-transform:uppercase;">GSM SMS</span>
+            <span style="font-size:0.68rem;color:#64748b;">${c.destination ? c.destination.toUpperCase() : 'DOMESTIC'}</span>
+            ${c.is_unicode ? '<span style="color:#b45309;font-size:0.68rem;font-weight:700;background:#fef3c7;padding:1px 6px;border-radius:4px;border:1px solid #fde68a;">Unicode (Regional)</span>' : ''}
           </div>
-          <div style="display:flex;align-items:center;gap:8px;margin-top:5px;padding-top:4px;border-top:1px dashed #e2e8f0;font-size:0.72rem;">
-            ${c.message_text && c.message_text.length > 50 ? `
-              <button type="button" onclick="window.toggleSmsMessageExpand(event, ${c.id})" id="sms-msg-btn-${c.id}" style="border:none;background:none;padding:0;font-size:0.72rem;color:#4f46e5;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:2px;">
-                <span>Show More ▼</span>
+          <div style="max-width:360px;min-width:230px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:7px 11px;">
+            <div id="sms-msg-preview-${c.id}" style="font-size:0.78rem;color:#334155;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;white-space:pre-wrap;">
+              ${escHtml(c.message_text || '—')}
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:5px;padding-top:4px;border-top:1px dashed #e2e8f0;font-size:0.72rem;">
+              ${c.message_text && c.message_text.length > 55 ? `
+                <button type="button" onclick="window.toggleSmsMessageExpand(event, ${c.id})" id="sms-msg-btn-${c.id}" style="border:none;background:none;padding:0;font-size:0.72rem;color:#4f46e5;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:2px;">
+                  <span>Show More ▼</span>
+                </button>
+                <span style="color:#cbd5e1;">•</span>
+              ` : ''}
+              <button type="button" onclick="openCampaignDetailModal(${c.id})" style="border:none;background:none;padding:0;font-size:0.72rem;color:#0284c7;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px;" title="View complete campaign delivery metrics">
+                <i data-lucide="eye" style="width:11px;height:11px;"></i> Full Details
               </button>
-              <span style="color:#cbd5e1;">•</span>
-            ` : ''}
-            <button type="button" onclick="openCampaignDetailModal(${c.id})" style="border:none;background:none;padding:0;font-size:0.72rem;color:#0284c7;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:3px;" title="View full campaign details">
-              <i data-lucide="eye" style="width:11px;height:11px;"></i> Full Details
-            </button>
+            </div>
           </div>
-        </div>
-      </td>
-      <td>
-        <div style="font-size:0.8rem;font-weight:600;color:var(--slate-800);">${escHtml(c.owner_email || '—')}</div>
-      </td>
-      <td style="text-align:right;font-weight:700;color:#0f172a;">${(parseInt(c.total_numbers, 10) || 0).toLocaleString()}</td>
-      <td style="text-align:center;">
-        <span style="font-weight:700;color:${parts > 1 ? '#d97706' : '#166534'};background:${parts > 1 ? '#fef3c7' : '#ecfdf5'};padding:2px 8px;border-radius:12px;font-size:0.74rem;">
-          ${parts} Part${parts > 1 ? 's' : ''}
-        </span>
-      </td>
-      <td style="text-align:right;font-weight:800;color:#4f46e5;">${creditsUsed.toLocaleString()}</td>
-      <td style="font-size:0.78rem;">${scheduledDisplay}</td>
-      <td>${statusBadgeHtml}</td>
-      <td style="font-size:0.78rem;color:var(--text-muted);">${createdDisplay}</td>
-      <td>
-        <div style="display:flex;gap:5px;justify-content:center;align-items:center;">
-          <button type="button" class="btn-action btn-action-secondary" onclick="openCampaignDetailModal(${c.id})" style="padding:4px 8px;font-size:0.75rem;" title="View Details">
-            <i data-lucide="eye" style="width:13px;height:13px;"></i>
-          </button>
-          <button type="button" class="btn-action btn-action-secondary" onclick="downloadCampaignNumbers(${c.id}, 'csv')" style="padding:4px 8px;font-size:0.75rem;" title="Download Recipient Numbers CSV">
-            <i data-lucide="download" style="width:13px;height:13px;"></i>
-          </button>
-          ${canDelete ? `<button type="button" class="btn-action" onclick="deleteSmsCampaign(${c.id})" style="padding:4px 8px;font-size:0.75rem;background:#fee2e2;color:#dc2626;border-color:#fecaca;" title="Cancel Campaign and Refund Credits"><i data-lucide="trash-2" style="width:13px;height:13px;"></i></button>` : ''}
-        </div>
-      </td>
-    </tr>`;
+        </td>
+        <td>
+          <div style="font-size:0.83rem;font-weight:700;color:var(--slate-800);">${escHtml(ownerName || ownerCompany || ownerEmail)}</div>
+          <div style="font-size:0.73rem;color:var(--slate-500);word-break:break-all;">${escHtml(ownerEmail)}</div>
+          ${ownerCompany && ownerName ? `<div style="font-size:0.7rem;color:#64748b;">${escHtml(ownerCompany)}</div>` : ''}
+          ${resellerBadge}
+        </td>
+        <td style="text-align:right;">
+          <strong style="color:#0f172a;font-size:0.92rem;font-family:monospace;">${totalNums.toLocaleString()}</strong>
+        </td>
+        <td style="text-align:center;">
+          <span style="font-weight:700;color:${parts > 1 ? '#d97706' : '#166534'};background:${parts > 1 ? '#fef3c7' : '#ecfdf5'};border:1px solid ${parts > 1 ? '#fde68a' : '#bbf7d0'};padding:2px 8px;border-radius:12px;font-size:0.74rem;white-space:nowrap;">
+            ${parts} Part${parts > 1 ? 's' : ''}
+          </span>
+        </td>
+        <td style="text-align:right;">
+          <strong style="color:#4f46e5;font-size:0.95rem;font-family:monospace;font-weight:800;">${creditsUsed.toLocaleString()}</strong>
+        </td>
+        <td>
+          ${deliveryColHtml}
+        </td>
+        <td>${statusBadgeHtml}</td>
+        <td style="font-size:0.78rem;color:var(--slate-500);white-space:nowrap;">${createdDisplay}</td>
+        <td>
+          <div style="display:flex;gap:5px;justify-content:center;align-items:center;">
+            <button type="button" class="btn-action btn-action-secondary" onclick="openCampaignDetailModal(${c.id})" style="padding:4px 7px;font-size:0.74rem;border-radius:6px;" title="View Detailed Delivery Report">
+              <i data-lucide="eye" style="width:13px;height:13px;color:#0284c7;"></i>
+            </button>
+            <button type="button" class="btn-action btn-action-secondary" onclick="downloadCampaignNumbers(${c.id}, 'csv')" style="padding:4px 7px;font-size:0.74rem;border-radius:6px;" title="Download Recipient Numbers CSV">
+              <i data-lucide="download" style="width:13px;height:13px;color:#16a34a;"></i>
+            </button>
+            <button type="button" class="btn-action btn-action-secondary" onclick="resendSmsCampaign(${c.id})" style="padding:4px 7px;font-size:0.74rem;border-radius:6px;" title="Duplicate & Re-send Broadcast">
+              <i data-lucide="copy" style="width:13px;height:13px;color:#7c3aed;"></i>
+            </button>
+            ${canDelete ? `
+              <button type="button" class="btn-action" onclick="deleteSmsCampaign(${c.id})" style="padding:4px 7px;font-size:0.74rem;background:#fee2e2;color:#dc2626;border-color:#fecaca;border-radius:6px;" title="Cancel Broadcast & Refund Credits">
+                <i data-lucide="trash-2" style="width:13px;height:13px;"></i>
+              </button>
+            ` : ''}
+          </div>
+        </td>
+      </tr>
+    `;
   }).join('');
 
   if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
 }
+
+window.resendSmsCampaign = function(id) {
+  const c = (smsCampaignsData || []).find(x => Number(x.id) === Number(id));
+  if (!c) return;
+  switchView('view-sms-new');
+  setTimeout(() => {
+    const titleEl = document.getElementById('sms-title');
+    const msgEl = document.getElementById('sms-message');
+    if (titleEl) titleEl.value = (c.title ? c.title + ' (Copy)' : 'SMS Broadcast Copy');
+    if (msgEl) {
+      msgEl.value = c.message_text || '';
+      if (typeof onSmsMessageInput === 'function') onSmsMessageInput();
+    }
+    showToast('info', 'Broadcast Loaded', `Campaign #${id} text pre-filled into composer. Add numbers and dispatch.`);
+  }, 100);
+};
+
+window.exportSmsCampaignsCsv = function() {
+  const filtered = getFilteredSmsCampaigns();
+  if (!filtered || filtered.length === 0) {
+    showToast('warning', 'No Broadcasts', 'No broadcasts to export under current filters.');
+    return;
+  }
+
+  showToast('info', 'Exporting CSV', `Generating CSV for ${filtered.length} SMS broadcasts...`);
+
+  const headers = ['Campaign ID', 'Title', 'Message Text', 'Owner Email', 'Owner Name', 'Company', 'Recipients', 'Parts', 'Credits Used', 'Status', 'Delivered Count', 'Failed Count', 'Delivery Rate (%)', 'Created At'];
+  const rows = filtered.map(c => [
+    c.id,
+    c.title || '',
+    (c.message_text || '').replace(/\r?\n/g, ' '),
+    c.owner_email || '',
+    c.owner_name || '',
+    c.owner_company || '',
+    c.total_numbers || 0,
+    c.sms_parts || 1,
+    c.credits_used || 0,
+    c.status || '',
+    c.delivered_count || 0,
+    c.failed_count || 0,
+    c.delivery_rate || 0,
+    c.created_at || ''
+  ]);
+
+  const csvContent = [headers.join(','), ...rows.map(r => r.map(cell => `"${String(cell || '').replace(/"/g, '""')}"`).join(','))].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', `MessageSphere_SMS_Broadcasts_${new Date().toISOString().slice(0, 10)}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  showToast('success', 'Export Complete', `${filtered.length} broadcasts exported to CSV.`);
+};
 
 window.toggleSmsMessageExpand = function(event, id) {
   if (event) event.stopPropagation();

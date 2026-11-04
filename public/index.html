@@ -4346,55 +4346,165 @@
           </div>
 
           <!-- SMS Campaigns History Table Card -->
-          <div class="card" style="background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-            <div class="card-header" style="padding: 16px 20px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; background: #ffffff;">
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <div style="width: 32px; height: 32px; border-radius: 8px; background: #eef2ff; color: #4f46e5; display: flex; align-items: center; justify-content: center;">
-                  <i data-lucide="list" style="width: 16px; height: 16px;"></i>
+          <div class="card" style="background: #ffffff; border-radius: 14px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 16px -2px rgba(15,23,42,0.06);">
+            <!-- Card Header with Multi-Action Suite -->
+            <div class="card-header" style="padding: 18px 24px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; background: #ffffff;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 38px; height: 38px; border-radius: 10px; background: linear-gradient(135deg, #eef2ff, #e0e7ff); color: #4f46e5; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(99,102,241,0.15);">
+                  <i data-lucide="radio" style="width: 18px; height: 18px;"></i>
                 </div>
                 <div>
-                  <h3 style="font-size: 0.95rem; font-weight: 700; color: #0f172a; margin: 0;">SMS Broadcast History</h3>
-                  <div style="font-size: 0.72rem; color: #64748b; margin-top: 2px;">Comprehensive log of all GSM mobile broadcasts and delivery reports</div>
+                  <h3 style="font-size: 1.05rem; font-weight: 800; color: #0f172a; margin: 0; letter-spacing: -0.2px;">GSM SMS Broadcast History &amp; DLR Logs</h3>
+                  <div style="font-size: 0.74rem; color: #64748b; margin-top: 3px;">Full audit log of mobile broadcasts, recipient queues, credit consumption and carrier delivery reports</div>
                 </div>
               </div>
-              <button type="button" class="btn-action btn-action-primary" onclick="switchView('view-sms-new')" style="background: linear-gradient(135deg, #6366f1, #4f46e5); display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; font-size: 0.82rem; font-weight: 700;">
-                <i data-lucide="plus" style="width: 14px; height: 14px;"></i> New Broadcast
-              </button>
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <button type="button" class="btn-action btn-action-secondary" onclick="exportSmsCampaignsCsv()" title="Export filtered broadcasts to CSV file" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 0.8rem; font-weight: 600; border-radius: 8px;">
+                  <i data-lucide="download" style="width: 14px; height: 14px;"></i> Export (.CSV)
+                </button>
+                <button type="button" class="btn-action btn-action-secondary" onclick="loadSmsCampaigns()" title="Refresh broadcast list" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; font-size: 0.8rem; font-weight: 600; border-radius: 8px;">
+                  <i data-lucide="rotate-cw" style="width: 14px; height: 14px;"></i> Refresh
+                </button>
+                <button type="button" class="btn-action btn-action-primary" onclick="switchView('view-sms-new')" style="background: linear-gradient(135deg, #6366f1, #4f46e5); display: inline-flex; align-items: center; gap: 6px; padding: 7px 18px; font-size: 0.82rem; font-weight: 700; border-radius: 8px; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);">
+                  <i data-lucide="plus" style="width: 14px; height: 14px;"></i> New Broadcast
+                </button>
+              </div>
             </div>
 
-            <!-- Table Filter Toolbar -->
-            <div style="padding: 12px 20px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
-              <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                <input type="text" id="sms-search-input" class="form-input" placeholder="Search broadcasts by title, ID, or text..." oninput="filterSmsCampaigns()" style="font-size: 0.8rem; height: 34px; padding: 4px 10px; min-width: 250px;">
-                <div class="tab-pills" id="sms-status-filter-pills" style="margin: 0;">
-                  <button type="button" class="tab-pill active" onclick="setSmsStatusFilter('all', this)">All</button>
-                  <button type="button" class="tab-pill" onclick="setSmsStatusFilter('Submitted', this)">Submitted</button>
-                  <button type="button" class="tab-pill" onclick="setSmsStatusFilter('Approved', this)">Approved</button>
-                  <button type="button" class="tab-pill" onclick="setSmsStatusFilter('Completed', this)">Completed</button>
-                  <button type="button" class="tab-pill" onclick="setSmsStatusFilter('Rejected', this)">Rejected</button>
-                </div>
+            <!-- Tier 1: Real-time Status Tab Pills with Counts -->
+            <div style="padding: 12px 24px; background: #ffffff; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+              <div class="tab-pills" id="sms-status-filter-pills" style="margin: 0; display: flex; flex-wrap: wrap; gap: 6px;">
+                <button type="button" class="tab-pill active" onclick="setSmsStatusFilter('all', this)">
+                  All <span class="badge-count" id="sms-cnt-all" style="background:#f1f5f9;color:#334155;padding:1px 6px;border-radius:10px;font-size:0.7rem;margin-left:4px;">0</span>
+                </button>
+                <button type="button" class="tab-pill" onclick="setSmsStatusFilter('Submitted', this)">
+                  Submitted <span class="badge-count" id="sms-cnt-submitted" style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:10px;font-size:0.7rem;margin-left:4px;">0</span>
+                </button>
+                <button type="button" class="tab-pill" onclick="setSmsStatusFilter('Approved', this)">
+                  In Queue / Approved <span class="badge-count" id="sms-cnt-approved" style="background:#eef2ff;color:#4338ca;padding:1px 6px;border-radius:10px;font-size:0.7rem;margin-left:4px;">0</span>
+                </button>
+                <button type="button" class="tab-pill" onclick="setSmsStatusFilter('Completed', this)">
+                  Dispatched <span class="badge-count" id="sms-cnt-completed" style="background:#e0f2fe;color:#0369a1;padding:1px 6px;border-radius:10px;font-size:0.7rem;margin-left:4px;">0</span>
+                </button>
+                <button type="button" class="tab-pill" onclick="setSmsStatusFilter('Report Updated', this)" style="color:#15803d;font-weight:700;">
+                  Reported <span class="badge-count" id="sms-cnt-reported" style="background:#dcfce7;color:#15803d;padding:1px 6px;border-radius:10px;font-size:0.7rem;margin-left:4px;">0</span>
+                </button>
+                <button type="button" class="tab-pill" onclick="setSmsStatusFilter('Scheduled', this)">
+                  Scheduled <span class="badge-count" id="sms-cnt-scheduled" style="background:#f8fafc;color:#64748b;padding:1px 6px;border-radius:10px;font-size:0.7rem;margin-left:4px;">0</span>
+                </button>
+                <button type="button" class="tab-pill" onclick="setSmsStatusFilter('Rejected', this)">
+                  Rejected <span class="badge-count" id="sms-cnt-rejected" style="background:#fee2e2;color:#b91c1c;padding:1px 6px;border-radius:10px;font-size:0.7rem;margin-left:4px;">0</span>
+                </button>
               </div>
+
               <div style="display: flex; align-items: center; gap: 8px;">
-                <select id="sms-user-filter" class="form-input" onchange="filterSmsCampaigns()" style="display: none; font-size: 0.8rem; height: 34px; padding: 4px 10px; min-width: 170px;">
+                <button type="button" class="btn-action btn-action-secondary" onclick="resetSmsFilters()" title="Reset all search and dropdown filters" style="font-size: 0.76rem; padding: 5px 11px; display: inline-flex; align-items: center; gap: 4px; border-radius: 6px; color: var(--slate-600);">
+                  <i data-lucide="rotate-ccw" style="width: 12px; height: 12px;"></i> Clear Filters
+                </button>
+              </div>
+            </div>
+
+            <!-- Tier 2: Multi-Dimensional Filter Toolbar -->
+            <div style="padding: 12px 24px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; font-size: 0.8rem;">
+              <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: 1;">
+                <!-- Full-Text Search Box -->
+                <div style="position: relative; min-width: 220px; flex: 1; max-width: 320px;">
+                  <i data-lucide="search" style="position: absolute; left: 10px; top: 9px; width: 14px; height: 14px; color: var(--slate-400);"></i>
+                  <input type="text" id="sms-search-input" class="form-input" placeholder="Search title, ID, message text, owner..." oninput="filterSmsCampaigns()" style="padding-left: 32px; font-size: 0.82rem; height: 34px; border-radius: 8px; width: 100%;">
+                </div>
+
+                <!-- Date Range Selector -->
+                <select id="sms-date-filter" class="form-input" onchange="onSmsDateFilterChange()" style="font-size: 0.8rem; height: 34px; padding: 4px 10px; max-width: 135px; border-radius: 8px;">
+                  <option value="all">All Dates</option>
+                  <option value="today">Today</option>
+                  <option value="yesterday">Yesterday</option>
+                  <option value="last7">Last 7 Days</option>
+                  <option value="thisMonth">This Month</option>
+                  <option value="custom">Custom Range...</option>
+                </select>
+
+                <!-- Custom Date Range Picker Container -->
+                <div id="sms-custom-date-box" style="display: none; align-items: center; gap: 6px; background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 2px 8px;">
+                  <i data-lucide="calendar" style="width: 13px; height: 13px; color: #4f46e5;"></i>
+                  <input type="date" id="sms-from-date" onchange="filterSmsCampaigns()" title="From Date" style="border: none; font-size: 0.75rem; color: #334155; padding: 1px; outline: none; background: transparent; width: 105px; font-weight: 600;">
+                  <span style="color: #94a3b8; font-size: 0.72rem;">to</span>
+                  <input type="date" id="sms-to-date" onchange="filterSmsCampaigns()" title="To Date" style="border: none; font-size: 0.75rem; color: #334155; padding: 1px; outline: none; background: transparent; width: 105px; font-weight: 600;">
+                  <button type="button" onclick="clearSmsCustomDate()" title="Clear date filter" style="border: none; background: #f1f5f9; color: #64748b; font-size: 0.75rem; cursor: pointer; padding: 1px 5px; border-radius: 4px;">&times;</button>
+                </div>
+
+                <!-- Message Parts & Encoding Filter -->
+                <select id="sms-format-filter" class="form-input" onchange="filterSmsCampaigns()" style="font-size: 0.8rem; height: 34px; padding: 4px 10px; max-width: 165px; border-radius: 8px;">
+                  <option value="all">All Message Types</option>
+                  <option value="single">Single Part (≤160 chars)</option>
+                  <option value="multi">Multi-Part (2+ Parts)</option>
+                  <option value="unicode">Unicode (Hindi / Emojis)</option>
+                  <option value="gsm7">GSM-7 (Standard Latin)</option>
+                </select>
+
+                <!-- Delivery Outcome Filter -->
+                <select id="sms-dlr-filter" class="form-input" onchange="filterSmsCampaigns()" style="font-size: 0.8rem; height: 34px; padding: 4px 10px; max-width: 165px; border-radius: 8px;">
+                  <option value="all">All Delivery States</option>
+                  <option value="reported">Reported (DLR Complete)</option>
+                  <option value="dispatched">Dispatched (Awaiting DLR)</option>
+                  <option value="perfect">100% Full Success</option>
+                  <option value="failures">Has Failed Deliveries</option>
+                </select>
+              </div>
+
+              <!-- Admin / Reseller Account Selectors -->
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <!-- Super Admin: Reseller Filter -->
+                <select id="sms-reseller-filter" class="form-input" onchange="filterSmsCampaigns()" style="display: none; font-size: 0.8rem; height: 34px; padding: 4px 10px; min-width: 160px; border-radius: 8px;">
+                  <option value="">All Resellers</option>
+                </select>
+
+                <!-- Super Admin & Reseller: Client Account Filter -->
+                <select id="sms-user-filter" class="form-input" onchange="filterSmsCampaigns()" style="display: none; font-size: 0.8rem; height: 34px; padding: 4px 10px; min-width: 170px; border-radius: 8px;">
                   <option value="">All Accounts</option>
                 </select>
               </div>
             </div>
+
+            <!-- Tier 3: Summary Strip & Per-Page Controls -->
+            <div style="padding: 9px 24px; background: #ffffff; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; font-size: 0.78rem;">
+              <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <span style="background: #f1f5f9; color: #334155; padding: 3px 10px; border-radius: 6px; font-weight: 600;">
+                  Showing <strong id="sms-filtered-count" style="color: #0f172a;">0</strong> broadcasts
+                </span>
+                <span style="background: #eef2ff; color: #4338ca; padding: 3px 10px; border-radius: 6px; font-weight: 600;">
+                  Audience: <strong id="sms-filtered-numbers" style="color: #3730a3;">0</strong> numbers
+                </span>
+                <span style="background: #ecfdf5; color: #15803d; padding: 3px 10px; border-radius: 6px; font-weight: 600;">
+                  Credits Debited: <strong id="sms-filtered-credits" style="color: #166534;">0</strong>
+                </span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <label for="sms-page-size" style="font-size: 0.75rem; color: #64748b; font-weight: 600;">Per Page:</label>
+                <select id="sms-page-size" class="form-input" onchange="onSmsPageSizeChange()" style="font-size: 0.75rem; height: 28px; padding: 2px 8px; border-radius: 6px; width: 72px;">
+                  <option value="10">10</option>
+                  <option value="25" selected>25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                  <option value="all">All</option>
+                </select>
+              </div>
+            </div>
             
+            <!-- Table Container (Fully Responsive with Zero Cutoff) -->
             <div class="table-container" style="width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;">
-              <table style="width: 100%; min-width: 960px; border-collapse: collapse;">
+              <table style="width: 100%; min-width: 1080px; border-collapse: collapse;">
                 <thead>
                   <tr>
-                    <th style="width: 60px;">#ID</th>
-                    <th style="min-width: 240px;">Campaign &amp; Message</th>
-                    <th style="width: 140px;">Account / Owner</th>
-                    <th style="text-align: right; width: 85px;">Numbers</th>
-                    <th style="text-align: center; width: 75px;">Parts</th>
-                    <th style="text-align: right; width: 100px;">Credits Used</th>
-                    <th style="width: 100px;">Scheduled</th>
-                    <th style="width: 95px;">Status</th>
-                    <th style="width: 110px;">Submitted</th>
-                    <th style="width: 95px; text-align: center;">Actions</th>
+                    <th style="width: 70px;">#ID</th>
+                    <th style="min-width: 260px;">Broadcast &amp; Message</th>
+                    <th style="width: 175px;">Account / Owner</th>
+                    <th style="text-align: right; width: 95px;">Audience</th>
+                    <th style="text-align: center; width: 85px;">Parts</th>
+                    <th style="text-align: right; width: 105px;">Credits</th>
+                    <th style="min-width: 175px;">Delivery Progress / DLR</th>
+                    <th style="width: 110px;">Status</th>
+                    <th style="width: 125px;">Submitted</th>
+                    <th style="width: 110px; text-align: center;">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="sms-campaigns-tbody">
@@ -4404,6 +4514,16 @@
                   </td></tr>
                 </tbody>
               </table>
+            </div>
+
+            <!-- Bank-Grade Pagination Bar -->
+            <div style="padding: 12px 24px; background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 0.8rem;">
+              <div style="color: #64748b;" id="sms-pagination-info">
+                Showing <strong>0</strong> of <strong>0</strong> broadcasts
+              </div>
+              <div id="sms-pagination-controls" style="display: flex; align-items: center; gap: 6px;">
+                <!-- Rendered dynamically -->
+              </div>
             </div>
           </div>
 
@@ -6906,6 +7026,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=1793800050000"></script>
+  <script src="app.js?v=1793811600000"></script>
 </body>
 </html>

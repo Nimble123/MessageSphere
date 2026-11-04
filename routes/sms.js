@@ -588,7 +588,14 @@ router.post('/', authenticate, async (req, res) => {
 router.get('/', authenticate, async (req, res) => {
   try {
     const baseSelect = `
-      SELECT c.*, u.email AS owner_email,
+      SELECT c.*, 
+        u.email AS owner_email,
+        u.full_name AS owner_name,
+        u.company_name AS owner_company,
+        u.phone AS owner_phone,
+        u.reseller_id,
+        ru.email AS reseller_email,
+        ru.full_name AS reseller_name,
         (SELECT details->>'reason'
          FROM audit_events
          WHERE entity_type = 'campaign' AND entity_id = c.id
@@ -596,46 +603,71 @@ router.get('/', authenticate, async (req, res) => {
          ORDER BY id DESC LIMIT 1) AS rejection_reason
       FROM campaigns c
       JOIN users u ON c.user_id = u.id
+      LEFT JOIN users ru ON u.reseller_id = ru.id
       WHERE c.channel_type = 'sms'
     `;
 
-    let sql = '';
+    let sql = baseSelect;
     let params = [];
 
     if (req.user.role === 'admin') {
       const filterUserId = req.query.user_id ? parseInt(req.query.user_id, 10) : null;
+      const filterResellerId = req.query.reseller_id ? parseInt(req.query.reseller_id, 10) : null;
+
       if (filterUserId && !isNaN(filterUserId)) {
-        sql = `${baseSelect} AND c.user_id = $1 ORDER BY c.created_at DESC`;
-        params = [filterUserId];
-      } else {
-        sql = `${baseSelect} ORDER BY c.created_at DESC`;
+        params.push(filterUserId);
+        sql += ` AND c.user_id = $${params.length}`;
+      } else if (filterResellerId && !isNaN(filterResellerId)) {
+        params.push(filterResellerId);
+        sql += ` AND (u.reseller_id = $${params.length} OR u.id = $${params.length})`;
       }
     } else if (req.user.role === 'reseller') {
       // Reseller sees own campaigns + their clients' campaigns
-      sql = `${baseSelect} AND (c.user_id = $1 OR u.reseller_id = $1) ORDER BY c.created_at DESC`;
-      params = [req.user.id];
+      params.push(req.user.id);
+      sql += ` AND (c.user_id = $${params.length} OR u.reseller_id = $${params.length})`;
+
+      const filterUserId = req.query.user_id ? parseInt(req.query.user_id, 10) : null;
+      if (filterUserId && !isNaN(filterUserId)) {
+        params.push(filterUserId);
+        sql += ` AND c.user_id = $${params.length}`;
+      }
     } else {
       // Regular user sees only their own
-      sql = `${baseSelect} AND c.user_id = $1 ORDER BY c.created_at DESC`;
-      params = [req.user.id];
+      params.push(req.user.id);
+      sql += ` AND c.user_id = $${params.length}`;
     }
+
+    sql += ` ORDER BY c.created_at DESC`;
 
     const result = await query(sql, params);
 
-    // Enrich rows with real computed SMS metrics (parts, credits used, unicode flag)
+    // Enrich rows with real computed SMS metrics, delivery rates & clean white-labeling
     const enriched = result.rows.map((c) => {
       const metrics = calculateSmsMetrics(c.message_text);
       const parts = metrics.parts_count || 1;
       const totalNums = parseInt(c.total_numbers, 10) || 0;
       const creditsUsed = totalNums * parts;
-      return {
+      const deliv = parseInt(c.delivered_count, 10) || 0;
+      const failed = parseInt(c.failed_count, 10) || 0;
+      const rate = totalNums > 0 && (deliv + failed > 0) ? Math.min(100, Math.round((deliv / totalNums) * 1000) / 10) : 0;
+
+      const obj = {
         ...c,
         sms_parts: parts,
         credits_used: creditsUsed,
+        delivery_rate: rate,
         is_unicode: metrics.is_unicode,
         character_count: metrics.character_count,
         carrier_warning: metrics.carrier_warning,
       };
+
+      // Strict White-labeling: Mask reseller details for non-admins
+      if (req.user.role !== 'admin') {
+        delete obj.reseller_email;
+        delete obj.reseller_name;
+      }
+
+      return obj;
     });
 
     return res.json(enriched);
