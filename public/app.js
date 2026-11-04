@@ -5522,7 +5522,7 @@ document.addEventListener('click', (e) => {
   'modal-user-360', 'modal-action-dialog', 'modal-create-group', 'modal-edit-group', 
   'modal-merge-groups', 'modal-add-blacklist', 'modal-create-template', 'modal-edit-template',
   'modal-preview-template', 'modal-starter-templates', 'modal-request-header', 'modal-billing-order',
-  'modal-recharge-receipt'
+  'modal-recharge-receipt', 'modal-admin-reseller-brand'
 ].forEach(setupModal);
 
 // Create User Modal
@@ -5562,27 +5562,32 @@ window.onModalUserGstinChange = function(val) {
   }
 };
 
+window.openCreateUserModalWithRole = async function(defaultRole = 'user') {
+  if (modalUserEmail) modalUserEmail.value = '';
+  if (modalUserPass) modalUserPass.value = '';
+  if (modalUserFullName) modalUserFullName.value = '';
+  if (modalUserCompanyName) modalUserCompanyName.value = '';
+  if (modalUserPhone) modalUserPhone.value = '';
+  if (modalUserGstin) modalUserGstin.value = '';
+  if (modalUserBusinessAddress) modalUserBusinessAddress.value = '';
+  if (modalUserRole) modalUserRole.value = defaultRole;
+  const taxSelect = document.getElementById('modal-user-tax-mode');
+  if (taxSelect) taxSelect.value = 'non_gst';
+  const refundSelect = document.getElementById('modal-user-refund-dest');
+  if (refundSelect) refundSelect.value = 'user';
+
+  if (modalRoleResellerOpt && currentUser) {
+    modalRoleResellerOpt.disabled = (currentUser.role !== 'admin');
+  }
+  try { await populateResellerAssignments(); } catch (err) { }
+  updateResellerAssignmentVisibility();
+  if (modalCreateUser) modalCreateUser.style.display = 'flex';
+  if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
+};
+
 if (btnOpenCreateUserModal) {
   btnOpenCreateUserModal.addEventListener('click', async () => {
-    modalUserEmail.value = '';
-    modalUserPass.value = '';
-    modalUserRole.value = 'user';
-    modalUserFullName.value = '';
-    modalUserCompanyName.value = '';
-    modalUserPhone.value = '';
-    modalUserGstin.value = '';
-    modalUserBusinessAddress.value = '';
-    const taxSelect = document.getElementById('modal-user-tax-mode');
-    if (taxSelect) taxSelect.value = 'non_gst';
-    const refundSelect = document.getElementById('modal-user-refund-dest');
-    if (refundSelect) refundSelect.value = 'user';
-
-    if (modalRoleResellerOpt && currentUser) {
-      modalRoleResellerOpt.disabled = (currentUser.role !== 'admin');
-    }
-    try { await populateResellerAssignments(); } catch (err) { showToast('warning', 'Reseller list unavailable', 'You can still create a direct account.'); }
-    updateResellerAssignmentVisibility();
-    modalCreateUser.style.display = 'flex';
+    window.openCreateUserModalWithRole('user');
   });
 }
 
@@ -10111,25 +10116,357 @@ async function applyWhiteLabel() {
   return profile;
 }
 
+let resellersData = [];
+
 async function loadResellerNetwork() {
   if (!currentUser || currentUser.role !== 'admin') return;
   const tbody = document.getElementById('reseller-network-tbody');
   try {
-    const resellers = await apiFetch('/resellers');
-    if (!tbody) return;
-    tbody.innerHTML = resellers.length ? resellers.map(item => `<tr>
-      <td><strong>${escapeHtml(item.email)}</strong></td>
-      <td>${escapeHtml(item.brand_name || 'Not configured')}</td>
-      <td>${Number(item.client_count || 0).toLocaleString()}</td>
-      <td>${Number(item.campaign_count || 0).toLocaleString()}</td>
-      <td>${escapeHtml(item.custom_domain || '-')}</td>
-      <td><span class="status-badge ${item.domain_status === 'Verified' ? 'badge-updated' : 'badge-submitted'}">${escapeHtml(item.domain_status || 'Not configured')}</span></td>
-      <td>${item.custom_domain && item.domain_status !== 'Verified' ? `<button class="btn-action btn-action-primary" onclick="verifyResellerDomain(${item.id})">Mark verified</button>` : '-'}</td>
-    </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;padding:24px;">No reseller accounts created yet. Create one from User Management.</td></tr>';
+    resellersData = await apiFetch('/resellers');
+    
+    // Calculate and render top KPI metrics
+    const totalPartners = resellersData.length;
+    const totalClients = resellersData.reduce((sum, r) => sum + (Number(r.client_count) || 0), 0);
+    const totalCampaigns = resellersData.reduce((sum, r) => sum + (Number(r.campaign_count) || 0), 0);
+    const totalAudience = resellersData.reduce((sum, r) => sum + (Number(r.total_recipients) || 0), 0);
+    const verifiedDomains = resellersData.filter(r => r.domain_status === 'Verified').length;
+    const pendingDomains = resellersData.filter(r => r.domain_status === 'Pending verification').length;
+    const totalDomainsWithHost = resellersData.filter(r => r.custom_domain).length;
+
+    const elTotal = document.getElementById('reseller-stat-total');
+    if (elTotal) elTotal.textContent = totalPartners.toLocaleString();
+
+    const elClients = document.getElementById('reseller-stat-clients');
+    if (elClients) elClients.textContent = totalClients.toLocaleString();
+
+    const elCampaigns = document.getElementById('reseller-stat-campaigns');
+    if (elCampaigns) elCampaigns.textContent = totalCampaigns.toLocaleString();
+
+    const elAudience = document.getElementById('reseller-stat-audience');
+    if (elAudience) elAudience.textContent = `${totalAudience.toLocaleString()} Recipients`;
+
+    const elDomains = document.getElementById('reseller-stat-domains');
+    if (elDomains) elDomains.textContent = `${verifiedDomains} / ${totalDomainsWithHost || totalPartners}`;
+
+    const elDomainDesc = document.getElementById('reseller-stat-domain-desc');
+    if (elDomainDesc) elDomainDesc.textContent = `${verifiedDomains} Verified · ${pendingDomains} Pending`;
+
+    renderResellerNetworkTable();
   } catch (err) {
     if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:24px;color:#dc2626;">${escapeHtml(err.message)}</td></tr>`;
   }
 }
+
+window.renderResellerNetworkTable = function() {
+  const tbody = document.getElementById('reseller-network-tbody');
+  if (!tbody) return;
+
+  const searchInput = document.getElementById('reseller-search-input');
+  const search = (searchInput ? searchInput.value : '').toLowerCase().trim();
+  const domainFilter = document.getElementById('reseller-domain-filter') ? document.getElementById('reseller-domain-filter').value : 'all';
+  const statusFilter = document.getElementById('reseller-status-filter') ? document.getElementById('reseller-status-filter').value : 'all';
+
+  let filtered = (resellersData || []).filter(item => {
+    if (search) {
+      const matchText = [
+        item.email, item.full_name, item.company_name, item.phone,
+        item.brand_name, item.custom_domain, item.support_email
+      ].filter(Boolean).join(' ').toLowerCase();
+      if (!matchText.includes(search)) return false;
+    }
+
+    if (domainFilter !== 'all') {
+      const dStatus = item.domain_status || 'Not configured';
+      if (domainFilter === 'Verified' && dStatus !== 'Verified') return false;
+      if (domainFilter === 'Pending verification' && dStatus !== 'Pending verification') return false;
+      if (domainFilter === 'Not configured' && dStatus !== 'Not configured') return false;
+    }
+
+    if (statusFilter !== 'all') {
+      if (statusFilter === 'active' && item.is_blocked) return false;
+      if (statusFilter === 'blocked' && !item.is_blocked) return false;
+    }
+
+    return true;
+  });
+
+  const countShowing = document.getElementById('reseller-count-showing');
+  if (countShowing) countShowing.textContent = filtered.length;
+
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr>
+      <td colspan="7" style="text-align:center;padding:36px;color:#64748b;">
+        <i data-lucide="users" style="width:28px;height:28px;color:#94a3b8;margin-bottom:8px;"></i>
+        <div>No reseller partners found matching current filters.</div>
+      </td>
+    </tr>`;
+    if (window.lucide) setTimeout(() => lucide.createIcons(), 20);
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(item => {
+    const initial = (item.full_name || item.brand_name || item.email || 'R').charAt(0).toUpperCase();
+    const dStatus = item.domain_status || 'Not configured';
+    let dBadgeClass = 'badge-submitted';
+    let dBadgeBg = '#f1f5f9';
+    let dBadgeColor = '#475569';
+    if (dStatus === 'Verified') {
+      dBadgeClass = 'badge-updated';
+      dBadgeBg = '#ecfdf5';
+      dBadgeColor = '#059669';
+    } else if (dStatus === 'Pending verification') {
+      dBadgeClass = 'badge-submitted';
+      dBadgeBg = '#fffbeb';
+      dBadgeColor = '#d97706';
+    }
+
+    const domCredits = Number(item.dom_credits || 0);
+    const intlCredits = Number(item.intl_credits || 0);
+    const clientCount = Number(item.client_count || 0);
+    const campaignCount = Number(item.campaign_count || 0);
+    const totalRecipients = Number(item.total_recipients || 0);
+
+    return `
+      <tr style="border-bottom:1px solid #f1f5f9;transition:background 0.15s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+        
+        <!-- Partner / Reseller Profile -->
+        <td style="padding:14px 16px;">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div style="width:38px;height:38px;border-radius:10px;background:#e0e7ff;color:#4338ca;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.95rem;flex-shrink:0;">
+              ${escapeHtml(initial)}
+            </div>
+            <div>
+              <div style="font-weight:700;color:#0f172a;font-size:0.9rem;display:flex;align-items:center;gap:6px;">
+                ${escapeHtml(item.full_name || item.company_name || 'Reseller Partner')}
+                ${item.company_name ? `<span style="font-size:0.7rem;font-weight:600;background:#f1f5f9;color:#475569;padding:1px 6px;border-radius:4px;">${escapeHtml(item.company_name)}</span>` : ''}
+              </div>
+              <div style="font-size:0.78rem;color:#475569;margin-top:2px;font-family:monospace;">
+                ${escapeHtml(item.email)}
+              </div>
+              ${item.phone ? `<div style="font-size:0.73rem;color:#64748b;margin-top:1px;"><i data-lucide="phone" style="width:11px;height:11px;display:inline-block;vertical-align:-1px;"></i> ${escapeHtml(item.phone)}</div>` : ''}
+            </div>
+          </div>
+        </td>
+
+        <!-- Brand & Identity -->
+        <td style="padding:14px 16px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="width:14px;height:14px;border-radius:50%;background:${escapeHtml(item.accent_color || '#4f46e5')};border:1px solid rgba(0,0,0,0.1);flex-shrink:0;" title="Theme Color: ${escapeHtml(item.accent_color || '#4f46e5')}"></div>
+            <div>
+              <div style="font-weight:700;color:#1e293b;font-size:0.85rem;">
+                ${escapeHtml(item.brand_name || 'Not configured')}
+              </div>
+              <div style="font-size:0.72rem;color:#64748b;margin-top:1px;">
+                ${item.support_email ? escapeHtml(item.support_email) : 'Default Support'}
+              </div>
+            </div>
+          </div>
+        </td>
+
+        <!-- Credit Reserves -->
+        <td style="padding:14px 16px;">
+          <div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-size:0.72rem;font-weight:700;color:#059669;background:#ecfdf5;padding:2px 6px;border-radius:4px;">
+                DOM: ${domCredits.toLocaleString()}
+              </span>
+              <span style="font-size:0.72rem;font-weight:700;color:#0284c7;background:#f0f9ff;padding:2px 6px;border-radius:4px;">
+                INTL: ${intlCredits.toLocaleString()}
+              </span>
+            </div>
+            <button type="button" class="btn-action" onclick="openAllotCreditsModal(${item.id}, '${escapeHtml(item.email)}')" style="margin-top:4px;background:#f8fafc;color:#475569;border:1px solid #cbd5e1;padding:2px 7px;border-radius:5px;font-size:0.7rem;display:inline-flex;align-items:center;gap:3px;font-weight:600;">
+              <i data-lucide="plus" style="width:11px;height:11px;"></i> Allot Credits
+            </button>
+          </div>
+        </td>
+
+        <!-- Clients & Scale -->
+        <td style="padding:14px 16px;">
+          <div>
+            <button type="button" class="btn-action" onclick="viewResellerClients(${item.id})" style="background:#eef2ff;color:#4f46e5;font-weight:700;border:1px solid #c7d2fe;padding:3px 9px;border-radius:6px;font-size:0.78rem;display:inline-flex;align-items:center;gap:5px;cursor:pointer;" title="Click to view and filter all clients of this reseller">
+              <i data-lucide="users" style="width:13px;height:13px;"></i> ${clientCount.toLocaleString()} ${clientCount === 1 ? 'Client' : 'Clients'}
+            </button>
+            <div style="font-size:0.73rem;color:#64748b;margin-top:4px;">
+              ${campaignCount.toLocaleString()} campaigns · ${totalRecipients.toLocaleString()} msgs
+            </div>
+          </div>
+        </td>
+
+        <!-- Custom Domain & DNS -->
+        <td style="padding:14px 16px;">
+          <div>
+            <div style="font-size:0.83rem;font-weight:600;color:${item.custom_domain ? '#0f172a' : '#94a3b8'};">
+              ${item.custom_domain ? `<a href="https://${escapeHtml(item.custom_domain)}" target="_blank" style="color:#2563eb;text-decoration:none;display:inline-flex;align-items:center;gap:4px;">${escapeHtml(item.custom_domain)} <i data-lucide="external-link" style="width:11px;height:11px;"></i></a>` : '—'}
+            </div>
+            <div style="margin-top:3px;">
+              <span style="font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;background:${dBadgeBg};color:${dBadgeColor};display:inline-block;">
+                ${escapeHtml(dStatus)}
+              </span>
+            </div>
+          </div>
+        </td>
+
+        <!-- Account Status -->
+        <td style="padding:14px 16px;">
+          <span class="status-badge ${item.is_blocked ? 'badge-failed' : 'badge-completed'}" style="font-size:0.74rem;">
+            ${item.is_blocked ? 'Blocked' : 'Active'}
+          </span>
+        </td>
+
+        <!-- Actions -->
+        <td style="padding:14px 16px;text-align:right;">
+          <div style="display:inline-flex;align-items:center;gap:6px;justify-content:flex-end;">
+            
+            <button type="button" class="btn-action btn-action-primary" onclick="openUser360Modal(${item.id}, event)" style="padding:5px 9px;font-size:0.76rem;display:inline-flex;align-items:center;gap:4px;font-weight:600;" title="View Reseller 360° Profile & Ledger">
+              <i data-lucide="sparkles" style="width:13px;height:13px;"></i> 360°
+            </button>
+
+            <button type="button" class="btn-action btn-action-secondary" onclick="openAdminResellerBrandModal(${item.id})" style="padding:5px 9px;font-size:0.76rem;display:inline-flex;align-items:center;gap:4px;" title="Manage Brand Identity & DNS Domain">
+              <i data-lucide="globe" style="width:13px;height:13px;"></i> Brand / DNS
+            </button>
+
+            <button type="button" class="btn-action btn-action-secondary" onclick="viewResellerClients(${item.id})" style="padding:5px 9px;font-size:0.76rem;display:inline-flex;align-items:center;gap:4px;" title="Filter & View All Sub-Clients">
+              <i data-lucide="users" style="width:13px;height:13px;"></i> Clients
+            </button>
+
+          </div>
+        </td>
+
+      </tr>
+    `;
+  }).join('');
+
+  if (window.lucide) setTimeout(() => lucide.createIcons(), 30);
+};
+
+window.resetResellerFilters = function() {
+  const searchInput = document.getElementById('reseller-search-input');
+  if (searchInput) searchInput.value = '';
+  const domainFilter = document.getElementById('reseller-domain-filter');
+  if (domainFilter) domainFilter.value = 'all';
+  const statusFilter = document.getElementById('reseller-status-filter');
+  if (statusFilter) statusFilter.value = 'all';
+  renderResellerNetworkTable();
+};
+
+window.viewResellerClients = function(resellerId) {
+  switchView('view-users');
+  setTimeout(() => {
+    const select = document.getElementById('user-reseller-filter');
+    if (select) {
+      select.value = `reseller_${resellerId}`;
+      renderUsersTable();
+    }
+  }, 100);
+};
+
+window.openAdminResellerBrandModal = function(resellerId) {
+  const item = (resellersData || []).find(r => Number(r.id) === Number(resellerId));
+  if (!item) return;
+
+  const modal = document.getElementById('modal-admin-reseller-brand');
+  const idInput = document.getElementById('admin-reseller-brand-id');
+  const emailEl = document.getElementById('admin-reseller-brand-email');
+  const nameInput = document.getElementById('admin-reseller-brand-name');
+  const accentInput = document.getElementById('admin-reseller-brand-accent');
+  const colorPicker = document.getElementById('admin-reseller-brand-color-picker');
+  const logoInput = document.getElementById('admin-reseller-brand-logo');
+  const domainInput = document.getElementById('admin-reseller-brand-domain');
+  const statusSelect = document.getElementById('admin-reseller-brand-status');
+  const emailInput = document.getElementById('admin-reseller-brand-support-email');
+  const phoneInput = document.getElementById('admin-reseller-brand-support-phone');
+  const statusPill = document.getElementById('admin-reseller-brand-status-pill');
+  const btnVerify = document.getElementById('btn-admin-verify-domain');
+
+  if (idInput) idInput.value = item.id;
+  if (emailEl) emailEl.textContent = `${item.full_name || 'Partner'} (${item.email})`;
+  if (nameInput) nameInput.value = item.brand_name || item.company_name || '';
+  if (accentInput) accentInput.value = item.accent_color || '#4f46e5';
+  if (colorPicker) colorPicker.value = item.accent_color || '#4f46e5';
+  if (logoInput) logoInput.value = item.logo_url || '';
+  if (domainInput) domainInput.value = item.custom_domain || '';
+  if (statusSelect) statusSelect.value = item.domain_status || 'Not configured';
+  if (emailInput) emailInput.value = item.support_email || item.email || '';
+  if (phoneInput) phoneInput.value = item.support_phone || item.phone || '';
+
+  if (statusPill) {
+    const dStatus = item.domain_status || 'Not configured';
+    statusPill.innerHTML = `<span class="status-badge ${dStatus === 'Verified' ? 'badge-updated' : 'badge-submitted'}">${escapeHtml(dStatus)}</span>`;
+  }
+
+  if (btnVerify) {
+    btnVerify.style.display = (item.custom_domain && item.domain_status !== 'Verified') ? 'inline-flex' : 'none';
+  }
+
+  if (modal) modal.style.display = 'flex';
+  if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
+};
+
+window.saveAdminResellerBrand = async function() {
+  const resellerId = document.getElementById('admin-reseller-brand-id')?.value;
+  if (!resellerId) return;
+
+  const brandName = document.getElementById('admin-reseller-brand-name')?.value?.trim();
+  const accentColor = document.getElementById('admin-reseller-brand-accent')?.value?.trim() || '#4f46e5';
+  const logoUrl = document.getElementById('admin-reseller-brand-logo')?.value?.trim() || '';
+  const customDomain = document.getElementById('admin-reseller-brand-domain')?.value?.trim() || '';
+  const domainStatus = document.getElementById('admin-reseller-brand-status')?.value;
+  const supportEmail = document.getElementById('admin-reseller-brand-support-email')?.value?.trim() || '';
+  const supportPhone = document.getElementById('admin-reseller-brand-support-phone')?.value?.trim() || '';
+
+  if (!brandName) {
+    showToast('error', 'Brand Name Required', 'Please enter a brand name for this white-label partner.');
+    return;
+  }
+
+  try {
+    const btnSave = document.getElementById('btn-admin-save-reseller-brand');
+    if (btnSave) {
+      btnSave.disabled = true;
+      btnSave.textContent = 'Saving...';
+    }
+
+    await apiFetch(`/resellers/${resellerId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        brand_name: brandName,
+        accent_color: accentColor,
+        logo_url: logoUrl,
+        custom_domain: customDomain,
+        support_email: supportEmail,
+        support_phone: supportPhone
+      })
+    });
+
+    if (domainStatus && domainStatus !== 'Pending verification') {
+      try {
+        await apiFetch(`/resellers/${resellerId}/domain-status`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: domainStatus, reason: 'Super Admin manual configuration in partner portal' })
+        });
+      } catch (e) { }
+    }
+
+    showToast('success', 'White-Label Configured', 'Partner white-label branding & DNS settings saved successfully.');
+    const modal = document.getElementById('modal-admin-reseller-brand');
+    if (modal) modal.style.display = 'none';
+    loadResellerNetwork();
+  } catch (err) {
+    showToast('error', 'Update Failed', err.message);
+  } finally {
+    const btnSave = document.getElementById('btn-admin-save-reseller-brand');
+    if (btnSave) {
+      btnSave.disabled = false;
+      btnSave.textContent = 'Save White-Label Brand';
+    }
+  }
+};
+
+window.verifyCurrentResellerDomain = function() {
+  const resellerId = document.getElementById('admin-reseller-brand-id')?.value;
+  if (!resellerId) return;
+  verifyResellerDomain(resellerId);
+};
 
 window.verifyResellerDomain = function(resellerId) {
   window.openActionDialog({
@@ -10147,6 +10484,8 @@ window.verifyResellerDomain = function(resellerId) {
       try {
         await apiFetch(`/resellers/${resellerId}/domain-status`, { method: 'PATCH', body: JSON.stringify({ status: 'Verified', reason }) });
         showToast('success', 'Domain Verified', 'The reseller domain is marked verified.');
+        const modal = document.getElementById('modal-admin-reseller-brand');
+        if (modal) modal.style.display = 'none';
         loadResellerNetwork();
       } catch (err) { showToast('error', 'Verification Failed', err.message); }
     }

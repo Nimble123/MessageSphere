@@ -36,9 +36,11 @@ router.get('/me', authenticate, async (req, res) => {
 router.get('/', authenticate, requireRoles('admin'), async (req, res) => {
   try {
     const result = await query(`
-      SELECT u.id, u.email, u.is_blocked, u.created_at, rp.brand_name, rp.accent_color, rp.support_email, rp.custom_domain, rp.domain_status,
+      SELECT u.id, u.email, u.full_name, u.phone, u.company_name, u.is_blocked, u.created_at, u.gstin,
+        rp.brand_name, rp.accent_color, rp.support_email, rp.support_phone, rp.logo_url, rp.custom_domain, rp.domain_status,
         COUNT(DISTINCT client.id)::int AS client_count,
-        COUNT(DISTINCT c.id)::int AS campaign_count
+        COUNT(DISTINCT c.id)::int AS campaign_count,
+        COALESCE(SUM(c.total_numbers), 0)::bigint AS total_recipients
       FROM users u
       LEFT JOIN reseller_profiles rp ON rp.reseller_id = u.id
       LEFT JOIN users client ON client.reseller_id = u.id
@@ -47,8 +49,40 @@ router.get('/', authenticate, requireRoles('admin'), async (req, res) => {
       GROUP BY u.id, rp.reseller_id
       ORDER BY u.created_at DESC
     `);
-    return res.json(result.rows);
-  } catch (err) { return res.status(500).json({ error: 'Failed to load reseller management data' }); }
+
+    const resellerIds = result.rows.map(r => r.id);
+    let creditsMap = {};
+    if (resellerIds.length > 0) {
+      const crRes = await query(
+        `SELECT user_id, credit_type, destination, balance FROM user_credits WHERE user_id = ANY($1::int[])`,
+        [resellerIds]
+      );
+      crRes.rows.forEach(r => {
+        if (!creditsMap[r.user_id]) creditsMap[r.user_id] = {};
+        creditsMap[r.user_id][`${r.credit_type}_${r.destination}`] = parseInt(r.balance, 10);
+      });
+    }
+
+    const rows = result.rows.map(r => {
+      const cr = creditsMap[r.id] || {};
+      const domCredits = (cr['gsm_sms_domestic'] ?? cr['sms_domestic'] ?? 0) + (cr['whatsapp_domestic'] ?? 0);
+      const intlCredits = (cr['gsm_sms_international'] ?? cr['sms_international'] ?? 0) + (cr['whatsapp_international'] ?? 0);
+      return {
+        ...r,
+        dom_credits: domCredits,
+        intl_credits: intlCredits,
+        dom_sms_credits: cr['gsm_sms_domestic'] ?? cr['sms_domestic'] ?? 0,
+        dom_wa_credits: cr['whatsapp_domestic'] ?? 0,
+        intl_sms_credits: cr['gsm_sms_international'] ?? cr['sms_international'] ?? 0,
+        intl_wa_credits: cr['whatsapp_international'] ?? 0,
+      };
+    });
+
+    return res.json(rows);
+  } catch (err) {
+    console.error('Failed to load reseller network:', err);
+    return res.status(500).json({ error: 'Failed to load reseller management data' });
+  }
 });
 
 async function saveProfile(req, res, resellerId, actorId) {

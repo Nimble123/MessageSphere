@@ -3486,12 +3486,139 @@
 
         </section>
 
-        <!-- 6. ACCOUNT SETTINGS VIEW -->
+        <!-- 6. RESELLER NETWORK & WHITE-LABEL FLEET VIEW -->
         <section id="view-resellers" class="app-view">
-          <div class="card">
-            <div class="card-header"><div><div class="card-title">Reseller network</div><div class="card-desc">Manage partner accounts, their clients, campaign volume and white-label domain readiness.</div></div></div>
-            <div class="card-body" style="padding:0;"><div class="table-container"><table><thead><tr><th>Reseller</th><th>Brand</th><th>Clients</th><th>Campaigns</th><th>Domain</th><th>Status</th><th>Action</th></tr></thead><tbody id="reseller-network-tbody"><tr><td colspan="7" style="text-align:center;padding:24px;">Open Reseller Network to load partners.</td></tr></tbody></table></div></div>
+          
+          <!-- Header Banner & Action Controls -->
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px;">
+            <div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:38px;height:38px;border-radius:10px;background:#eef2ff;color:var(--primary);display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+                  <i data-lucide="network" style="width:20px;height:20px;"></i>
+                </div>
+                <div>
+                  <h2 style="margin:0;font-size:1.35rem;font-weight:700;color:var(--slate-900);letter-spacing:-0.01em;">Reseller Network & Partner Portals</h2>
+                  <div style="font-size:0.83rem;color:var(--slate-500);margin-top:2px;">Manage partner accounts, sub-client hierarchies, custom DNS domains, and white-label branding.</div>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <button type="button" class="btn-action btn-action-secondary" onclick="loadResellerNetwork()" style="display:inline-flex;align-items:center;gap:6px;">
+                <i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Refresh
+              </button>
+              <button type="button" class="btn-action btn-action-primary" onclick="openCreateUserModalWithRole('reseller')" style="display:inline-flex;align-items:center;gap:6px;font-weight:600;">
+                <i data-lucide="user-plus" style="width:15px;height:15px;"></i> Create New Reseller
+              </button>
+            </div>
           </div>
+
+          <!-- Top Metric KPI Cards Grid -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(230px, 1fr));gap:14px;margin-bottom:20px;">
+            
+            <div class="card" style="margin:0;padding:16px 18px;display:flex;align-items:center;gap:14px;border-radius:10px;">
+              <div style="width:42px;height:42px;border-radius:10px;background:#eef2ff;color:#4f46e5;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <i data-lucide="users" style="width:20px;height:20px;"></i>
+              </div>
+              <div>
+                <div style="font-size:0.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;">Active Resellers</div>
+                <div style="font-size:1.45rem;font-weight:700;color:#0f172a;line-height:1.2;margin-top:2px;" id="reseller-stat-total">0</div>
+                <div style="font-size:0.75rem;color:#64748b;margin-top:2px;">Licensed Partner Portals</div>
+              </div>
+            </div>
+
+            <div class="card" style="margin:0;padding:16px 18px;display:flex;align-items:center;gap:14px;border-radius:10px;">
+              <div style="width:42px;height:42px;border-radius:10px;background:#ecfdf5;color:#059669;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <i data-lucide="user-check" style="width:20px;height:20px;"></i>
+              </div>
+              <div>
+                <div style="font-size:0.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;">Sub-Client Accounts</div>
+                <div style="font-size:1.45rem;font-weight:700;color:#0f172a;line-height:1.2;margin-top:2px;" id="reseller-stat-clients">0</div>
+                <div style="font-size:0.75rem;color:#059669;margin-top:2px;font-weight:500;">Managed by Partners</div>
+              </div>
+            </div>
+
+            <div class="card" style="margin:0;padding:16px 18px;display:flex;align-items:center;gap:14px;border-radius:10px;">
+              <div style="width:42px;height:42px;border-radius:10px;background:#f0f9ff;color:#0284c7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <i data-lucide="send" style="width:20px;height:20px;"></i>
+              </div>
+              <div>
+                <div style="font-size:0.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;">Partner Broadcasts</div>
+                <div style="font-size:1.45rem;font-weight:700;color:#0f172a;line-height:1.2;margin-top:2px;" id="reseller-stat-campaigns">0</div>
+                <div style="font-size:0.75rem;color:#0284c7;margin-top:2px;" id="reseller-stat-audience">0 Recipients</div>
+              </div>
+            </div>
+
+            <div class="card" style="margin:0;padding:16px 18px;display:flex;align-items:center;gap:14px;border-radius:10px;">
+              <div style="width:42px;height:42px;border-radius:10px;background:#faf5ff;color:#9333ea;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <i data-lucide="globe" style="width:20px;height:20px;"></i>
+              </div>
+              <div>
+                <div style="font-size:0.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;">Custom Domains</div>
+                <div style="font-size:1.45rem;font-weight:700;color:#0f172a;line-height:1.2;margin-top:2px;" id="reseller-stat-domains">0 / 0</div>
+                <div style="font-size:0.75rem;color:#9333ea;margin-top:2px;font-weight:500;" id="reseller-stat-domain-desc">Verified White-Labels</div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Main Reseller Network Card & Filter Bar -->
+          <div class="card" style="box-shadow:0 1px 3px rgba(0,0,0,0.06);border-radius:12px;overflow:hidden;">
+            
+            <!-- Filters Bar -->
+            <div style="padding:14px 18px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:1;">
+                <div style="position:relative;flex:1;max-width:360px;min-width:240px;">
+                  <i data-lucide="search" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);width:15px;height:15px;color:#94a3b8;pointer-events:none;"></i>
+                  <input type="text" id="reseller-search-input" oninput="renderResellerNetworkTable()" class="form-input" style="padding-left:34px;height:36px;font-size:0.83rem;border-radius:7px;background:#fff;" placeholder="Search partner by name, email, brand, domain...">
+                </div>
+
+                <select id="reseller-domain-filter" onchange="renderResellerNetworkTable()" class="form-select" style="height:36px;padding:5px 12px;font-size:0.82rem;font-weight:600;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#1e293b;min-width:170px;">
+                  <option value="all">All Domains</option>
+                  <option value="Verified">Verified Domains</option>
+                  <option value="Pending verification">Pending Verification</option>
+                  <option value="Not configured">Not Configured</option>
+                </select>
+
+                <select id="reseller-status-filter" onchange="renderResellerNetworkTable()" class="form-select" style="height:36px;padding:5px 12px;font-size:0.82rem;font-weight:600;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#1e293b;min-width:130px;">
+                  <option value="all">All Status</option>
+                  <option value="active">Active Only</option>
+                  <option value="blocked">Blocked Only</option>
+                </select>
+                
+                <button type="button" class="btn-action btn-action-secondary" onclick="resetResellerFilters()" style="height:36px;padding:5px 10px;font-size:0.8rem;">
+                  Clear
+                </button>
+              </div>
+
+              <div style="font-size:0.8rem;color:#64748b;font-weight:500;">
+                Showing <strong id="reseller-count-showing" style="color:#0f172a;">0</strong> partners
+              </div>
+            </div>
+
+            <!-- Reseller Table -->
+            <div class="card-body" style="padding:0;">
+              <div class="table-container">
+                <table style="width:100%;border-collapse:collapse;font-size:0.84rem;">
+                  <thead>
+                    <tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0;text-align:left;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.04em;">
+                      <th style="padding:12px 16px;">Partner / Reseller</th>
+                      <th style="padding:12px 16px;">Brand & Identity</th>
+                      <th style="padding:12px 16px;">Credit Reserves</th>
+                      <th style="padding:12px 16px;">Clients & Volume</th>
+                      <th style="padding:12px 16px;">Custom Domain</th>
+                      <th style="padding:12px 16px;">Status</th>
+                      <th style="padding:12px 16px;text-align:right;">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="reseller-network-tbody">
+                    <tr><td colspan="7" style="text-align:center;padding:36px;color:#64748b;">Loading partner network data...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+
         </section>
 
         <section id="view-branding" class="app-view">
@@ -5178,6 +5305,112 @@
       <div class="modal-footer-saas" style="padding: 10px 20px; display: flex; justify-content: space-between; align-items: center;">
         <span style="font-size: 0.75rem; color: #64748b;">Note: Allotments are instantly transferred from your available wholesale stock.</span>
         <button class="btn-action btn-action-secondary" data-close="modal-reseller-clients">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: ADMIN RESELLER BRAND & DNS MANAGEMENT -->
+  <div id="modal-admin-reseller-brand" class="modal-overlay" style="display:none;">
+    <div class="modal-card" style="max-width: 660px; width: 95%;">
+      <div class="modal-header-saas" style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:34px;height:34px;border-radius:8px;background:#eef2ff;color:#4f46e5;display:flex;align-items:center;justify-content:center;">
+            <i data-lucide="globe" style="width:18px;height:18px;"></i>
+          </div>
+          <div>
+            <h3 style="margin:0;font-size:1.05rem;font-weight:700;">Partner White-Label & DNS Configuration</h3>
+            <div style="font-size:0.75rem;color:#64748b;" id="admin-reseller-brand-subtitle">Configure white-label portal, custom domain, and DNS verification</div>
+          </div>
+        </div>
+        <button class="btn-modal-close" data-close="modal-admin-reseller-brand">&times;</button>
+      </div>
+
+      <div class="modal-body-saas" style="padding:18px 22px;">
+        <input type="hidden" id="admin-reseller-brand-id">
+
+        <!-- Partner Quick Banner -->
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+          <div>
+            <div style="font-size:0.72rem;color:#64748b;text-transform:uppercase;font-weight:600;">Partner Account</div>
+            <div style="font-size:0.95rem;font-weight:700;color:#0f172a;margin-top:2px;" id="admin-reseller-brand-email">partner@example.com</div>
+          </div>
+          <div id="admin-reseller-brand-status-pill">
+            <span class="status-badge badge-submitted">Not configured</span>
+          </div>
+        </div>
+
+        <form id="admin-reseller-brand-form" onsubmit="return false;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+            <div class="form-group">
+              <label style="font-size:0.8rem;font-weight:600;color:#334155;">Brand Name</label>
+              <input type="text" id="admin-reseller-brand-name" class="form-input" placeholder="e.g. Acme Telecom" maxlength="120" required>
+            </div>
+            <div class="form-group">
+              <label style="font-size:0.8rem;font-weight:600;color:#334155;">Theme Accent Color</label>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <input type="color" id="admin-reseller-brand-color-picker" style="width:38px;height:38px;padding:2px;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;" value="#4f46e5" oninput="document.getElementById('admin-reseller-brand-accent').value = this.value">
+                <input type="text" id="admin-reseller-brand-accent" class="form-input" placeholder="#4f46e5" pattern="^#[0-9A-Fa-f]{6}$" value="#4f46e5" oninput="if (/^#[0-9A-Fa-f]{6}$/.test(this.value)) document.getElementById('admin-reseller-brand-color-picker').value = this.value">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top:12px;">
+            <label style="font-size:0.8rem;font-weight:600;color:#334155;">Brand Logo URL (HTTPS)</label>
+            <input type="url" id="admin-reseller-brand-logo" class="form-input" placeholder="https://yourdomain.com/logo.png">
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px;">
+            <div class="form-group">
+              <label style="font-size:0.8rem;font-weight:600;color:#334155;">Custom Domain (FQDN)</label>
+              <input type="text" id="admin-reseller-brand-domain" class="form-input" placeholder="portal.partnerbrand.com">
+            </div>
+            <div class="form-group">
+              <label style="font-size:0.8rem;font-weight:600;color:#334155;">Domain Verification Status</label>
+              <select id="admin-reseller-brand-status" class="form-select">
+                <option value="Not configured">Not configured</option>
+                <option value="Pending verification">Pending verification</option>
+                <option value="Verified">Verified</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- DNS Guidance Card -->
+          <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px 14px;margin-top:14px;">
+            <div style="display:flex;align-items:center;gap:6px;color:#0369a1;font-size:0.8rem;font-weight:700;">
+              <i data-lucide="info" style="width:14px;height:14px;"></i> DNS CNAME Configuration
+            </div>
+            <div style="font-size:0.75rem;color:#0369a1;margin-top:4px;line-height:1.4;">
+              Ask the partner to create a CNAME record in their DNS provider (Cloudflare, GoDaddy, AWS Route53):<br>
+              <code style="background:#e0f2fe;padding:2px 6px;border-radius:4px;font-family:monospace;font-weight:600;color:#0284c7;display:inline-block;margin-top:3px;">
+                Type: CNAME &nbsp;|&nbsp; Name: &lt;subdomain&gt; &nbsp;|&nbsp; Target: messagesphere.nmedialabs.in
+              </code>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;">
+            <div class="form-group">
+              <label style="font-size:0.8rem;font-weight:600;color:#334155;">Support Email</label>
+              <input type="email" id="admin-reseller-brand-support-email" class="form-input" placeholder="support@partnerbrand.com">
+            </div>
+            <div class="form-group">
+              <label style="font-size:0.8rem;font-weight:600;color:#334155;">Support Phone</label>
+              <input type="text" id="admin-reseller-brand-support-phone" class="form-input" placeholder="+91 9876543210">
+            </div>
+          </div>
+
+        </form>
+      </div>
+
+      <div class="modal-footer-saas" style="display:flex;justify-content:space-between;align-items:center;padding:12px 22px;">
+        <button type="button" class="btn-action btn-action-secondary" data-close="modal-admin-reseller-brand">Cancel</button>
+        <div style="display:flex;gap:8px;">
+          <button type="button" id="btn-admin-verify-domain" class="btn-action btn-action-success" onclick="verifyCurrentResellerDomain()" style="display:none;">
+            <i data-lucide="check-circle" style="width:14px;height:14px;"></i> Verify Domain
+          </button>
+          <button type="button" id="btn-admin-save-reseller-brand" class="btn-action btn-action-primary" onclick="saveAdminResellerBrand()">
+            Save White-Label Brand
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -7039,6 +7272,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=1793812500000"></script>
+  <script src="app.js?v=1793813500000"></script>
 </body>
 </html>
