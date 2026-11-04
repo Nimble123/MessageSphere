@@ -5161,9 +5161,12 @@ function renderUsersTable() {
       ? '<span style="font-size:0.67rem;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:1px 6px;border-radius:4px;font-weight:700;" title="B2B GST Account (+18% Tax Invoice)">GST 18%</span>'
       : '<span style="font-size:0.67rem;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;padding:1px 6px;border-radius:4px;font-weight:600;" title="Retail Non-GST Account (0% Bill of Supply)">Non-GST</span>';
 
-    const refundPill = (u.refundDestination === 'reseller')
-      ? `<span onclick="toggleUserRefundRouting(${u.id}, '${escapeHtml(u.email)}', 'reseller')" style="font-size:0.67rem;background:#fffbeb;color:#b45309;border:1px solid #fde68a;padding:1px 6px;border-radius:4px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px;" title="Click to switch: Currently refunds route to Reseller">Refund &rarr; Reseller <i data-lucide="refresh-cw" style="width:9px;height:9px;"></i></span>`
-      : `<span onclick="toggleUserRefundRouting(${u.id}, '${escapeHtml(u.email)}', 'user')" style="font-size:0.67rem;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;padding:1px 6px;border-radius:4px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:3px;" title="Click to switch: Currently refunds route to Client">Refund &rarr; Client</span>`;
+    let refundPill = '';
+    if (u.role === 'user' && u.resellerEmail) {
+      refundPill = (u.refundDestination === 'reseller')
+        ? `<span onclick="toggleUserRefundRouting(${u.id}, '${escapeHtml(u.email)}', 'reseller')" style="font-size:0.67rem;background:#fffbeb;color:#b45309;border:1px solid #fde68a;padding:1px 6px;border-radius:4px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px;" title="Click to switch: Currently refunds route to Reseller (${escapeHtml(u.resellerFullName || u.resellerEmail)})">Refund &rarr; Reseller <i data-lucide="refresh-cw" style="width:9px;height:9px;"></i></span>`
+        : `<span onclick="toggleUserRefundRouting(${u.id}, '${escapeHtml(u.email)}', 'user')" style="font-size:0.67rem;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;padding:1px 6px;border-radius:4px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:3px;" title="Click to switch: Currently refunds route to Client wallet">Refund &rarr; Client</span>`;
+    }
 
     return `
       <tr>
@@ -5225,9 +5228,10 @@ function renderUsersTable() {
                 <button type="button" class="action-dropdown-item" onclick="closeAllDropdowns(); toggleBlockUser(${u.id})">
                   <i data-lucide="${u.isBlocked ? 'unlock' : 'lock'}" style="width:14px;height:14px;color:${u.isBlocked ? '#10b981' : '#f59e0b'};"></i> ${u.isBlocked ? 'Unblock Account' : 'Block Account'}
                 </button>
+                ${u.role === 'user' && u.resellerEmail ? `
                 <button type="button" class="action-dropdown-item" onclick="closeAllDropdowns(); toggleUserRefundRouting(${u.id}, '${escapeHtml(u.email)}', '${u.refundDestination || 'user'}')">
                   <i data-lucide="rotate-ccw" style="width:14px;height:14px;color:#0284c7;"></i> ${u.refundDestination === 'reseller' ? 'Route Refund to Client' : 'Route Refund to Reseller'}
-                </button>
+                </button>` : ''}
                 <div style="height:1px;background:#e2e8f0;margin:3px 0;"></div>
                 <button type="button" class="action-dropdown-item danger" onclick="closeAllDropdowns(); deleteUserAccount(${u.id}, '${escapeHtml(u.email)}')">
                   <i data-lucide="trash-2" style="width:14px;height:14px;"></i> Delete User
@@ -5574,9 +5578,23 @@ async function populateResellerAssignments() {
 }
 
 function updateResellerAssignmentVisibility() {
-  const visible = Boolean(currentUser?.role === 'admin' && modalUserRole?.value === 'user');
+  const isClientUser = Boolean(modalUserRole?.value === 'user');
+  const visible = Boolean(currentUser?.role === 'admin' && isClientUser);
   if (modalUserResellerWrap) modalUserResellerWrap.style.display = visible ? '' : 'none';
-  if (!visible && modalUserResellerId) modalUserResellerId.value = '';
+  if (!visible && modalUserResellerId && currentUser?.role === 'admin') modalUserResellerId.value = '';
+
+  const refundDestWrap = document.getElementById('modal-user-refund-dest-wrap');
+  if (refundDestWrap) {
+    const hasReseller = Boolean(
+      (currentUser?.role === 'reseller') || 
+      (currentUser?.role === 'admin' && modalUserResellerId?.value)
+    );
+    refundDestWrap.style.display = (isClientUser && hasReseller) ? '' : 'none';
+  }
+}
+
+if (modalUserResellerId) {
+  modalUserResellerId.addEventListener('change', updateResellerAssignmentVisibility);
 }
 
 window.onModalUserGstinChange = function(val) {
@@ -11258,12 +11276,17 @@ window.openUser360Modal = async function(userId, evt) {
 
       const btnRefundDest = document.getElementById('u360-btn-refund-dest');
       if (btnRefundDest) {
-        const isResellerRef = (user.refundDestination === 'reseller');
-        const textEl = document.getElementById('u360-btn-refund-text');
-        if (textEl) textEl.textContent = isResellerRef ? 'Refund: Reseller' : 'Refund: Client';
-        btnRefundDest.style.borderColor = isResellerRef ? '#fde68a' : '#cbd5e1';
-        btnRefundDest.style.background = isResellerRef ? '#fffbeb' : '#ffffff';
-        btnRefundDest.style.color = isResellerRef ? '#b45309' : '#334155';
+        if (user.role === 'user' && user.resellerEmail) {
+          btnRefundDest.style.display = 'inline-flex';
+          const isResellerRef = (user.refundDestination === 'reseller');
+          const textEl = document.getElementById('u360-btn-refund-text');
+          if (textEl) textEl.textContent = isResellerRef ? 'Refund: To Reseller' : 'Refund: To Client';
+          btnRefundDest.style.borderColor = isResellerRef ? '#fde68a' : '#cbd5e1';
+          btnRefundDest.style.background = isResellerRef ? '#fffbeb' : '#ffffff';
+          btnRefundDest.style.color = isResellerRef ? '#b45309' : '#334155';
+        } else {
+          btnRefundDest.style.display = 'none';
+        }
       }
     } else {
       adminActionsContainer.style.display = 'none';
@@ -11481,8 +11504,14 @@ window.openUser360Modal = async function(userId, evt) {
       taxEl.style.borderColor = isWithGst ? '#bfdbfe' : '#bbf7d0';
     }
 
+    const isClientWithReseller = Boolean(user.role === 'user' && user.resellerEmail);
     const destEl = document.getElementById('u360-info-refund-dest');
-    if (destEl) {
+    const destLabel = document.getElementById('u360-info-refund-dest-label');
+    const destWrap = document.getElementById('u360-info-refund-dest-wrap');
+    if (destLabel) destLabel.style.display = isClientWithReseller ? '' : 'none';
+    if (destWrap) destWrap.style.display = isClientWithReseller ? 'flex' : 'none';
+
+    if (destEl && isClientWithReseller) {
       const isResellerRefund = user.refundDestination === 'reseller';
       destEl.textContent = isResellerRefund ? 'Reseller Wallet' : 'Client Wallet';
       destEl.style.background = isResellerRefund ? '#fffbeb' : '#f0fdf4';
