@@ -852,11 +852,29 @@ function updateWalletView() {
     }
   }
 
+  // Request Top-Up is ONLY for Resellers and Clients; Super Admin is Root Issuer
+  const btnTopup = document.getElementById('btn-wallet-request-topup');
+  if (btnTopup) {
+    if (currentUser.role === 'admin') {
+      btnTopup.style.display = 'none'; // Super admin does not request credits from anyone
+    } else {
+      btnTopup.style.display = 'inline-flex';
+    }
+  }
+
   // Show Allot / Transfer button for Admin & Reseller
   const btnAllot = document.getElementById('btn-wallet-allot-credits');
   if (btnAllot) {
-    if (currentUser.role === 'admin' || currentUser.role === 'reseller') {
+    if (currentUser.role === 'admin') {
       btnAllot.style.display = 'inline-flex';
+      btnAllot.style.background = 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)';
+      btnAllot.style.boxShadow = '0 4px 12px rgba(79, 70, 229, 0.4)';
+      btnAllot.style.fontWeight = '700';
+    } else if (currentUser.role === 'reseller') {
+      btnAllot.style.display = 'inline-flex';
+      btnAllot.style.background = 'rgba(255, 255, 255, 0.12)';
+      btnAllot.style.boxShadow = 'none';
+      btnAllot.style.fontWeight = '600';
     } else {
       btnAllot.style.display = 'none';
     }
@@ -8725,6 +8743,11 @@ window.removeTopupReceipt = function() {
 };
 
 window.openCreditTopupModal = function() {
+  if (currentUser && currentUser.role === 'admin') {
+    showToast('info', 'Master Issuer Account', 'Super Admin is the root issuer of the platform with unlimited master credits. Use "Allot Credits" to allocate stock to clients or resellers.');
+    window.openWalletAllotCreditsModal();
+    return;
+  }
   if (modalOrderCredits) modalOrderCredits.value = '';
   if (modalOrderNotes) modalOrderNotes.value = '';
   window.removeTopupReceipt();
@@ -8801,7 +8824,11 @@ window.printReceiptVoucher = function() {
 
 if (btnNewBillingOrderModal) {
   btnNewBillingOrderModal.addEventListener('click', () => {
-    window.openCreditTopupModal();
+    if (currentUser && currentUser.role === 'admin') {
+      window.openWalletAllotCreditsModal();
+    } else {
+      window.openCreditTopupModal();
+    }
   });
 }
 
@@ -9038,6 +9065,16 @@ async function loadBillingOrders() {
       setEl('tab-cnt-due', dueCount);
       setEl('tab-cnt-partial', partCount);
       setEl('tab-cnt-paid', paidCount);
+    }
+
+    const btnNewOrder = document.getElementById('btn-new-billing-order-modal');
+    if (btnNewOrder && currentUser) {
+      if (currentUser.role === 'admin') {
+        btnNewOrder.innerHTML = `<i data-lucide="arrow-right-left" style="width: 15px; height: 15px;"></i> Allot Credits / New Invoice`;
+      } else {
+        btnNewOrder.innerHTML = `<i data-lucide="plus-circle" style="width: 15px; height: 15px;"></i> Request Credit Top-up`;
+      }
+      if (window.lucide) lucide.createIcons({ root: btnNewOrder });
     }
 
     renderBillingOrdersTable();
