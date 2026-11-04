@@ -15,16 +15,20 @@ router.get('/', authenticate, requireRoles('admin', 'reseller'), async (req, res
 
     if (req.user.role === 'admin') {
       usersQuery = `
-        SELECT u.id, u.email, u.role, u.is_blocked, u.reseller_id, u.full_name, u.company_name, u.phone, u.business_address, u.gstin, u.created_at
+        SELECT u.id, u.email, u.role, u.is_blocked, u.reseller_id, u.full_name, u.company_name, u.phone, u.business_address, u.gstin, u.created_at,
+               r.email AS reseller_email, r.full_name AS reseller_full_name, r.company_name AS reseller_company_name
         FROM users u
+        LEFT JOIN users r ON u.reseller_id = r.id
         WHERE u.id != $1
         ORDER BY u.created_at DESC
       `;
       params = [req.user.id];
     } else {
       usersQuery = `
-        SELECT u.id, u.email, u.role, u.is_blocked, u.reseller_id, u.full_name, u.company_name, u.phone, u.business_address, u.gstin, u.created_at
+        SELECT u.id, u.email, u.role, u.is_blocked, u.reseller_id, u.full_name, u.company_name, u.phone, u.business_address, u.gstin, u.created_at,
+               r.email AS reseller_email, r.full_name AS reseller_full_name, r.company_name AS reseller_company_name
         FROM users u
+        LEFT JOIN users r ON u.reseller_id = r.id
         WHERE u.reseller_id = $1
         ORDER BY u.created_at DESC
       `;
@@ -58,6 +62,9 @@ router.get('/', authenticate, requireRoles('admin', 'reseller'), async (req, res
       role: u.role,
       isBlocked: u.is_blocked,
       resellerId: u.reseller_id,
+      resellerEmail: u.reseller_email,
+      resellerFullName: u.reseller_full_name,
+      resellerCompanyName: u.reseller_company_name,
       fullName: u.full_name,
       companyName: u.company_name,
       phone: u.phone,

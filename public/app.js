@@ -4726,11 +4726,88 @@ const userSearchInput = document.getElementById('user-search-input');
 if (userSearchInput) {
   userSearchInput.addEventListener('input', () => renderUsersTable());
 }
+const userResellerFilter = document.getElementById('user-reseller-filter');
+if (userResellerFilter) {
+  userResellerFilter.addEventListener('change', () => renderUsersTable());
+}
+const userRoleFilter = document.getElementById('user-role-filter');
+if (userRoleFilter) {
+  userRoleFilter.addEventListener('change', () => renderUsersTable());
+}
+
+function populateResellerFilterDropdown() {
+  const select = document.getElementById('user-reseller-filter');
+  if (!select) return;
+  if (!currentUser || currentUser.role !== 'admin') {
+    select.style.display = 'none';
+    return;
+  }
+  select.style.display = 'inline-block';
+
+  const currentVal = select.value;
+  const resellerMap = new Map();
+
+  allUsers.forEach(u => {
+    if (u.role === 'reseller') {
+      resellerMap.set(u.id, {
+        id: u.id,
+        email: u.email,
+        name: u.fullName || u.companyName || u.email,
+        count: 0
+      });
+    } else if (u.resellerId) {
+      if (!resellerMap.has(u.resellerId)) {
+        resellerMap.set(u.resellerId, {
+          id: u.resellerId,
+          email: u.resellerEmail || `Reseller #${u.resellerId}`,
+          name: u.resellerFullName || u.resellerCompanyName || u.resellerEmail || `Reseller #${u.resellerId}`,
+          count: 0
+        });
+      }
+    }
+  });
+
+  allUsers.forEach(u => {
+    if (u.resellerId && resellerMap.has(u.resellerId)) {
+      resellerMap.get(u.resellerId).count++;
+    }
+  });
+
+  let optionsHtml = `
+    <option value="all">All Resellers & Accounts</option>
+    <option value="direct">Direct Users (Platform Root)</option>
+    <option value="resellers_only">Resellers Only</option>
+  `;
+
+  if (resellerMap.size > 0) {
+    optionsHtml += `<optgroup label="Filter by Reseller Portfolio:">`;
+    resellerMap.forEach(r => {
+      optionsHtml += `<option value="reseller_${r.id}">${escapeHtml(r.name)} (${escapeHtml(r.email)}) — ${r.count} User${r.count === 1 ? '' : 's'}</option>`;
+    });
+    optionsHtml += `</optgroup>`;
+  }
+
+  select.innerHTML = optionsHtml;
+  if (currentVal && Array.from(select.options).some(o => o.value === currentVal)) {
+    select.value = currentVal;
+  } else {
+    select.value = 'all';
+  }
+}
+
+window.filterByUserReseller = function(resellerId) {
+  const select = document.getElementById('user-reseller-filter');
+  if (select) {
+    select.value = `reseller_${resellerId}`;
+    renderUsersTable();
+  }
+};
 
 async function loadUsers() {
   if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'reseller')) return;
   try {
     allUsers = await apiFetch('/users');
+    populateResellerFilterDropdown();
     renderUsersTable();
     refreshDashboardMetrics();
     if (currentUser.role === 'admin') await loadPasswordResetRequests();
@@ -4744,19 +4821,36 @@ function renderUsersTable() {
   if (!tbody) return;
 
   const search = (userSearchInput ? userSearchInput.value : '').toLowerCase().trim();
+  const resellerFilter = document.getElementById('user-reseller-filter') ? document.getElementById('user-reseller-filter').value : 'all';
+  const roleFilter = document.getElementById('user-role-filter') ? document.getElementById('user-role-filter').value : 'all';
+
   let filtered = allUsers.filter(u => {
-    if (search && ![u.email, u.fullName, u.companyName, u.phone].filter(Boolean).some(value => String(value).toLowerCase().includes(search))) return false;
+    if (search && ![u.email, u.fullName, u.companyName, u.phone, u.resellerEmail, u.resellerFullName, u.resellerCompanyName].filter(Boolean).some(value => String(value).toLowerCase().includes(search))) return false;
+
+    if (roleFilter !== 'all' && u.role !== roleFilter) return false;
+
+    if (currentUser && currentUser.role === 'admin' && resellerFilter !== 'all') {
+      if (resellerFilter === 'direct') {
+        if (u.role === 'reseller' || u.resellerId) return false;
+      } else if (resellerFilter === 'resellers_only') {
+        if (u.role !== 'reseller') return false;
+      } else if (resellerFilter.startsWith('reseller_')) {
+        const targetResellerId = parseInt(resellerFilter.replace('reseller_', ''), 10);
+        if (u.resellerId !== targetResellerId) return false;
+      }
+    }
+
     return true;
   });
 
   if (filtered.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="7">
+        <td colspan="8">
           <div class="empty-state-box">
             <div class="empty-state-icon"><i data-lucide="users" style="width:24px;height:24px;"></i></div>
             <div class="empty-state-title">No user accounts found</div>
-            <div class="empty-state-desc">Try clearing search filters or create a new user account to get started.</div>
+            <div class="empty-state-desc">Try clearing search/reseller filters or create a new user account to get started.</div>
             <button type="button" class="btn-action btn-action-primary" onclick="document.getElementById('btn-open-create-user-modal').click()">
               <i data-lucide="user-plus" style="width:14px;height:14px;"></i> Create New User
             </button>
@@ -4775,6 +4869,32 @@ function renderUsersTable() {
     const domBreakdown = `GSM SMS: ${(u.credits_gsm_sms_domestic||0).toLocaleString()} • WA Text: ${(u.credits_normal_domestic||0).toLocaleString()} • DP: ${(u.credits_dp_domestic||0).toLocaleString()} • CTA: ${(u.credits_cta_domestic||0).toLocaleString()} • Own: ${(u.credits_own_number_domestic||0).toLocaleString()}`;
     const intlBreakdown = `GSM SMS: ${(u.credits_gsm_sms_international||0).toLocaleString()} • WA Text: ${(u.credits_normal_international||0).toLocaleString()} • DP: ${(u.credits_dp_international||0).toLocaleString()} • CTA: ${(u.credits_cta_international||0).toLocaleString()} • Own: ${(u.credits_own_number_international||0).toLocaleString()}`;
 
+    let parentCellHtml = '';
+    if (u.role === 'reseller') {
+      const childCount = allUsers.filter(x => x.resellerId === u.id).length;
+      parentCellHtml = `
+        <span style="display:inline-flex;align-items:center;gap:5px;background:#f5f3ff;color:#6d28d9;padding:4px 9px;border-radius:6px;font-size:0.75rem;font-weight:700;border:1px solid #ddd6fe;" title="Reseller Partner Entity">
+          <i data-lucide="award" style="width:13px;height:13px;color:#7c3aed;"></i> Reseller (${childCount} Client${childCount === 1 ? '' : 's'})
+        </span>
+      `;
+    } else if (u.resellerId) {
+      parentCellHtml = `
+        <div style="cursor:pointer;" onclick="window.filterByUserReseller(${u.resellerId})" title="Click to filter users under this reseller">
+          <div style="font-size:0.82rem;font-weight:700;color:#4338ca;display:flex;align-items:center;gap:5px;">
+            <i data-lucide="network" style="width:13px;height:13px;color:#4f46e5;"></i> ${escapeHtml(u.resellerFullName || u.resellerCompanyName || u.resellerEmail || ('Reseller #' + u.resellerId))}
+          </div>
+          <div style="font-size:0.72rem;color:#64748b;margin-top:2px;">${escapeHtml(u.resellerEmail || '')}</div>
+          <div style="font-size:0.68rem;color:#4f46e5;font-weight:600;margin-top:1px;">Filter this reseller &rarr;</div>
+        </div>
+      `;
+    } else {
+      parentCellHtml = `
+        <span style="display:inline-flex;align-items:center;gap:5px;background:#f0f9ff;color:#0369a1;padding:4px 9px;border-radius:6px;font-size:0.75rem;font-weight:600;border:1px solid #bae6fd;" title="Direct client created by Super Admin">
+          <i data-lucide="shield-check" style="width:13px;height:13px;color:#0284c7;"></i> Direct (Platform Root)
+        </span>
+      `;
+    }
+
     return `
       <tr>
         <td>
@@ -4783,10 +4903,12 @@ function renderUsersTable() {
             <div>
               <div style="font-weight:600;color:var(--primary);">${escapeHtml(u.fullName || u.email)}</div>
               <div style="font-size:0.75rem;color:var(--slate-500);">${escapeHtml(u.email)}${u.companyName ? ` · ${escapeHtml(u.companyName)}` : ''}${u.phone ? ` · ${escapeHtml(u.phone)}` : ''}</div>
+              ${u.resellerEmail ? `<div style="margin-top:3px;"><span style="font-size:0.7rem;background:#eef2ff;color:#4338ca;padding:1px 6px;border-radius:4px;font-weight:700;display:inline-flex;align-items:center;gap:3px;"><i data-lucide="network" style="width:10px;height:10px;"></i> Under: ${escapeHtml(u.resellerFullName || u.resellerEmail)}</span></div>` : ''}
             </div>
           </div>
         </td>
         <td><span class="role-badge role-${escapeHtml(u.role)}">${escapeHtml(u.role)}</span></td>
+        <td>${parentCellHtml}</td>
         <td>
           ${u.isBlocked 
             ? '<span class="status-badge badge-rejected"><i data-lucide="ban" style="width:12px;height:12px;"></i> Blocked</span>' 
@@ -10132,9 +10254,13 @@ window.openUser360Modal = async function(userId, evt) {
     const resellerEl = document.getElementById('u360-reseller');
     if (user.resellerEmail) {
       resellerEl.style.display = 'inline-block';
-      resellerEl.innerHTML = `<i data-lucide="network" style="width:12px;height:12px;display:inline;vertical-align:-1px;"></i> Reseller: <strong>${escapeHtml(user.resellerEmail)}</strong>`;
+      resellerEl.innerHTML = `<i data-lucide="network" style="width:12px;height:12px;display:inline;vertical-align:-1px;"></i> Associated Reseller: <strong>${escapeHtml(user.resellerName || user.resellerEmail)}</strong> (${escapeHtml(user.resellerEmail)})`;
+    } else if (user.role === 'reseller') {
+      resellerEl.style.display = 'inline-block';
+      resellerEl.innerHTML = `<i data-lucide="award" style="width:12px;height:12px;display:inline;vertical-align:-1px;color:#7c3aed;"></i> Account Type: <strong>Reseller Partner Account</strong>`;
     } else {
-      resellerEl.style.display = 'none';
+      resellerEl.style.display = 'inline-block';
+      resellerEl.innerHTML = `<i data-lucide="shield-check" style="width:12px;height:12px;display:inline;vertical-align:-1px;color:#0284c7;"></i> Account Origin: <strong>Direct Super Admin Root</strong>`;
     }
 
     // Header Quick Action Buttons (Admin / Reseller)

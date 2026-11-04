@@ -2936,9 +2936,19 @@
         <!-- 4. USER MANAGEMENT VIEW (ADMIN & RESELLER) -->
         <section id="view-users" class="app-view">
           
-          <div class="filter-bar">
-            <div>
-              <input type="text" id="user-search-input" class="search-input" placeholder="Search users by name, email, company, phone...">
+          <div class="filter-bar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:1;">
+              <input type="text" id="user-search-input" class="search-input" style="min-width:260px;max-width:360px;" placeholder="Search users by name, email, company, phone...">
+              <select id="user-reseller-filter" class="form-select super-admin-only" style="min-width:240px;height:38px;padding:6px 12px;font-size:0.83rem;border:1px solid #cbd5e1;border-radius:6px;background:white;color:#1e293b;font-weight:600;display:none;">
+                <option value="all">All Resellers & Accounts</option>
+                <option value="direct">Direct Users (Platform Root)</option>
+                <option value="resellers_only">Resellers Only</option>
+              </select>
+              <select id="user-role-filter" class="form-select" style="min-width:130px;height:38px;padding:6px 12px;font-size:0.83rem;border:1px solid #cbd5e1;border-radius:6px;background:white;color:#1e293b;font-weight:600;">
+                <option value="all">All Roles</option>
+                <option value="user">Users Only</option>
+                <option value="reseller">Resellers Only</option>
+              </select>
             </div>
             <button class="btn-action btn-action-primary" id="btn-open-create-user-modal" style="display:flex;align-items:center;gap:6px;">
               <i data-lucide="user-plus" style="width:15px;height:15px;"></i> Create New User
@@ -2958,6 +2968,7 @@
                     <tr>
                       <th>User</th>
                       <th>Role</th>
+                      <th>Associated Reseller</th>
                       <th>Account Status</th>
                       <th>Domestic Credits</th>
                       <th>Intl Credits</th>
@@ -2966,7 +2977,7 @@
                     </tr>
                   </thead>
                   <tbody id="users-table-tbody">
-                    <tr><td colspan="7" style="text-align:center;padding:30px;color:var(--slate-400);">Loading users...</td></tr>
+                    <tr><td colspan="8" style="text-align:center;padding:30px;color:var(--slate-400);">Loading users...</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -6671,6 +6682,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=1793779200001"></script>
+  <script src="app.js?v=1793780000001"></script>
 </body>
 </html>
