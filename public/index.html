@@ -71,6 +71,12 @@
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background-color: #f8fafc;
@@ -79,6 +85,12 @@
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
       line-height: 1.5;
+    }
+
+    body.app-active {
+      overflow: hidden !important;
+      height: 100vh !important;
+      max-height: 100vh !important;
     }
 
     /* Custom Smooth Scrollbars */
@@ -356,17 +368,28 @@
     .btn-primary:active { transform: translateY(0); }
     .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; box-shadow: none; }
 
-    /* SAAS MAIN APP LAYOUT */
+    /* SAAS MAIN APP LAYOUT (FIXED VIEWPORT CONTAINER) */
     #app-shell {
       display: none;
-      min-height: 100vh;
+      height: 100vh;
+      max-height: 100vh;
+      width: 100vw;
+      overflow: hidden;
       display: flex;
       background-color: #f8fafc;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 50;
     }
 
-    /* SIDEBAR */
+    /* SIDEBAR (INDEPENDENT COLUMN WITH FIXED HEADER & FOOTER) */
     .app-sidebar {
       width: 260px;
+      height: 100vh;
+      max-height: 100vh;
       background: #0f172a;
       color: white;
       display: flex;
@@ -375,6 +398,7 @@
       border-right: 1px solid rgba(255, 255, 255, 0.06);
       position: relative;
       z-index: 60;
+      overflow: hidden;
     }
     .sidebar-header {
       padding: 20px 20px;
@@ -382,6 +406,7 @@
       align-items: center;
       gap: 12px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      flex-shrink: 0;
     }
     .sidebar-header .brand-title {
       font-size: 1.15rem;
@@ -396,6 +421,21 @@
       flex-direction: column;
       gap: 3px;
       overflow-y: auto;
+      overflow-x: hidden;
+      overscroll-behavior: contain;
+    }
+    .sidebar-nav::-webkit-scrollbar {
+      width: 4px;
+    }
+    .sidebar-nav::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .sidebar-nav::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 4px;
+    }
+    .sidebar-nav::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.25);
     }
     .nav-category {
       font-size: 0.68rem;
@@ -445,6 +485,7 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      flex-shrink: 0;
     }
     .user-avatar {
       width: 36px;
@@ -497,14 +538,18 @@
     }
     .btn-icon-logout:hover { color: #f87171; background: rgba(239, 68, 68, 0.12); }
 
-    /* MAIN CONTENT WRAPPER */
+    /* MAIN CONTENT WRAPPER (INDEPENDENT CONTENT SCROLL) */
     .app-main {
       flex: 1;
+      height: 100%;
+      max-height: 100vh;
       display: flex;
       flex-direction: column;
       overflow-y: auto;
-      height: 100vh;
+      overflow-x: hidden;
+      overscroll-behavior: contain;
       background: #f8fafc;
+      position: relative;
     }
 
     /* TOP HEADER */
@@ -7352,6 +7397,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=1793816500000"></script>
+  <script src="app.js?v=1793817000000"></script>
 </body>
 </html>

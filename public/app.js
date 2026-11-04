@@ -481,6 +481,7 @@ function hideAuthError() {
 }
 
 function showAuthView() {
+  document.body.classList.remove('app-active');
   authScreen.style.display = 'flex';
   appShell.style.display = 'none';
   loginEmailInput.value = '';
@@ -492,6 +493,7 @@ function showAuthView() {
 
 function handleLoginSuccess(user) {
   currentUser = user;
+  document.body.classList.add('app-active');
   authScreen.style.display = 'none';
   appShell.style.display = 'flex';
 
