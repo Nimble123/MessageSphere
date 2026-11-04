@@ -4,6 +4,52 @@ const { query, getClient, CREDIT_TYPES, DESTINATIONS } = require('../db');
 const { logAudit } = require('../services/audit');
 const { authenticate, requireRoles } = require('../middleware/auth');
 
+// GET /api/billing/summary - Accounts receivable & Khata overview metrics
+router.get('/summary', authenticate, async (req, res) => {
+  try {
+    let filterClause = '';
+    let params = [];
+
+    if (req.user.role === 'admin') {
+      filterClause = 'WHERE cr.status != \'Rejected\'';
+    } else if (req.user.role === 'reseller') {
+      filterClause = 'JOIN users u ON cr.user_id = u.id WHERE (cr.user_id = $1 OR u.reseller_id = $1) AND cr.status != \'Rejected\'';
+      params = [req.user.id];
+    } else {
+      filterClause = 'WHERE cr.user_id = $1 AND cr.status != \'Rejected\'';
+      params = [req.user.id];
+    }
+
+    const sql = `
+      SELECT 
+        COALESCE(COUNT(*), 0) AS total_orders,
+        COALESCE(SUM(cr.amount_inr), 0) AS total_billed,
+        COALESCE(SUM(cr.paid_amount), 0) AS total_paid,
+        COALESCE(SUM(GREATEST(0, cr.amount_inr - COALESCE(cr.paid_amount, 0))), 0) AS total_due,
+        COALESCE(COUNT(CASE WHEN cr.payment_status = 'Unpaid' OR (COALESCE(cr.paid_amount, 0) = 0 AND cr.amount_inr > 0) THEN 1 END), 0) AS count_unpaid,
+        COALESCE(COUNT(CASE WHEN cr.payment_status = 'Partial' OR (cr.paid_amount > 0 AND cr.paid_amount < cr.amount_inr) THEN 1 END), 0) AS count_partial,
+        COALESCE(COUNT(CASE WHEN cr.payment_status = 'Paid' OR (cr.paid_amount >= cr.amount_inr AND cr.amount_inr > 0) THEN 1 END), 0) AS count_paid
+      FROM credit_requests cr
+      ${filterClause}
+    `;
+
+    const result = await query(sql, params);
+    const row = result.rows[0] || {};
+    return res.json({
+      total_orders: parseInt(row.total_orders, 10) || 0,
+      total_billed: parseFloat(row.total_billed) || 0,
+      total_paid: parseFloat(row.total_paid) || 0,
+      total_due: parseFloat(row.total_due) || 0,
+      count_unpaid: parseInt(row.count_unpaid, 10) || 0,
+      count_partial: parseInt(row.count_partial, 10) || 0,
+      count_paid: parseInt(row.count_paid, 10) || 0
+    });
+  } catch (err) {
+    console.error('Billing summary error:', err);
+    return res.status(500).json({ error: 'Failed to compute billing summary' });
+  }
+});
+
 // GET /api/billing/requests - List top-up requests
 router.get('/requests', authenticate, async (req, res) => {
   try {
@@ -12,14 +58,38 @@ router.get('/requests', authenticate, async (req, res) => {
 
     if (req.user.role === 'admin') {
       sql = `
-        SELECT cr.*, u.email as user_email 
+        SELECT 
+          cr.*, 
+          u.email as user_email,
+          u.role as user_role,
+          u.reseller_id,
+          GREATEST(0, COALESCE(cr.amount_inr, 0) - COALESCE(cr.paid_amount, 0)) AS due_amount
         FROM credit_requests cr 
         JOIN users u ON cr.user_id = u.id 
         ORDER BY cr.created_at DESC
       `;
+    } else if (req.user.role === 'reseller') {
+      sql = `
+        SELECT 
+          cr.*, 
+          u.email as user_email,
+          u.role as user_role,
+          u.reseller_id,
+          GREATEST(0, COALESCE(cr.amount_inr, 0) - COALESCE(cr.paid_amount, 0)) AS due_amount
+        FROM credit_requests cr 
+        JOIN users u ON cr.user_id = u.id 
+        WHERE cr.user_id = $1 OR u.reseller_id = $1
+        ORDER BY cr.created_at DESC
+      `;
+      params = [req.user.id];
     } else {
       sql = `
-        SELECT cr.*, u.email as user_email 
+        SELECT 
+          cr.*, 
+          u.email as user_email,
+          u.role as user_role,
+          u.reseller_id,
+          GREATEST(0, COALESCE(cr.amount_inr, 0) - COALESCE(cr.paid_amount, 0)) AS due_amount
         FROM credit_requests cr 
         JOIN users u ON cr.user_id = u.id 
         WHERE cr.user_id = $1 
@@ -55,20 +125,23 @@ router.post('/requests', authenticate, async (req, res) => {
   if (!CREDIT_TYPES.includes(cType) || !DESTINATIONS.includes(cDest)) {
     return res.status(400).json({ error: 'Invalid credit type or destination' });
   }
+  const suppliedRate = req.body.rate_per_credit !== undefined && req.body.rate_per_credit !== '' ? Number(req.body.rate_per_credit) : 0.1500;
   const suppliedAmount = req.body.amount_inr === undefined || req.body.amount_inr === '' ? null : Number(req.body.amount_inr);
   if (suppliedAmount !== null && (!Number.isFinite(suppliedAmount) || suppliedAmount < 0)) {
     return res.status(400).json({ error: 'Invalid payment amount' });
   }
-  const calculatedAmount = suppliedAmount === null ? requestedQty * 0.15 : suppliedAmount;
+  const calculatedAmount = suppliedAmount === null ? (requestedQty * suppliedRate) : suppliedAmount;
   const receiptUrl = (req.body.receipt_url || '').trim() || null;
+  const paymentStatus = req.body.payment_status || 'Unpaid';
+  const paidAmount = parseFloat(req.body.paid_amount) || 0.00;
 
   try {
     const result = await query(`
       INSERT INTO credit_requests 
-        (user_id, package_name, credits_requested, credit_type, destination, amount_inr, utr_number, receipt_url, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pending')
+        (user_id, package_name, credits_requested, credit_type, destination, amount_inr, rate_per_credit, paid_amount, payment_status, utr_number, receipt_url, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'Pending')
       RETURNING *
-    `, [req.user.id, package_name, requestedQty, cType, cDest, calculatedAmount, utr.trim(), receiptUrl]);
+    `, [req.user.id, package_name, requestedQty, cType, cDest, calculatedAmount, suppliedRate, paidAmount, paymentStatus, utr.trim(), receiptUrl]);
 
     return res.status(201).json({
       message: 'Top-up request submitted successfully. Credits will be allocated upon verification.',
@@ -165,5 +238,115 @@ const rejectHandler = async (req, res) => {
 
 router.patch('/requests/:id/reject', authenticate, requireRoles('admin'), rejectHandler);
 router.post('/requests/:id/reject', authenticate, requireRoles('admin'), rejectHandler);
+
+// POST /api/billing/requests/:id/record-payment - Super Admin or Reseller records payment (settles full or partial Khata)
+router.post('/requests/:id/record-payment', authenticate, async (req, res) => {
+  const reqId = parseInt(req.params.id, 10);
+  const paymentAmount = parseFloat(req.body.amount);
+  const paymentMode = String(req.body.payment_mode || 'UPI').trim();
+  const utr = String(req.body.utr_number || req.body.reference || '').trim();
+  const notes = String(req.body.notes || '').trim();
+  const settleFull = Boolean(req.body.settle_full);
+
+  if ((isNaN(paymentAmount) || paymentAmount <= 0) && !settleFull) {
+    return res.status(400).json({ error: 'Valid payment amount greater than zero is required' });
+  }
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    // Fetch order with user info for role permission checking
+    const orderRes = await client.query(`
+      SELECT cr.*, u.reseller_id, u.email as user_email
+      FROM credit_requests cr
+      JOIN users u ON cr.user_id = u.id
+      WHERE cr.id = $1
+      FOR UPDATE
+    `, [reqId]);
+
+    if (orderRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const order = orderRes.rows[0];
+
+    // Permission check: Admin can record payment for all; Reseller can record for their own clients or their own order
+    if (req.user.role !== 'admin') {
+      const isMyClient = order.reseller_id === req.user.id;
+      if (!isMyClient && order.user_id !== req.user.id) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Permission denied to record payment on this invoice' });
+      }
+    }
+
+    const totalBill = parseFloat(order.amount_inr) || 0;
+    const currentPaid = parseFloat(order.paid_amount) || 0;
+    const currentDue = Math.max(0, totalBill - currentPaid);
+
+    let incomingPayment = settleFull ? currentDue : paymentAmount;
+    if (incomingPayment > currentDue) {
+      incomingPayment = currentDue; // Prevent overpayment
+    }
+
+    const newPaidTotal = currentPaid + incomingPayment;
+    let newPaymentStatus = 'Unpaid';
+    if (newPaidTotal >= totalBill && totalBill > 0) {
+      newPaymentStatus = 'Paid';
+    } else if (newPaidTotal > 0) {
+      newPaymentStatus = 'Partial';
+    }
+
+    const paymentEntry = {
+      recorded_at: new Date().toISOString(),
+      recorded_by: req.user.email,
+      recorded_by_role: req.user.role,
+      amount: incomingPayment,
+      payment_mode: paymentMode,
+      utr_number: utr,
+      notes: notes,
+      previous_paid: currentPaid,
+      new_paid: newPaidTotal,
+      balance_remaining: Math.max(0, totalBill - newPaidTotal)
+    };
+
+    const existingHistory = Array.isArray(order.payment_history) ? order.payment_history : [];
+    existingHistory.push(paymentEntry);
+
+    const updateRes = await client.query(`
+      UPDATE credit_requests
+      SET 
+        paid_amount = $1,
+        payment_status = $2,
+        payment_history = $3::jsonb,
+        payment_notes = COALESCE(payment_notes || E'\n' || $4, $4)
+      WHERE id = $5
+      RETURNING *
+    `, [newPaidTotal, newPaymentStatus, JSON.stringify(existingHistory), `[${new Date().toLocaleDateString()}] Received ₹${incomingPayment} via ${paymentMode} (${utr}) by ${req.user.email}`, reqId]);
+
+    await logAudit(client, {
+      actorId: req.user.id,
+      entityType: 'credit_request',
+      entityId: reqId,
+      action: 'payment_recorded',
+      details: paymentEntry
+    });
+
+    await client.query('COMMIT');
+    return res.json({
+      message: `Payment of ₹${incomingPayment.toLocaleString()} recorded successfully! Order #${reqId} status is now ${newPaymentStatus}.`,
+      order: updateRes.rows[0],
+      balance_due: Math.max(0, totalBill - newPaidTotal)
+    });
+
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Record payment error:', err);
+    return res.status(500).json({ error: 'Failed to record payment' });
+  } finally {
+    client.release();
+  }
+});
 
 module.exports = router;

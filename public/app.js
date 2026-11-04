@@ -5170,6 +5170,7 @@ window.setAllocMode = function(mode) {
   const modalTitle = document.getElementById('modal-allot-title');
   const saveBtn = document.getElementById('btn-modal-save-credits');
   const reasonInput = document.getElementById('alloc-reason');
+  const commercialSec = document.getElementById('alloc-commercial-section');
 
   if (allocCurrentMode === 'debit') {
     if (btnCredit) {
@@ -5190,6 +5191,7 @@ window.setAllocMode = function(mode) {
     if (reasonInput && (!reasonInput.value || reasonInput.value.includes('allotment'))) {
       reasonInput.value = 'Credit deduction / correction by admin';
     }
+    if (commercialSec) commercialSec.style.display = 'none';
   } else {
     if (btnCredit) {
       btnCredit.style.background = '#10b981';
@@ -5209,7 +5211,57 @@ window.setAllocMode = function(mode) {
     if (reasonInput && (!reasonInput.value || reasonInput.value.includes('deduction'))) {
       reasonInput.value = 'Manual credit allotment by admin';
     }
+    if (commercialSec) commercialSec.style.display = 'block';
   }
+};
+
+window.onAllocPaymentStatusChange = function() {
+  const status = document.getElementById('alloc-payment-status')?.value;
+  const partialGrp = document.getElementById('alloc-partial-amount-group');
+  if (partialGrp) {
+    partialGrp.style.display = status === 'partial' ? 'block' : 'none';
+  }
+  window.calculateAllocKhata();
+};
+
+window.calculateAllocKhata = function() {
+  const keys = [
+    'gsm_sms-domestic', 'normal-domestic', 'dp-domestic', 'cta-domestic', 'dp_cta-domestic', 'own_number-domestic',
+    'gsm_sms-international', 'normal-international', 'dp-international', 'cta-international', 'dp_cta-international', 'own_number-international'
+  ];
+  let totalCredits = 0;
+  keys.forEach(k => {
+    const inp = document.getElementById(`alloc-${k}`);
+    totalCredits += parseInt(inp ? inp.value : 0, 10) || 0;
+  });
+
+  const rateInp = document.getElementById('alloc-rate-per-credit');
+  const rate = parseFloat(rateInp && rateInp.value !== '' ? rateInp.value : 0.150) || 0;
+  const totalBill = totalCredits * rate;
+
+  const totalBillDisplay = document.getElementById('alloc-total-bill-display');
+  if (totalBillDisplay) {
+    totalBillDisplay.textContent = `₹${totalBill.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
+  const status = document.getElementById('alloc-payment-status')?.value || 'unpaid';
+  const paidInp = document.getElementById('alloc-paid-amount');
+  let received = 0;
+  if (status === 'paid') {
+    received = totalBill;
+  } else if (status === 'partial') {
+    received = parseFloat(paidInp ? paidInp.value : 0) || 0;
+  } else {
+    received = 0;
+  }
+  const baki = Math.max(0, totalBill - received);
+
+  const calcCr = document.getElementById('alloc-calc-credits');
+  if (calcCr) calcCr.textContent = totalCredits.toLocaleString();
+  const calcRec = document.getElementById('alloc-calc-received');
+  if (calcRec) calcRec.textContent = `₹${received.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const calcBaki = document.getElementById('alloc-calc-baki');
+  if (calcBaki) calcBaki.textContent = `₹${baki.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
 window.openAllotCreditsModal = async function(userId, email) {
@@ -5241,7 +5293,17 @@ window.openAllotCreditsModal = async function(userId, email) {
   }
 
   const inputs = modalAllotCredits.querySelectorAll('input[type="number"]');
-  inputs.forEach(inp => inp.value = '');
+  inputs.forEach(inp => {
+    if (inp.id === 'alloc-rate-per-credit') inp.value = '0.150';
+    else inp.value = '';
+  });
+
+  const pStatusSelect = document.getElementById('alloc-payment-status');
+  if (pStatusSelect) pStatusSelect.value = 'unpaid';
+  const partialGrp = document.getElementById('alloc-partial-amount-group');
+  if (partialGrp) partialGrp.style.display = 'none';
+
+  window.calculateAllocKhata();
 
   modalAllotCredits.style.display = 'flex';
   if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
@@ -5288,9 +5350,24 @@ if (btnModalSaveCredits) {
     try {
       const reasonInput = document.getElementById('alloc-reason');
       const allocReason = (reasonInput && reasonInput.value.trim()) ? reasonInput.value.trim() : (mode === 'debit' ? 'Credit deduction by admin' : 'Manual credit allotment by admin');
+      
+      const ratePerCredit = parseFloat(document.getElementById('alloc-rate-per-credit')?.value) || 0.150;
+      const paymentStatus = document.getElementById('alloc-payment-status')?.value || 'unpaid';
+      const paidAmount = parseFloat(document.getElementById('alloc-paid-amount')?.value) || 0;
+      const totalBillEl = document.getElementById('alloc-total-bill-display');
+      const totalBill = totalBillEl ? (parseFloat(totalBillEl.textContent.replace(/[^0-9.]/g, '')) || 0) : 0;
+
       const res = await apiFetch(`/users/${userId}/credits`, {
         method: 'POST',
-        body: JSON.stringify({ updates, reason: allocReason, mode })
+        body: JSON.stringify({ 
+          updates, 
+          reason: allocReason, 
+          mode,
+          rate_per_credit: ratePerCredit,
+          payment_status: paymentStatus,
+          paid_amount: paidAmount,
+          total_bill: totalBill
+        })
       });
       showToast('success', mode === 'debit' ? 'Credits Deducted!' : 'Credits Transferred!', res.message);
       modalAllotCredits.style.display = 'none';
@@ -5302,6 +5379,7 @@ if (btnModalSaveCredits) {
       updateCreditDisplays();
       updateWalletView();
       if (typeof loadLedgerTransactions === 'function') loadLedgerTransactions();
+      if (typeof loadBillingOrders === 'function') loadBillingOrders();
       if (typeof loadResellerWalletData === 'function' && currentUser.role === 'reseller') {
         loadResellerWalletData().then(() => {
           if (document.getElementById('modal-reseller-clients')?.style.display === 'flex') {
@@ -8573,6 +8651,7 @@ window.calculateTopupAmount = function() {
   const dest = modalOrderDest?.value || 'domestic';
   const type = modalOrderType?.value || 'normal';
   const calcEl = document.getElementById('modal-order-calc-price');
+  const rateInput = document.getElementById('modal-order-rate');
   if (!calcEl) return;
 
   if (!credits || credits <= 0) {
@@ -8581,23 +8660,28 @@ window.calculateTopupAmount = function() {
   }
 
   let rate = 0.15;
-  if (dest === 'international') {
-    rate = 2.50;
+  if (rateInput && rateInput.value !== '' && !rateInput.dataset.autoReset) {
+    rate = parseFloat(rateInput.value) || 0.15;
   } else {
-    if (type === 'normal') {
-      if (credits >= 100000) rate = 0.09;
-      else if (credits >= 50000) rate = 0.11;
-      else if (credits >= 25000) rate = 0.13;
-      else rate = 0.15;
-    } else if (type === 'dp') {
-      rate = 0.30;
-    } else if (type === 'cta') {
-      rate = 0.25;
-    } else if (type === 'dp_cta') {
-      rate = 0.40;
+    if (dest === 'international') {
+      rate = 2.50;
     } else {
-      rate = 0.15;
+      if (type === 'gsm_sms' || type === 'normal') {
+        if (credits >= 100000) rate = 0.09;
+        else if (credits >= 50000) rate = 0.11;
+        else if (credits >= 25000) rate = 0.13;
+        else rate = 0.15;
+      } else if (type === 'dp') {
+        rate = 0.30;
+      } else if (type === 'cta') {
+        rate = 0.25;
+      } else if (type === 'dp_cta') {
+        rate = 0.40;
+      } else {
+        rate = 0.15;
+      }
     }
+    if (rateInput) rateInput.value = rate.toFixed(3);
   }
 
   const total = Math.round(credits * rate);
@@ -8728,6 +8812,7 @@ if (btnModalSaveOrder) {
     const credits = parseInt(modalOrderCredits.value, 10);
     const notes = modalOrderNotes.value.trim();
     const receipt_url = document.getElementById('modal-order-receipt-url')?.value || null;
+    const rate_per_credit = parseFloat(document.getElementById('modal-order-rate')?.value) || 0.150;
 
     if (!credits || credits <= 0) {
       showToast('warning', 'Invalid Credits', 'Please enter or select a valid credit quantity.');
@@ -8746,7 +8831,7 @@ if (btnModalSaveOrder) {
     try {
       const res = await apiFetch('/billing/requests', {
         method: 'POST',
-        body: JSON.stringify({ destination, credit_type, credits, notes, receipt_url })
+        body: JSON.stringify({ destination, credit_type, credits, notes, receipt_url, rate_per_credit })
       });
       showToast('success', 'Top-up Request Submitted', `Order #${res.request.id} for ${credits.toLocaleString()} credits submitted. Verification TAT: 5-15 mins.`);
       modalBillingOrder.style.display = 'none';
@@ -8760,51 +8845,284 @@ if (btnModalSaveOrder) {
   });
 }
 
+let cachedBillingOrders = [];
+let billingCurrentFilter = 'all';
+let billingSearchQuery = '';
+
+window.filterBillingTab = function(filter, btn) {
+  billingCurrentFilter = filter || 'all';
+  document.querySelectorAll('.billing-tab-pill').forEach(b => {
+    b.classList.remove('active');
+    b.style.fontWeight = '600';
+  });
+  if (btn) {
+    btn.classList.add('active');
+    btn.style.fontWeight = '700';
+  }
+  renderBillingOrdersTable();
+};
+
+window.onBillingSearch = function(query) {
+  billingSearchQuery = (query || '').trim().toLowerCase();
+  renderBillingOrdersTable();
+};
+
+function renderBillingOrdersTable() {
+  if (!billingOrdersTbody) return;
+  if (!cachedBillingOrders || cachedBillingOrders.length === 0) {
+    billingOrdersTbody.innerHTML = `<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--slate-400);">No billing top-up orders found.</td></tr>`;
+    return;
+  }
+
+  let filtered = cachedBillingOrders.slice();
+
+  // Filter by tab
+  if (billingCurrentFilter === 'due') {
+    filtered = filtered.filter(o => {
+      const pStatus = (o.payment_status || 'unpaid').toLowerCase();
+      const due = parseFloat(o.due_amount !== undefined ? o.due_amount : (parseFloat(o.amount_inr || 0) - parseFloat(o.paid_amount || 0)));
+      return pStatus === 'unpaid' || due > 0;
+    });
+  } else if (billingCurrentFilter === 'partial') {
+    filtered = filtered.filter(o => {
+      const pStatus = (o.payment_status || '').toLowerCase();
+      const paid = parseFloat(o.paid_amount) || 0;
+      const total = parseFloat(o.amount_inr) || 0;
+      return pStatus === 'partial' || (paid > 0 && paid < total);
+    });
+  } else if (billingCurrentFilter === 'paid') {
+    filtered = filtered.filter(o => {
+      const pStatus = (o.payment_status || '').toLowerCase();
+      const due = parseFloat(o.due_amount !== undefined ? o.due_amount : (parseFloat(o.amount_inr || 0) - parseFloat(o.paid_amount || 0)));
+      return pStatus === 'paid' || (due <= 0 && parseFloat(o.amount_inr) > 0);
+    });
+  }
+
+  // Filter by search query
+  if (billingSearchQuery) {
+    filtered = filtered.filter(o => {
+      const email = (o.user_email || '').toLowerCase();
+      const utr = (o.utr_number || '').toLowerCase();
+      const idStr = String(o.id);
+      return email.includes(billingSearchQuery) || utr.includes(billingSearchQuery) || idStr.includes(billingSearchQuery);
+    });
+  }
+
+  if (filtered.length === 0) {
+    billingOrdersTbody.innerHTML = `<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--slate-400);">No orders matching current filter or search criteria.</td></tr>`;
+    return;
+  }
+
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  const isReseller = currentUser && currentUser.role === 'reseller';
+
+  billingOrdersTbody.innerHTML = filtered.map(ord => {
+    const oStatus = (ord.status || 'Pending').toLowerCase();
+    let badgeClass = 'badge-submitted';
+    if (oStatus === 'approved') badgeClass = 'badge-updated';
+    if (oStatus === 'rejected') badgeClass = 'badge-rejected';
+
+    const totalBill = parseFloat(ord.amount_inr) || 0;
+    const paidAmount = parseFloat(ord.paid_amount) || 0;
+    const dueAmount = Math.max(0, totalBill - paidAmount);
+
+    let pBadgeHtml = '';
+    if (dueAmount <= 0 && totalBill > 0) {
+      pBadgeHtml = `<span class="status-badge" style="background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-weight:700;font-size:0.7rem;">PAID (CLEAR)</span>`;
+    } else if (paidAmount > 0 && dueAmount > 0) {
+      pBadgeHtml = `<span class="status-badge" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;font-weight:700;font-size:0.7rem;">PARTIAL (₹${dueAmount.toLocaleString()} BAKI)</span>`;
+    } else {
+      pBadgeHtml = `<span class="status-badge" style="background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;font-weight:700;font-size:0.7rem;">DUE (UNPAID)</span>`;
+    }
+
+    const ratePerCr = parseFloat(ord.rate_per_credit) || (totalBill > 0 && ord.credits_requested ? (totalBill / ord.credits_requested) : 0.150);
+
+    const canManageKhata = isAdmin || (isReseller && (ord.reseller_id === currentUser.id || ord.user_id !== currentUser.id));
+
+    let actionBtns = [];
+    if (canManageKhata) {
+      actionBtns.push(`
+        <button class="btn-action" onclick="openRecordPaymentModal(${ord.id})" style="padding:3px 8px;font-size:0.72rem;background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;font-weight:700;display:inline-flex;align-items:center;gap:3px;" title="Record payment or clear Khata">
+          <i data-lucide="hand-coins" style="width:12px;height:12px;"></i> Settle ₹
+        </button>
+      `);
+    }
+
+    if (isAdmin && oStatus === 'pending') {
+      actionBtns.push(`
+        <button class="btn-action btn-action-success" onclick="approveBillingOrder(${ord.id})" style="padding:3px 8px;font-size:0.72rem;display:inline-flex;align-items:center;gap:3px;">
+          <i data-lucide="check" style="width:12px;height:12px;"></i> Approve
+        </button>
+        <button class="btn-action btn-action-danger" onclick="rejectBillingOrder(${ord.id})" style="padding:3px 8px;font-size:0.72rem;display:inline-flex;align-items:center;gap:3px;">
+          <i data-lucide="x" style="width:12px;height:12px;"></i> Reject
+        </button>
+      `);
+    }
+
+    const actionsHtml = actionBtns.length > 0 ? `<div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;">${actionBtns.join('')}</div>` : '-';
+
+    const cTypeLabel = ord.credit_type === 'gsm_sms' ? 'GSM Bulk SMS' : (ord.credit_type === 'normal' ? 'WA Text' : (ord.credit_type || '').toUpperCase());
+
+    return `
+      <tr>
+        <td>
+          <strong style="font-family:monospace;font-size:0.82rem;">#${ord.id}</strong>
+          <div style="font-size:0.68rem;color:#64748b;font-family:monospace;">${escapeHtml(ord.utr_number || 'INV')}</div>
+        </td>
+        <td>
+          <strong style="font-size:0.82rem;color:#0f172a;">${escapeHtml(ord.user_email || currentUser.email)}</strong>
+          <div style="font-size:0.68rem;color:#64748b;text-transform:uppercase;">${ord.user_role || 'client'}</div>
+        </td>
+        <td>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:0.78rem;font-weight:600;">
+            <i data-lucide="${ord.destination === 'international' ? 'globe-2' : 'globe'}" style="width:13px;height:13px;color:var(--primary);"></i>
+            ${ord.destination === 'international' ? 'Intl' : 'Dom'} / ${cTypeLabel}
+          </span>
+        </td>
+        <td style="text-align:right;">
+          <strong style="color:var(--primary);font-size:0.85rem;">${Number(ord.credits_requested || ord.credits || 0).toLocaleString()}</strong>
+        </td>
+        <td style="text-align:right;font-size:0.8rem;color:#475569;font-family:monospace;">
+          ₹${ratePerCr.toFixed(3)}
+        </td>
+        <td style="text-align:right;">
+          <strong style="font-size:0.85rem;color:#0f172a;">₹${totalBill.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>
+        </td>
+        <td style="text-align:right;">
+          <strong style="font-size:0.85rem;color:#059669;">₹${paidAmount.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>
+        </td>
+        <td style="text-align:right;">
+          <strong style="font-size:0.85rem;color:${dueAmount > 0 ? '#dc2626' : '#64748b'};">₹${dueAmount.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>
+        </td>
+        <td style="text-align:center;">${pBadgeHtml}</td>
+        <td style="text-align:center;"><span class="status-badge ${badgeClass}">${(ord.status || 'Pending').toUpperCase()}</span></td>
+        <td style="font-size:0.75rem;color:#64748b;white-space:nowrap;">${new Date(ord.created_at).toLocaleDateString()}</td>
+        <td style="text-align:center;">${actionsHtml}</td>
+      </tr>
+    `;
+  }).join('');
+
+  if (window.lucide) lucide.createIcons({ root: billingOrdersTbody });
+}
+
 async function loadBillingOrders() {
   if (!billingOrdersTbody) return;
   try {
-    const orders = await apiFetch('/billing/requests');
-    if (orders.length === 0) {
-      billingOrdersTbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--slate-400);">No billing top-up orders found.</td></tr>`;
-      return;
-    }
-    const isAdmin = currentUser && currentUser.role === 'admin';
-    billingOrdersTbody.innerHTML = orders.map(ord => {
-      const oStatus = (ord.status || 'Pending').toLowerCase();
-      let badgeClass = 'badge-submitted';
-      if (oStatus === 'approved') badgeClass = 'badge-updated';
-      if (oStatus === 'rejected') badgeClass = 'badge-rejected';
+    const [orders, summary] = await Promise.all([
+      apiFetch('/billing/requests'),
+      apiFetch('/billing/summary').catch(() => null)
+    ]);
 
-      let actions = '-';
-      if (isAdmin && oStatus === 'pending') {
-        actions = `
-          <button class="btn-action btn-action-success" onclick="approveBillingOrder(${ord.id})" style="display:inline-flex;align-items:center;gap:4px;"><i data-lucide="check" style="width:13px;height:13px;"></i> Approve & Credit</button>
-          <button class="btn-action btn-action-danger" onclick="rejectBillingOrder(${ord.id})" style="display:inline-flex;align-items:center;gap:4px;"><i data-lucide="x" style="width:13px;height:13px;"></i> Reject</button>
-        `;
-      }
-      return `
-        <tr>
-          <td><strong>#${ord.id}</strong></td>
-          <td><span style="font-size:0.85rem;">${escapeHtml(ord.user_email || ord.requester_email || currentUser.email)}</span></td>
-          <td>
-            <span style="display:inline-flex;align-items:center;gap:4px;">
-              <i data-lucide="${ord.destination === 'international' ? 'globe-2' : 'globe'}" style="width:13px;height:13px;color:var(--primary);"></i>
-              ${ord.destination === 'international' ? 'Intl' : 'Dom'} / ${ord.credit_type}
-            </span>
-          </td>
-          <td><strong style="color:var(--primary);">${Number(ord.credits_requested || ord.credits || 0).toLocaleString()}</strong></td>
-          <td><strong>₹${Number(ord.amount_inr || 0).toLocaleString()}</strong></td>
-          <td><span class="status-badge ${badgeClass}">${(ord.status || 'Pending').toUpperCase()}</span></td>
-          <td><span style="font-size:0.8rem;color:var(--slate-500);">${new Date(ord.created_at).toLocaleDateString()}</span></td>
-          <td>${actions}</td>
-        </tr>
-      `;
-    }).join('');
-    if (window.lucide) lucide.createIcons({ root: billingOrdersTbody });
+    cachedBillingOrders = Array.isArray(orders) ? orders : [];
+
+    if (summary) {
+      const setEl = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+      };
+      setEl('billing-kpi-total-billed', `₹${Number(summary.total_billed || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
+      setEl('billing-kpi-total-paid', `₹${Number(summary.total_paid || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
+      setEl('billing-kpi-total-due', `₹${Number(summary.total_due || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
+      setEl('billing-kpi-pending-count', (Number(summary.count_unpaid || 0) + Number(summary.count_partial || 0)).toLocaleString());
+
+      setEl('tab-cnt-all', summary.total_orders || cachedBillingOrders.length);
+      setEl('tab-cnt-due', summary.count_unpaid || 0);
+      setEl('tab-cnt-partial', summary.count_partial || 0);
+      setEl('tab-cnt-paid', summary.count_paid || 0);
+    } else {
+      const dueCount = cachedBillingOrders.filter(o => (parseFloat(o.amount_inr || 0) - parseFloat(o.paid_amount || 0)) > 0 && parseFloat(o.paid_amount || 0) === 0).length;
+      const partCount = cachedBillingOrders.filter(o => parseFloat(o.paid_amount || 0) > 0 && (parseFloat(o.amount_inr || 0) - parseFloat(o.paid_amount || 0)) > 0).length;
+      const paidCount = cachedBillingOrders.filter(o => parseFloat(o.paid_amount || 0) >= parseFloat(o.amount_inr || 0) && parseFloat(o.amount_inr || 0) > 0).length;
+      const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+      setEl('tab-cnt-all', cachedBillingOrders.length);
+      setEl('tab-cnt-due', dueCount);
+      setEl('tab-cnt-partial', partCount);
+      setEl('tab-cnt-paid', paidCount);
+    }
+
+    renderBillingOrdersTable();
   } catch (err) {
-    billingOrdersTbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:red;padding:20px;">Failed to load orders: ${err.message}</td></tr>`;
+    billingOrdersTbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:red;padding:20px;">Failed to load orders: ${err.message}</td></tr>`;
   }
 }
+
+let currentRecordingOrder = null;
+window.openRecordPaymentModal = function(id) {
+  const ord = (cachedBillingOrders || []).find(o => o.id === id);
+  if (!ord) return;
+  currentRecordingOrder = ord;
+
+  const totalBill = parseFloat(ord.amount_inr) || 0;
+  const alreadyPaid = parseFloat(ord.paid_amount) || 0;
+  const currentDue = Math.max(0, totalBill - alreadyPaid);
+
+  const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setEl('modal-payment-client-email', ord.user_email || currentUser.email);
+  setEl('modal-payment-total-bill', `₹${totalBill.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
+  setEl('modal-payment-already-paid', `₹${alreadyPaid.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
+  setEl('modal-payment-current-due', `₹${currentDue.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
+  
+  const idInp = document.getElementById('modal-payment-order-id');
+  if (idInp) idInp.value = ord.id;
+  const amtInput = document.getElementById('modal-payment-amount');
+  if (amtInput) amtInput.value = currentDue > 0 ? currentDue : '';
+  const refInput = document.getElementById('modal-payment-ref');
+  if (refInput) refInput.value = '';
+  const notesInput = document.getElementById('modal-payment-notes');
+  if (notesInput) notesInput.value = '';
+
+  const modal = document.getElementById('modal-record-payment');
+  if (modal) {
+    modal.style.display = 'flex';
+    if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
+  }
+};
+
+window.setFullSettlementAmount = function() {
+  if (!currentRecordingOrder) return;
+  const totalBill = parseFloat(currentRecordingOrder.amount_inr) || 0;
+  const alreadyPaid = parseFloat(currentRecordingOrder.paid_amount) || 0;
+  const currentDue = Math.max(0, totalBill - alreadyPaid);
+  const amtInput = document.getElementById('modal-payment-amount');
+  if (amtInput) amtInput.value = currentDue;
+};
+
+window.submitRecordPayment = function() {
+  if (!currentRecordingOrder) return;
+  const id = currentRecordingOrder.id;
+  const amount = parseFloat(document.getElementById('modal-payment-amount')?.value);
+  const payment_mode = document.getElementById('modal-payment-mode')?.value || 'UPI';
+  const utr_number = document.getElementById('modal-payment-ref')?.value || '';
+  const notes = document.getElementById('modal-payment-notes')?.value || '';
+
+  if (isNaN(amount) || amount <= 0) {
+    showToast('warning', 'Invalid Amount', 'Please enter a valid payment amount greater than zero.');
+    return;
+  }
+
+  const btn = document.getElementById('btn-save-record-payment');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Recording...';
+  }
+
+  apiFetch(`/billing/requests/${id}/record-payment`, {
+    method: 'POST',
+    body: JSON.stringify({ amount, payment_mode, utr_number, notes })
+  }).then(res => {
+    showToast('success', 'Payment Recorded!', res.message);
+    const modal = document.getElementById('modal-record-payment');
+    if (modal) modal.style.display = 'none';
+    loadBillingOrders();
+  }).catch(err => {
+    showToast('error', 'Payment Failed', err.message);
+  }).finally(() => {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Record & Settle';
+    }
+  });
+};
 
 window.approveBillingOrder = function(id) {
   window.openActionDialog({

@@ -295,8 +295,19 @@ async function initDB() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
-    await client.query(`ALTER TABLE credit_requests ADD COLUMN IF NOT EXISTS receipt_url TEXT;`);
+    await client.query(`
+      ALTER TABLE credit_requests 
+        ADD COLUMN IF NOT EXISTS receipt_url TEXT,
+        ADD COLUMN IF NOT EXISTS rate_per_credit NUMERIC(10, 4) DEFAULT 0.1500,
+        ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(10, 2) DEFAULT 0.00,
+        ADD COLUMN IF NOT EXISTS payment_status VARCHAR(20) DEFAULT 'Unpaid',
+        ADD COLUMN IF NOT EXISTS billing_type VARCHAR(20) DEFAULT 'postpaid_credit',
+        ADD COLUMN IF NOT EXISTS payment_notes TEXT,
+        ADD COLUMN IF NOT EXISTS due_date DATE,
+        ADD COLUMN IF NOT EXISTS payment_history JSONB DEFAULT '[]'::jsonb;
+    `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_credit_requests_user ON credit_requests(user_id, status);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_credit_requests_payment ON credit_requests(payment_status, status);`);
 
     const adminEmail = (process.env.ADMIN_EMAIL || 'admin@messagesphere.com').trim().toLowerCase();
     const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';

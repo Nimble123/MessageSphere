@@ -478,6 +478,73 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
       }
     }
 
+    // Commercial Khata Billing: create invoice record in credit_requests for credit allotments
+    if (mode !== 'debit') {
+      let totalAllotted = 0;
+      let primaryType = 'gsm_sms';
+      let primaryDest = 'domestic';
+
+      for (const [key, rawVal] of Object.entries(updates)) {
+        const val = parseInt(rawVal, 10) || 0;
+        if (val > 0) {
+          totalAllotted += val;
+          if (key.endsWith('_international')) {
+            primaryDest = 'international';
+            primaryType = key.replace(/_international$/, '');
+          } else {
+            primaryDest = 'domestic';
+            primaryType = key.replace(/_domestic$/, '');
+          }
+        }
+      }
+
+      if (totalAllotted > 0) {
+        const ratePerCredit = req.body.rate_per_credit !== undefined && req.body.rate_per_credit !== '' 
+          ? parseFloat(req.body.rate_per_credit) 
+          : 0.1500;
+        const totalBill = req.body.total_bill !== undefined && req.body.total_bill !== ''
+          ? parseFloat(req.body.total_bill)
+          : (totalAllotted * ratePerCredit);
+        
+        let paymentStatus = (req.body.payment_status || 'unpaid').toLowerCase();
+        let paidAmount = 0.00;
+
+        if (paymentStatus === 'paid') {
+          paidAmount = totalBill;
+          paymentStatus = 'Paid';
+        } else if (paymentStatus === 'partial') {
+          paidAmount = parseFloat(req.body.paid_amount) || 0.00;
+          if (paidAmount >= totalBill && totalBill > 0) paymentStatus = 'Paid';
+          else if (paidAmount <= 0) paymentStatus = 'Unpaid';
+          else paymentStatus = 'Partial';
+        } else {
+          paidAmount = 0.00;
+          paymentStatus = 'Unpaid';
+        }
+
+        const invNumber = `INV-${Date.now().toString().slice(-6)}`;
+        const notes = String(reason || `Direct allotment by ${req.user.role}`).trim();
+
+        await client.query(`
+          INSERT INTO credit_requests 
+            (user_id, package_name, credits_requested, credit_type, destination, amount_inr, rate_per_credit, paid_amount, payment_status, utr_number, status, billing_type, payment_notes, created_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Approved', 'postpaid_credit', $11, CURRENT_TIMESTAMP)
+        `, [
+          targetId,
+          `Credit Allotment (${req.user.role === 'admin' ? 'Super Admin' : 'Reseller'})`,
+          totalAllotted,
+          primaryType,
+          primaryDest,
+          totalBill,
+          ratePerCredit,
+          paidAmount,
+          paymentStatus,
+          invNumber,
+          notes
+        ]);
+      }
+    }
+
     await client.query('COMMIT');
     return res.json({ message: 'Credits updated successfully!' });
   } catch (err) {

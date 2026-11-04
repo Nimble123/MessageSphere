@@ -3746,33 +3746,132 @@
 
         <!-- 10. BILLING & TOP-UP REQUESTS VIEW -->
         <section id="view-billing" class="app-view">
-          <div class="card">
-            <div class="card-header">
-              <div>
-                <div class="card-title">Credit Top-up & Purchase Orders</div>
-                <div class="card-desc">Submit credit reload requests or approve client top-up orders.</div>
+          
+          <!-- View Header -->
+          <div class="view-header" style="margin-bottom: 20px;">
+            <div>
+              <h2 class="view-title" style="display: flex; align-items: center; gap: 10px;">
+                <span style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 8px; background: linear-gradient(135deg, #10b981, #059669); color: #fff;">
+                  <i data-lucide="receipt" style="width: 18px; height: 18px;"></i>
+                </span>
+                Billing Invoices & Khata Statement
+              </h2>
+              <div class="view-desc" style="font-size: 0.82rem; color: var(--slate-500); margin-top: 4px;">
+                Wholesale credit top-ups, commercial rate tracking, and real-time receivables (Clear / Partial / Baki Khata).
               </div>
-              <button class="btn-action btn-action-primary" id="btn-new-billing-order-modal" style="display:flex;align-items:center;gap:6px;">
-                <i data-lucide="credit-card" style="width:15px;height:15px;"></i> Request Credit Top-up
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+              <button type="button" class="btn-action btn-action-secondary" onclick="loadBillingOrders()" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; font-size: 0.82rem;">
+                <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i> Refresh Khata
+              </button>
+              <button class="btn-action btn-action-primary" id="btn-new-billing-order-modal" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 600;">
+                <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> Request Credit Top-up
               </button>
             </div>
+          </div>
+
+          <!-- Accounts Receivable & Khata KPI Strip -->
+          <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); margin-bottom: 22px; gap: 14px;">
+            <div class="metric-card" style="padding: 16px 20px; border-left: 4px solid #4f46e5;">
+              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span class="metric-title" style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">Total Billed Value</span>
+                <div class="metric-icon" style="background: #eef2ff; color: #4f46e5; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                  <i data-lucide="calculator" style="width: 17px; height: 17px;"></i>
+                </div>
+              </div>
+              <div class="metric-data">
+                <div class="metric-value" id="billing-kpi-total-billed" style="font-size: 1.5rem; font-weight: 800; color: #1e1b4b;">₹0</div>
+                <div class="metric-sub" style="font-size: 0.72rem; color: var(--slate-500); margin-top: 4px;">Gross invoiced across all orders</div>
+              </div>
+            </div>
+
+            <div class="metric-card" style="padding: 16px 20px; border-left: 4px solid #10b981;">
+              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span class="metric-title" style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">Cleared (Paid)</span>
+                <div class="metric-icon" style="background: #ecfdf5; color: #10b981; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                  <i data-lucide="check-circle-2" style="width: 17px; height: 17px;"></i>
+                </div>
+              </div>
+              <div class="metric-data">
+                <div class="metric-value" id="billing-kpi-total-paid" style="font-size: 1.5rem; font-weight: 800; color: #047857;">₹0</div>
+                <div class="metric-sub" style="font-size: 0.72rem; color: var(--slate-500); margin-top: 4px;">Total payment collected</div>
+              </div>
+            </div>
+
+            <div class="metric-card" style="padding: 16px 20px; border-left: 4px solid #ef4444;">
+              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span class="metric-title" style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">Baki (Outstanding Due)</span>
+                <div class="metric-icon" style="background: #fef2f2; color: #ef4444; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                  <i data-lucide="alert-circle" style="width: 17px; height: 17px;"></i>
+                </div>
+              </div>
+              <div class="metric-data">
+                <div class="metric-value" id="billing-kpi-total-due" style="font-size: 1.5rem; font-weight: 800; color: #b91c1c;">₹0</div>
+                <div class="metric-sub" style="font-size: 0.72rem; color: var(--slate-500); margin-top: 4px;">Pending receivables to collect</div>
+              </div>
+            </div>
+
+            <div class="metric-card" style="padding: 16px 20px; border-left: 4px solid #f59e0b;">
+              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span class="metric-title" style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">Open Khata Accounts</span>
+                <div class="metric-icon" style="background: #fffbeb; color: #f59e0b; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                  <i data-lucide="clock" style="width: 17px; height: 17px;"></i>
+                </div>
+              </div>
+              <div class="metric-data">
+                <div class="metric-value" id="billing-kpi-pending-count" style="font-size: 1.5rem; font-weight: 800; color: #b45309;">0</div>
+                <div class="metric-sub" style="font-size: 0.72rem; color: var(--slate-500); margin-top: 4px;">Orders with pending / partial payment</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header" style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid #e2e8f0; padding: 14px 20px;">
+              
+              <!-- Filter Tabs -->
+              <div style="display: flex; gap: 6px; flex-wrap: wrap;" id="billing-filter-tabs">
+                <button type="button" class="btn-action btn-action-secondary billing-tab-pill active" onclick="filterBillingTab('all', this)" style="padding: 5px 12px; font-size: 0.75rem; font-weight: 700;">
+                  All Invoices (<span id="tab-cnt-all">0</span>)
+                </button>
+                <button type="button" class="btn-action btn-action-secondary billing-tab-pill" onclick="filterBillingTab('due', this)" style="padding: 5px 12px; font-size: 0.75rem; font-weight: 600; color: #dc2626;">
+                  🔴 Baki / Full Due (<span id="tab-cnt-due">0</span>)
+                </button>
+                <button type="button" class="btn-action btn-action-secondary billing-tab-pill" onclick="filterBillingTab('partial', this)" style="padding: 5px 12px; font-size: 0.75rem; font-weight: 600; color: #d97706;">
+                  🟡 Partial Paid (<span id="tab-cnt-partial">0</span>)
+                </button>
+                <button type="button" class="btn-action btn-action-secondary billing-tab-pill" onclick="filterBillingTab('paid', this)" style="padding: 5px 12px; font-size: 0.75rem; font-weight: 600; color: #059669;">
+                  🟢 Fully Cleared (<span id="tab-cnt-paid">0</span>)
+                </button>
+              </div>
+
+              <!-- Search Box -->
+              <div style="position: relative; width: 220px;">
+                <input type="text" id="billing-search-input" class="form-input" placeholder="Search email, inv, UTR..." oninput="onBillingSearch(this.value)" style="padding-left: 28px; font-size: 0.78rem; height: 32px;">
+                <i data-lucide="search" style="position: absolute; left: 8px; top: 8px; width: 14px; height: 14px; color: #94a3b8;"></i>
+              </div>
+            </div>
+
             <div class="card-body" style="padding:0;">
               <div class="table-container">
                 <table>
                   <thead>
                     <tr>
-                      <th>Order ID</th>
-                      <th>Requester</th>
-                      <th>Route / Type</th>
-                      <th>Credits</th>
-                      <th>Amount (INR)</th>
-                      <th>Status</th>
-                      <th>Date</th>
-                      <th>Actions</th>
+                      <th style="font-size:0.75rem;">Invoice / Order</th>
+                      <th style="font-size:0.75rem;">Client Account</th>
+                      <th style="font-size:0.75rem;">Channel & Route</th>
+                      <th style="font-size:0.75rem; text-align:right;">Credits</th>
+                      <th style="font-size:0.75rem; text-align:right;">Rate (₹)</th>
+                      <th style="font-size:0.75rem; text-align:right;">Total Bill</th>
+                      <th style="font-size:0.75rem; text-align:right; color:#059669;">Cleared (Paid)</th>
+                      <th style="font-size:0.75rem; text-align:right; color:#dc2626;">Baki (Due)</th>
+                      <th style="font-size:0.75rem; text-align:center;">Payment Status</th>
+                      <th style="font-size:0.75rem; text-align:center;">Order Status</th>
+                      <th style="font-size:0.75rem;">Date</th>
+                      <th style="font-size:0.75rem; text-align:center;">Actions</th>
                     </tr>
                   </thead>
                   <tbody id="billing-orders-tbody">
-                    <tr><td colspan="8" style="text-align:center;padding:30px;color:var(--slate-400);">Loading top-up orders...</td></tr>
+                    <tr><td colspan="12" style="text-align:center;padding:30px;color:var(--slate-400);">Loading top-up orders & Khata invoices...</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -4351,28 +4450,40 @@
         </h4>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
           <div>
-            <label style="font-size:0.8rem;font-weight:700;color:#2563eb;">📡 GSM Bulk SMS Domestic:</label>
-            <input type="number" id="alloc-gsm_sms-domestic" class="form-input" placeholder="0" min="0">
+            <label style="font-size:0.8rem;font-weight:700;color:#2563eb;display:inline-flex;align-items:center;gap:5px;">
+              <i data-lucide="radio" style="width:13px;height:13px;color:#2563eb;"></i> GSM Bulk SMS Domestic:
+            </label>
+            <input type="number" id="alloc-gsm_sms-domestic" class="form-input" placeholder="0" min="0" oninput="calculateAllocKhata()">
           </div>
           <div>
-            <label style="font-size:0.8rem;font-weight:700;color:#10b981;">💬 Normal WhatsApp Text Domestic:</label>
-            <input type="number" id="alloc-normal-domestic" class="form-input" placeholder="0" min="0">
+            <label style="font-size:0.8rem;font-weight:700;color:#10b981;display:inline-flex;align-items:center;gap:5px;">
+              <i data-lucide="message-square" style="width:13px;height:13px;color:#10b981;"></i> Normal WhatsApp Text Domestic:
+            </label>
+            <input type="number" id="alloc-normal-domestic" class="form-input" placeholder="0" min="0" oninput="calculateAllocKhata()">
           </div>
           <div>
-            <label style="font-size:0.8rem;">🖼️ WhatsApp DP (Media):</label>
-            <input type="number" id="alloc-dp-domestic" class="form-input" placeholder="0" min="0">
+            <label style="font-size:0.8rem;font-weight:700;color:#0284c7;display:inline-flex;align-items:center;gap:5px;">
+              <i data-lucide="image" style="width:13px;height:13px;color:#0284c7;"></i> WhatsApp DP (Media):
+            </label>
+            <input type="number" id="alloc-dp-domestic" class="form-input" placeholder="0" min="0" oninput="calculateAllocKhata()">
           </div>
           <div>
-            <label style="font-size:0.8rem;">🔘 WhatsApp CTA (Buttons):</label>
-            <input type="number" id="alloc-cta-domestic" class="form-input" placeholder="0" min="0">
+            <label style="font-size:0.8rem;font-weight:700;color:#d97706;display:inline-flex;align-items:center;gap:5px;">
+              <i data-lucide="mouse-pointer-click" style="width:13px;height:13px;color:#d97706;"></i> WhatsApp CTA (Buttons):
+            </label>
+            <input type="number" id="alloc-cta-domestic" class="form-input" placeholder="0" min="0" oninput="calculateAllocKhata()">
           </div>
           <div>
-            <label style="font-size:0.8rem;">✨ WhatsApp DP + CTA:</label>
-            <input type="number" id="alloc-dp_cta-domestic" class="form-input" placeholder="0" min="0">
+            <label style="font-size:0.8rem;font-weight:700;color:#8b5cf6;display:inline-flex;align-items:center;gap:5px;">
+              <i data-lucide="layers" style="width:13px;height:13px;color:#8b5cf6;"></i> WhatsApp DP + CTA Combo:
+            </label>
+            <input type="number" id="alloc-dp_cta-domestic" class="form-input" placeholder="0" min="0" oninput="calculateAllocKhata()">
           </div>
           <div>
-            <label style="font-size:0.8rem;">📱 WhatsApp Own SIM:</label>
-            <input type="number" id="alloc-own_number-domestic" class="form-input" placeholder="0" min="0">
+            <label style="font-size:0.8rem;font-weight:700;color:#059669;display:inline-flex;align-items:center;gap:5px;">
+              <i data-lucide="smartphone" style="width:13px;height:13px;color:#059669;"></i> WhatsApp Own SIM:
+            </label>
+            <input type="number" id="alloc-own_number-domestic" class="form-input" placeholder="0" min="0" oninput="calculateAllocKhata()">
           </div>
         </div>
 
@@ -4381,28 +4492,92 @@
         </h4>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div>
-            <label style="font-size:0.8rem;font-weight:700;color:#2563eb;">🌐 GSM Bulk SMS Intl:</label>
-            <input type="number" id="alloc-gsm_sms-international" class="form-input" placeholder="0" min="0">
+            <label style="font-size:0.8rem;font-weight:700;color:#2563eb;display:inline-flex;align-items:center;gap:5px;">
+              <i data-lucide="globe" style="width:13px;height:13px;color:#2563eb;"></i> GSM Bulk SMS Intl:
+            </label>
+            <input type="number" id="alloc-gsm_sms-international" class="form-input" placeholder="0" min="0" oninput="calculateAllocKhata()">
           </div>
           <div>
-            <label style="font-size:0.8rem;font-weight:700;color:#10b981;">💬 Normal WhatsApp Text Intl:</label>
-            <input type="number" id="alloc-normal-international" class="form-input" placeholder="0" min="0">
+            <label style="font-size:0.8rem;font-weight:700;color:#10b981;display:inline-flex;align-items:center;gap:5px;">
+              <i data-lucide="globe-2" style="width:13px;height:13px;color:#10b981;"></i> Normal WhatsApp Text Intl:
+            </label>
+            <input type="number" id="alloc-normal-international" class="form-input" placeholder="0" min="0" oninput="calculateAllocKhata()">
           </div>
           <div>
-            <label style="font-size:0.8rem;">🖼️ WhatsApp DP Intl:</label>
-            <input type="number" id="alloc-dp-international" class="form-input" placeholder="0" min="0">
+            <label style="font-size:0.8rem;font-weight:700;color:#0284c7;display:inline-flex;align-items:center;gap:5px;">
+              <i data-lucide="image" style="width:13px;height:13px;color:#0284c7;"></i> WhatsApp DP Intl:
+            </label>
+            <input type="number" id="alloc-dp-international" class="form-input" placeholder="0" min="0" oninput="calculateAllocKhata()">
           </div>
           <div>
-            <label style="font-size:0.8rem;">🔘 WhatsApp CTA Intl:</label>
-            <input type="number" id="alloc-cta-international" class="form-input" placeholder="0" min="0">
+            <label style="font-size:0.8rem;font-weight:700;color:#d97706;display:inline-flex;align-items:center;gap:5px;">
+              <i data-lucide="mouse-pointer-click" style="width:13px;height:13px;color:#d97706;"></i> WhatsApp CTA Intl:
+            </label>
+            <input type="number" id="alloc-cta-international" class="form-input" placeholder="0" min="0" oninput="calculateAllocKhata()">
           </div>
           <div>
-            <label style="font-size:0.8rem;">✨ WhatsApp DP + CTA Intl:</label>
-            <input type="number" id="alloc-dp_cta-international" class="form-input" placeholder="0" min="0">
+            <label style="font-size:0.8rem;font-weight:700;color:#8b5cf6;display:inline-flex;align-items:center;gap:5px;">
+              <i data-lucide="layers" style="width:13px;height:13px;color:#8b5cf6;"></i> WhatsApp DP + CTA Intl:
+            </label>
+            <input type="number" id="alloc-dp_cta-international" class="form-input" placeholder="0" min="0" oninput="calculateAllocKhata()">
           </div>
           <div>
-            <label style="font-size:0.8rem;">📱 WhatsApp Own SIM Intl:</label>
-            <input type="number" id="alloc-own_number-international" class="form-input" placeholder="0" min="0">
+            <label style="font-size:0.8rem;font-weight:700;color:#059669;display:inline-flex;align-items:center;gap:5px;">
+              <i data-lucide="smartphone" style="width:13px;height:13px;color:#059669;"></i> WhatsApp Own SIM Intl:
+            </label>
+            <input type="number" id="alloc-own_number-international" class="form-input" placeholder="0" min="0" oninput="calculateAllocKhata()">
+          </div>
+        </div>
+
+        <!-- Commercial Rate & Khata Billing Terms (Admin & Reseller) -->
+        <div id="alloc-commercial-section" style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;margin-top:16px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <span style="font-size:0.82rem;font-weight:800;color:#0f172a;display:inline-flex;align-items:center;gap:6px;">
+              <i data-lucide="receipt" style="width:15px;height:15px;color:#4f46e5;"></i> Commercial Rate & Khata Billing
+            </span>
+            <span style="font-size:0.7rem;background:#eef2ff;color:#4f46e5;font-weight:700;padding:2px 8px;border-radius:6px;">Admin & Reseller Pricing</span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+            <div>
+              <label style="font-size:0.78rem;font-weight:700;color:#475569;display:block;margin-bottom:4px;">
+                Rate per Credit (₹ INR) <span style="font-size:0.7rem;color:#94a3b8;font-weight:400;">(e.g. 0.12 or 0.15)</span>
+              </label>
+              <input type="number" id="alloc-rate-per-credit" class="form-input" placeholder="0.150" step="0.001" min="0" value="0.150" oninput="calculateAllocKhata()">
+            </div>
+            <div>
+              <label style="font-size:0.78rem;font-weight:700;color:#475569;display:block;margin-bottom:4px;">
+                Total Bill / Invoice Amount
+              </label>
+              <div id="alloc-total-bill-display" style="height:38px;background:#ffffff;border:1px solid #cbd5e1;border-radius:8px;display:flex;align-items:center;padding:0 12px;font-weight:800;color:#0f172a;font-size:0.95rem;">
+                ₹0.00
+              </div>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label style="font-size:0.78rem;font-weight:700;color:#475569;display:block;margin-bottom:4px;">
+                Payment Terms (Khata / Udhar)
+              </label>
+              <select id="alloc-payment-status" class="form-input" onchange="onAllocPaymentStatusChange()">
+                <option value="unpaid">🔴 Unpaid / Udhar (Postpaid Khata • Full Due)</option>
+                <option value="paid">🟢 Paid / Settled (Full Advance Cleared)</option>
+                <option value="partial">🟡 Partial Paid (Aadha Received • Baki Pending)</option>
+              </select>
+            </div>
+            <div id="alloc-partial-amount-group" style="display:none;">
+              <label style="font-size:0.78rem;font-weight:700;color:#475569;display:block;margin-bottom:4px;">
+                Amount Received Now (₹ INR)
+              </label>
+              <input type="number" id="alloc-paid-amount" class="form-input" placeholder="0.00" step="1" min="0" oninput="calculateAllocKhata()">
+            </div>
+          </div>
+
+          <div id="alloc-khata-summary" style="margin-top:10px;padding:8px 12px;background:#ffffff;border-radius:6px;border:1px dashed #cbd5e1;font-size:0.75rem;color:#475569;display:flex;justify-content:space-between;align-items:center;">
+            <span>Credits: <strong id="alloc-calc-credits" style="color:#0f172a;">0</strong></span>
+            <span>Received: <strong id="alloc-calc-received" style="color:#10b981;">₹0</strong></span>
+            <span>Balance Baki (Due): <strong id="alloc-calc-baki" style="color:#dc2626;">₹0</strong></span>
           </div>
         </div>
 
@@ -5542,21 +5717,25 @@
         <!-- Step 1: Select Channel & Route -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
           <div class="form-group" style="margin-bottom: 0;">
-            <label style="font-size: 0.78rem; font-weight: 700; color: #475569;">Destination Route</label>
+            <label style="font-size: 0.78rem; font-weight: 700; color: #475569; display: flex; align-items: center; gap: 4px;">
+              <i data-lucide="globe" style="width: 13px; height: 13px; color: #4f46e5;"></i> Destination Route
+            </label>
             <select id="modal-order-dest" class="form-input" onchange="calculateTopupAmount()">
-              <option value="domestic">🇮🇳 Domestic (India +91)</option>
-              <option value="international">🌐 International (Global)</option>
+              <option value="domestic">Domestic Route (India +91)</option>
+              <option value="international">International Route (Global)</option>
             </select>
           </div>
           <div class="form-group" style="margin-bottom: 0;">
-            <label style="font-size: 0.78rem; font-weight: 700; color: #475569;">Telecom Channel</label>
+            <label style="font-size: 0.78rem; font-weight: 700; color: #475569; display: flex; align-items: center; gap: 4px;">
+              <i data-lucide="layers" style="width: 13px; height: 13px; color: #4f46e5;"></i> Telecom Channel
+            </label>
             <select id="modal-order-type" class="form-input" onchange="calculateTopupAmount()">
-              <option value="gsm_sms">📡 GSM Bulk SMS (Cellular Telecom Route)</option>
-              <option value="normal">💬 Normal WhatsApp (Standard Text)</option>
-              <option value="dp">🖼️ WhatsApp DP (Media Graphic)</option>
-              <option value="cta">🔘 WhatsApp CTA (Interactive Buttons)</option>
-              <option value="dp_cta">⚡ WhatsApp DP + CTA Combo</option>
-              <option value="own_number">📲 WhatsApp Own Dedicated SIM</option>
+              <option value="gsm_sms">GSM Bulk SMS (Cellular Telecom Route)</option>
+              <option value="normal">Normal WhatsApp (Standard Text)</option>
+              <option value="dp">WhatsApp DP (Media Graphic)</option>
+              <option value="cta">WhatsApp CTA (Interactive Buttons)</option>
+              <option value="dp_cta">WhatsApp DP + CTA Combo</option>
+              <option value="own_number">WhatsApp Own Dedicated SIM</option>
             </select>
           </div>
         </div>
@@ -5592,11 +5771,15 @@
           </div>
         </div>
 
-        <!-- Custom Credit Quantity & Live Price -->
-        <div style="display: grid; grid-template-columns: 1fr 140px; gap: 12px; margin-bottom: 18px;">
+        <!-- Custom Credit Quantity, Rate & Live Price -->
+        <div style="display: grid; grid-template-columns: 1fr 130px 140px; gap: 12px; margin-bottom: 18px;">
           <div class="form-group" style="margin-bottom: 0;">
             <label style="font-size: 0.78rem; font-weight: 700; color: #475569;">Credit Quantity</label>
             <input type="number" id="modal-order-credits" class="form-input" placeholder="e.g. 25000" min="100" step="100" oninput="calculateTopupAmount()">
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label style="font-size: 0.78rem; font-weight: 700; color: #475569;">Rate / Credit (₹)</label>
+            <input type="number" id="modal-order-rate" class="form-input" placeholder="0.150" step="0.001" min="0" value="0.150" oninput="calculateTopupAmount()">
           </div>
           <div class="form-group" style="margin-bottom: 0;">
             <label style="font-size: 0.78rem; font-weight: 700; color: #475569;">Estimated Total</label>
@@ -6179,12 +6362,92 @@
     </div>
   </div>
 
+  <!-- MODAL: RECORD / SETTLE PAYMENT (KHATA CLEARANCE) -->
+  <div id="modal-record-payment" class="modal-overlay" style="display:none;">
+    <div class="modal-card" style="max-width: 520px; width: 95%;">
+      <div class="modal-header-saas" style="background: linear-gradient(135deg, #0f172a, #1e293b); color: #fff; padding: 18px 22px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); display: flex; align-items: center; justify-content: center; color: #10b981;">
+            <i data-lucide="hand-coins" style="width: 18px; height: 18px;"></i>
+          </div>
+          <div>
+            <h3 style="margin: 0; font-size: 1.05rem; color: #fff;">Record Payment / Clear Khata</h3>
+            <div style="font-size: 0.74rem; color: #94a3b8; margin-top: 2px;">Settle full or partial billing balance</div>
+          </div>
+        </div>
+        <button class="btn-modal-close" data-close="modal-record-payment" style="color: #cbd5e1;">&times;</button>
+      </div>
+
+      <div class="modal-body-saas" style="padding: 20px 22px;">
+        <input type="hidden" id="modal-payment-order-id">
+
+        <!-- Invoice Snapshot Summary -->
+        <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span style="font-size: 0.75rem; color: #64748b; font-weight: 600;">Client Account:</span>
+            <strong id="modal-payment-client-email" style="font-size: 0.82rem; color: #0f172a;">client@example.com</strong>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; font-size: 0.76rem; border-top: 1px solid #e2e8f0; padding-top: 8px; margin-top: 6px;">
+            <div>
+              <span style="color: #64748b; display: block; font-size: 0.7rem;">Total Bill:</span>
+              <strong id="modal-payment-total-bill" style="color: #0f172a; font-size: 0.85rem;">₹0</strong>
+            </div>
+            <div>
+              <span style="color: #64748b; display: block; font-size: 0.7rem;">Already Paid:</span>
+              <strong id="modal-payment-already-paid" style="color: #10b981; font-size: 0.85rem;">₹0</strong>
+            </div>
+            <div>
+              <span style="color: #64748b; display: block; font-size: 0.7rem;">Current Baki (Due):</span>
+              <strong id="modal-payment-current-due" style="color: #dc2626; font-size: 0.85rem;">₹0</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Payment Input Fields -->
+        <div class="form-group" style="margin-bottom: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <label style="font-size: 0.78rem; font-weight: 700; color: #0f172a;">Payment Received (₹ INR) <span style="color: #ef4444;">*</span></label>
+            <button type="button" class="btn-action" onclick="setFullSettlementAmount()" style="padding: 2px 8px; font-size: 0.7rem; color: #4f46e5; border: 1px solid #c7d2fe; background: #eef2ff;">Fill Full Balance</button>
+          </div>
+          <input type="number" id="modal-payment-amount" class="form-input" placeholder="e.g. 5000" min="1" step="1" style="font-size: 0.95rem; font-weight: 700; font-family: monospace;">
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label style="font-size: 0.78rem; font-weight: 700; color: #475569;">Payment Mode</label>
+            <select id="modal-payment-mode" class="form-input">
+              <option value="UPI">UPI (GPay / PhonePe / Paytm)</option>
+              <option value="IMPS">IMPS / NetBanking</option>
+              <option value="NEFT_RTGS">NEFT / RTGS</option>
+              <option value="Cash">Cash Handover</option>
+              <option value="Cheque">Bank Cheque</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label style="font-size: 0.78rem; font-weight: 700; color: #475569;">Reference / UTR / Txn ID</label>
+            <input type="text" id="modal-payment-ref" class="form-input" placeholder="e.g. UPI 48291049281" style="font-family: monospace; font-size: 0.82rem;">
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 0;">
+          <label style="font-size: 0.78rem; font-weight: 700; color: #475569;">Khata Notes / Remarks</label>
+          <input type="text" id="modal-payment-notes" class="form-input" placeholder="e.g. Received via PhonePe, balance promised next Friday">
+        </div>
+      </div>
+
+      <div class="modal-footer-saas" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 22px; display: flex; justify-content: flex-end; gap: 8px;">
+        <button type="button" class="btn-action btn-action-secondary" data-close="modal-record-payment">Cancel</button>
+        <button type="button" class="btn-action btn-action-primary" id="btn-save-record-payment" onclick="submitRecordPayment()" style="background: #10b981; font-weight: 700;">Record & Settle</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ENTERPRISE LIBRARIES: SHEETJS, LUCIDE ICONS & CHART.JS -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=1793770100001"></script>
+  <script src="app.js?v=1793770500001"></script>
 </body>
 </html>
