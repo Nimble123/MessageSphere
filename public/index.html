@@ -2477,26 +2477,35 @@
                   <div class="cta-builder-box" id="composer-cta-box" style="display:block;background:white;border:1px solid #fde047;border-radius:var(--radius-sm);padding:14px;">
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
                       <div>
-                        <label style="font-size:0.8rem;display:flex;align-items:center;gap:4px;font-weight:600;">
-                          <i data-lucide="phone-call" style="width:14px;height:14px;color:var(--primary);"></i> Call Button Text
-                        </label>
-                        <input type="text" id="cta-call-text" class="form-input" placeholder="e.g. Call Us Now">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                          <label style="font-size:0.8rem;display:flex;align-items:center;gap:4px;font-weight:600;margin-bottom:0;">
+                            <i data-lucide="phone-call" style="width:14px;height:14px;color:var(--primary);"></i> Call Button Text
+                          </label>
+                          <span id="cta-call-char-count" style="font-size:0.72rem;color:var(--text-muted);font-weight:700;">0/20</span>
+                        </div>
+                        <input type="text" id="cta-call-text" class="form-input" maxlength="20" placeholder="e.g. Call Us Now">
                       </div>
                       <div>
-                        <label style="font-size:0.8rem;font-weight:600;">Phone Number</label>
+                        <label style="font-size:0.8rem;font-weight:600;margin-bottom:4px;display:block;">Phone Number</label>
                         <input type="text" id="cta-call-number" class="form-input" placeholder="+919876543210">
                       </div>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
                       <div>
-                        <label style="font-size:0.8rem;display:flex;align-items:center;gap:4px;font-weight:600;">
-                          <i data-lucide="external-link" style="width:14px;height:14px;color:var(--primary);"></i> Web Link Text
-                        </label>
-                        <input type="text" id="cta-url-text" class="form-input" placeholder="e.g. Visit Website">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                          <label style="font-size:0.8rem;display:flex;align-items:center;gap:4px;font-weight:600;margin-bottom:0;">
+                            <i data-lucide="external-link" style="width:14px;height:14px;color:var(--primary);"></i> Web Link Text
+                          </label>
+                          <span id="cta-url-char-count" style="font-size:0.72rem;color:var(--text-muted);font-weight:700;">0/20</span>
+                        </div>
+                        <input type="text" id="cta-url-text" class="form-input" maxlength="20" placeholder="e.g. Visit Website">
                       </div>
                       <div>
-                        <label style="font-size:0.8rem;font-weight:600;">Website URL</label>
+                        <label style="font-size:0.8rem;font-weight:600;margin-bottom:4px;display:block;">Website URL</label>
                         <input type="url" id="cta-url-link" class="form-input" placeholder="https://yourwebsite.com">
+                        <div style="font-size:0.72rem;color:#b45309;margin-top:4px;font-weight:600;line-height:1.3;">
+                          ⚠️ Must start with <span style="font-family:monospace;background:#fef3c7;padding:1px 4px;border-radius:3px;">https://</span> &bull; Direct WhatsApp links (<span style="font-family:monospace;">wa.me</span>) not supported
+                        </div>
                       </div>
                     </div>
 
@@ -4873,21 +4882,30 @@
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">
             <div>
-              <label style="font-size:0.75rem;font-weight:600;">Button 1: Web Link Text</label>
-              <input type="text" id="modal-tpl-create-url-text" class="form-input" placeholder="e.g. Visit Website / Shop Now">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                <label style="font-size:0.75rem;font-weight:600;margin-bottom:0;">Button 1: Web Link Text</label>
+                <span id="tpl-create-url-char-count" style="font-size:0.7rem;color:var(--text-muted);font-weight:700;">0/20</span>
+              </div>
+              <input type="text" id="modal-tpl-create-url-text" class="form-input" maxlength="20" placeholder="e.g. Visit Website / Shop Now">
             </div>
             <div>
-              <label style="font-size:0.75rem;font-weight:600;">Website Target URL</label>
+              <label style="font-size:0.75rem;font-weight:600;margin-bottom:2px;display:block;">Website Target URL</label>
               <input type="url" id="modal-tpl-create-url-link" class="form-input" placeholder="https://yourstore.com">
+              <div style="font-size:0.68rem;color:#b45309;margin-top:2px;font-weight:600;">
+                ⚠️ Starts with <span style="font-family:monospace;">https://</span> &bull; No <span style="font-family:monospace;">wa.me</span> links
+              </div>
             </div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
             <div>
-              <label style="font-size:0.75rem;font-weight:600;">Button 2: Call Button Text</label>
-              <input type="text" id="modal-tpl-create-call-text" class="form-input" placeholder="e.g. Call Us / Contact Now">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                <label style="font-size:0.75rem;font-weight:600;margin-bottom:0;">Button 2: Call Button Text</label>
+                <span id="tpl-create-call-char-count" style="font-size:0.7rem;color:var(--text-muted);font-weight:700;">0/20</span>
+              </div>
+              <input type="text" id="modal-tpl-create-call-text" class="form-input" maxlength="20" placeholder="e.g. Call Us / Contact Now">
             </div>
             <div>
-              <label style="font-size:0.75rem;font-weight:600;">Phone Number</label>
+              <label style="font-size:0.75rem;font-weight:600;margin-bottom:2px;display:block;">Phone Number</label>
               <input type="text" id="modal-tpl-create-call-number" class="form-input" placeholder="+919876543210">
             </div>
           </div>
@@ -4958,6 +4976,10 @@
           </div>
 
           <textarea id="modal-template-body" class="form-input" rows="5" placeholder="Enter message template text..."></textarea>
+          <div id="tpl-create-cta-char-strip" style="display:none;margin-top:6px;font-size:0.75rem;color:var(--slate-600);font-weight:600;justify-content:space-between;align-items:center;">
+            <span>WhatsApp CTA Character Limit: <strong id="tpl-create-cta-char-num" style="color:var(--primary);">0</strong> / 1,024</span>
+            <span id="tpl-create-cta-char-status" style="font-size:0.7rem;color:#16a34a;font-weight:700;">Within Limit</span>
+          </div>
 
           <!-- SMS Encoding Selector & Telemetry (GSM-7 vs Unicode) -->
           <div id="tpl-create-gsm-strip" style="display:none;margin-top:10px;background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:10px;padding:12px 14px;">
@@ -5210,21 +5232,30 @@
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">
             <div>
-              <label style="font-size:0.75rem;font-weight:600;">Button 1: Web Link Text</label>
-              <input type="text" id="modal-tpl-edit-url-text" class="form-input" placeholder="e.g. Visit Website / Shop Now">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                <label style="font-size:0.75rem;font-weight:600;margin-bottom:0;">Button 1: Web Link Text</label>
+                <span id="tpl-edit-url-char-count" style="font-size:0.7rem;color:var(--text-muted);font-weight:700;">0/20</span>
+              </div>
+              <input type="text" id="modal-tpl-edit-url-text" class="form-input" maxlength="20" placeholder="e.g. Visit Website / Shop Now">
             </div>
             <div>
-              <label style="font-size:0.75rem;font-weight:600;">Website Target URL</label>
+              <label style="font-size:0.75rem;font-weight:600;margin-bottom:2px;display:block;">Website Target URL</label>
               <input type="url" id="modal-tpl-edit-url-link" class="form-input" placeholder="https://yourstore.com">
+              <div style="font-size:0.68rem;color:#b45309;margin-top:2px;font-weight:600;">
+                ⚠️ Starts with <span style="font-family:monospace;">https://</span> &bull; No <span style="font-family:monospace;">wa.me</span> links
+              </div>
             </div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
             <div>
-              <label style="font-size:0.75rem;font-weight:600;">Button 2: Call Button Text</label>
-              <input type="text" id="modal-tpl-edit-call-text" class="form-input" placeholder="e.g. Call Us / Contact Now">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                <label style="font-size:0.75rem;font-weight:600;margin-bottom:0;">Button 2: Call Button Text</label>
+                <span id="tpl-edit-call-char-count" style="font-size:0.7rem;color:var(--text-muted);font-weight:700;">0/20</span>
+              </div>
+              <input type="text" id="modal-tpl-edit-call-text" class="form-input" maxlength="20" placeholder="e.g. Call Us / Contact Now">
             </div>
             <div>
-              <label style="font-size:0.75rem;font-weight:600;">Phone Number</label>
+              <label style="font-size:0.75rem;font-weight:600;margin-bottom:2px;display:block;">Phone Number</label>
               <input type="text" id="modal-tpl-edit-call-number" class="form-input" placeholder="+919876543210">
             </div>
           </div>
@@ -5295,6 +5326,10 @@
           </div>
 
           <textarea id="modal-edit-tpl-body" class="form-input" rows="5"></textarea>
+          <div id="tpl-edit-cta-char-strip" style="display:none;margin-top:6px;font-size:0.75rem;color:var(--slate-600);font-weight:600;justify-content:space-between;align-items:center;">
+            <span>WhatsApp CTA Character Limit: <strong id="tpl-edit-cta-char-num" style="color:var(--primary);">0</strong> / 1,024</span>
+            <span id="tpl-edit-cta-char-status" style="font-size:0.7rem;color:#16a34a;font-weight:700;">Within Limit</span>
+          </div>
 
           <!-- SMS Encoding Selector & Telemetry (GSM-7 vs Unicode) -->
           <div id="tpl-edit-gsm-strip" style="display:none;margin-top:10px;background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:10px;padding:12px 14px;">
@@ -6147,6 +6182,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=1793769600001"></script>
+  <script src="app.js?v=1793769700001"></script>
 </body>
 </html>

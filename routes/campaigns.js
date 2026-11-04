@@ -348,11 +348,72 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
   if (cta_data) {
     try {
       parsedCta = typeof cta_data === 'string' ? JSON.parse(cta_data) : cta_data;
-      if (parsedCta && (parsedCta.callText || parsedCta.urlText)) {
+      if (parsedCta && (parsedCta.callText || parsedCta.urlText || parsedCta.call_text || parsedCta.url_text)) {
         hasCta = true;
       }
     } catch (e) {
       console.warn('CTA parse error:', e);
+    }
+  }
+
+  // Strict CTA Business Rules Validation (Character Limit 1024, Button Text 20, HTTPS & No Direct WhatsApp)
+  const isCtaCampaign = hasCta || req.body.campaign_type === 'cta' || req.body.campaign_type === 'dp_cta';
+  if (isCtaCampaign) {
+    // 1. Message text character limit - 1,024 characters
+    if (text && text.trim().length > 1024) {
+      removeUploadedFiles(files);
+      return res.status(400).json({
+        error: `WhatsApp CTA campaigns allow a maximum of 1,024 characters for message text. Your message currently has ${text.trim().length} characters.`
+      });
+    }
+
+    // 2. CTA button text & URL rules
+    if (parsedCta) {
+      const callText = String(parsedCta.callText || parsedCta.call_text || '').trim();
+      const callNumber = String(parsedCta.callNumber || parsedCta.call_number || '').trim();
+      const urlText = String(parsedCta.urlText || parsedCta.url_text || '').trim();
+      const urlLink = String(parsedCta.urlLink || parsedCta.url_link || '').trim();
+
+      // Rule: Button text max 20 characters
+      if (callText && callText.length > 20) {
+        removeUploadedFiles(files);
+        return res.status(400).json({
+          error: `CTA Call button text cannot exceed 20 characters (currently ${callText.length} characters).`
+        });
+      }
+
+      if (urlText && urlText.length > 20) {
+        removeUploadedFiles(files);
+        return res.status(400).json({
+          error: `CTA Web link button text cannot exceed 20 characters (currently ${urlText.length} characters).`
+        });
+      }
+
+      if (urlLink) {
+        // Rule: URL must start with https://
+        if (!/^https:\/\//i.test(urlLink)) {
+          removeUploadedFiles(files);
+          return res.status(400).json({
+            error: 'CTA Website URL must start with https:// (e.g. https://yourwebsite.com). Links without https:// or with http:// are not supported.'
+          });
+        }
+
+        // Rule: Direct WhatsApp links not allowed
+        const lowerUrl = urlLink.toLowerCase();
+        if (
+          lowerUrl.includes('wa.me') ||
+          lowerUrl.includes('api.whatsapp.com') ||
+          lowerUrl.includes('chat.whatsapp.com') ||
+          lowerUrl.includes('web.whatsapp.com') ||
+          lowerUrl.includes('whatsapp.com/send') ||
+          lowerUrl.includes('whatsapp.com/dl')
+        ) {
+          removeUploadedFiles(files);
+          return res.status(400).json({
+            error: 'Direct WhatsApp links (wa.me, api.whatsapp.com, chat.whatsapp.com) are not supported in CTA buttons. Please provide a standard website or landing page URL.'
+          });
+        }
+      }
     }
   }
 

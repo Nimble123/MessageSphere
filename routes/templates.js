@@ -381,8 +381,40 @@ router.post('/', authenticate, upload.any(), async (req, res) => {
   const cleanAttachmentSize = primary ? primary.size : 0;
 
   let cleanCta = null;
-  if (cleanType === 'cta' && cta_data) {
-    cleanCta = (typeof cta_data === 'object') ? JSON.stringify(cta_data) : cta_data;
+  if (cleanType === 'cta') {
+    if (templateText && templateText.length > 1024) {
+      removeUploadedFiles(files);
+      return res.status(400).json({ error: 'WhatsApp CTA templates allow a maximum of 1,024 characters for message text.' });
+    }
+    if (cta_data) {
+      cleanCta = (typeof cta_data === 'object') ? JSON.stringify(cta_data) : cta_data;
+      try {
+        const parsed = (typeof cta_data === 'string') ? JSON.parse(cta_data) : cta_data;
+        const callText = String(parsed.call_text || parsed.callText || '').trim();
+        const urlText = String(parsed.url_text || parsed.urlText || '').trim();
+        const urlLink = String(parsed.url_link || parsed.urlLink || '').trim();
+
+        if (callText && callText.length > 20) {
+          removeUploadedFiles(files);
+          return res.status(400).json({ error: 'CTA Call button text cannot exceed 20 characters.' });
+        }
+        if (urlText && urlText.length > 20) {
+          removeUploadedFiles(files);
+          return res.status(400).json({ error: 'CTA Web link button text cannot exceed 20 characters.' });
+        }
+        if (urlLink) {
+          if (!/^https:\/\//i.test(urlLink)) {
+            removeUploadedFiles(files);
+            return res.status(400).json({ error: 'CTA Website URL must start with https://. Links without https:// or with http:// are not supported.' });
+          }
+          const lower = urlLink.toLowerCase();
+          if (lower.includes('wa.me') || lower.includes('api.whatsapp.com') || lower.includes('chat.whatsapp.com') || lower.includes('web.whatsapp.com') || lower.includes('whatsapp.com/send')) {
+            removeUploadedFiles(files);
+            return res.status(400).json({ error: 'Direct WhatsApp links (wa.me, api.whatsapp.com, chat.whatsapp.com) are not supported in CTA buttons.' });
+          }
+        }
+      } catch(e) {}
+    }
   }
 
   const cleanCat = 'MARKETING';
@@ -546,10 +578,42 @@ router.put('/:id', authenticate, upload.any(), async (req, res) => {
 
     let cleanCta = null;
     if (cleanType === 'cta') {
+      if (templateText && templateText.length > 1024) {
+        removeUploadedFiles(files);
+        return res.status(400).json({ error: 'WhatsApp CTA templates allow a maximum of 1,024 characters for message text.' });
+      }
       if (cta_data !== undefined) {
         cleanCta = (typeof cta_data === 'object') ? JSON.stringify(cta_data) : cta_data;
       } else {
         cleanCta = existing.cta_data;
+      }
+      if (cleanCta) {
+        try {
+          const parsed = (typeof cleanCta === 'string') ? JSON.parse(cleanCta) : cleanCta;
+          const callText = String(parsed.call_text || parsed.callText || '').trim();
+          const urlText = String(parsed.url_text || parsed.urlText || '').trim();
+          const urlLink = String(parsed.url_link || parsed.urlLink || '').trim();
+
+          if (callText && callText.length > 20) {
+            removeUploadedFiles(files);
+            return res.status(400).json({ error: 'CTA Call button text cannot exceed 20 characters.' });
+          }
+          if (urlText && urlText.length > 20) {
+            removeUploadedFiles(files);
+            return res.status(400).json({ error: 'CTA Web link button text cannot exceed 20 characters.' });
+          }
+          if (urlLink) {
+            if (!/^https:\/\//i.test(urlLink)) {
+              removeUploadedFiles(files);
+              return res.status(400).json({ error: 'CTA Website URL must start with https://. Links without https:// or with http:// are not supported.' });
+            }
+            const lower = urlLink.toLowerCase();
+            if (lower.includes('wa.me') || lower.includes('api.whatsapp.com') || lower.includes('chat.whatsapp.com') || lower.includes('web.whatsapp.com') || lower.includes('whatsapp.com/send')) {
+              removeUploadedFiles(files);
+              return res.status(400).json({ error: 'Direct WhatsApp links (wa.me, api.whatsapp.com, chat.whatsapp.com) are not supported in CTA buttons.' });
+            }
+          }
+        } catch(e) {}
       }
     }
 

@@ -1371,6 +1371,66 @@ let selectedDestination = 'domestic';
 let selectedCampaignType = 'normal'; // 'normal' | 'dp' | 'cta' | 'dp_cta' | 'own_number'
 let selectedChannelType = 'shared_gateway';
 
+// Strict WhatsApp CTA Validation Helper (1,024 Char Message, 20 Char Button Text, HTTPS & No Direct wa.me)
+function validateCtaRules({ text, callText = '', urlText = '', urlLink = '', isCta = true }) {
+  if (!isCta) return null;
+
+  // 1. Message character limit - 1,024 characters
+  if (text && text.trim().length > 1024) {
+    return `WhatsApp CTA campaigns allow a maximum of 1,024 characters for message text. Currently: ${text.trim().length} characters.`;
+  }
+
+  // 2. CTA button text - 20 Characters
+  if (callText && callText.length > 20) {
+    return `CTA Call button text cannot exceed 20 characters (currently ${callText.length} characters).`;
+  }
+  if (urlText && urlText.length > 20) {
+    return `CTA Web Link button text cannot exceed 20 characters (currently ${urlText.length} characters).`;
+  }
+
+  // 3. Website URL validation: Must start with https:// and No Direct WhatsApp links
+  if (urlLink) {
+    if (!/^https:\/\//i.test(urlLink)) {
+      return 'CTA Website URL must strictly start with https:// (e.g. https://yourwebsite.com). Links without https:// or with http:// are not supported.';
+    }
+    const lower = urlLink.toLowerCase();
+    if (
+      lower.includes('wa.me') ||
+      lower.includes('api.whatsapp.com') ||
+      lower.includes('chat.whatsapp.com') ||
+      lower.includes('web.whatsapp.com') ||
+      lower.includes('whatsapp.com/send') ||
+      lower.includes('whatsapp.com/dl')
+    ) {
+      return 'Direct WhatsApp links (wa.me, api.whatsapp.com, chat.whatsapp.com) are not supported in CTA buttons. Please provide a standard website or landing page URL.';
+    }
+  }
+
+  return null;
+}
+
+function updateComposerCharLimit() {
+  if (!composerText) return;
+  const isCtaActive = (selectedCampaignType === 'cta' || selectedCampaignType === 'dp_cta' || (composerCtaToggle && composerCtaToggle.checked));
+
+  if (isCtaActive) {
+    composerText.maxLength = 1024;
+    if (composerText.value.length > 1024) {
+      composerText.value = composerText.value.slice(0, 1024);
+    }
+    const charLen = composerText.value.length;
+    if (messageCharCount) {
+      messageCharCount.innerHTML = `<strong>${charLen}</strong> / 1,024 characters &bull; <span style="color:#d97706;font-weight:700;">WhatsApp CTA Limit</span> &bull; (1 Credit per recipient)`;
+    }
+  } else {
+    composerText.removeAttribute('maxLength');
+    const charLen = composerText.value.length;
+    if (messageCharCount) {
+      messageCharCount.textContent = `${charLen} characters • (WhatsApp: 1 Credit per recipient)`;
+    }
+  }
+}
+
 // All 5 Campaign Type Picker Options
 const campaignTypeCards = document.querySelectorAll('.channel-option[data-type]');
 
@@ -1423,6 +1483,7 @@ function setCampaignType(type) {
     updatePreviewMedia();
   }
 
+  updateComposerCharLimit();
   updateCostCalculator();
   if (window.lucide) lucide.createIcons();
 }
@@ -1563,9 +1624,7 @@ if (numbersFileDropzone) {
 composerText.addEventListener('input', () => {
   const text = composerText.value;
   previewBubbleText.innerHTML = formatLiveMessagePreview(text.trim());
-  
-  const charLen = text.length;
-  messageCharCount.textContent = `${charLen} characters • (WhatsApp: 1 Credit per recipient)`;
+  updateComposerCharLimit();
   updateCostCalculator();
 });
 
@@ -1579,11 +1638,17 @@ composerCtaToggle.addEventListener('change', () => {
   const enabled = composerCtaToggle.checked;
   composerCtaBox.style.display = enabled ? 'block' : 'none';
   previewBubbleCta.style.display = enabled ? 'flex' : 'none';
+  updateComposerCharLimit();
   updateCtaPreview();
   updateCostCalculator();
 });
 
 function updateCtaPreview() {
+  const callCountEl = document.getElementById('cta-call-char-count');
+  const urlCountEl = document.getElementById('cta-url-char-count');
+  if (callCountEl && ctaCallText) callCountEl.textContent = `${ctaCallText.value.length}/20`;
+  if (urlCountEl && ctaUrlText) urlCountEl.textContent = `${ctaUrlText.value.length}/20`;
+
   if (!composerCtaToggle.checked) {
     previewBubbleCta.style.display = 'none';
     return;
@@ -2314,6 +2379,22 @@ btnSubmitCampaignSaas.addEventListener('click', async () => {
   if (validNumbers.length === 0) {
     showToast('error', 'Validation Error', 'Please provide at least one valid recipient phone number.');
     return;
+  }
+
+  // Strict CTA Business Rules Check (1,024 Char limit, 20 char button text, HTTPS & No wa.me)
+  const isCtaCampaign = (selectedCampaignType === 'cta' || selectedCampaignType === 'dp_cta' || (composerCtaToggle && composerCtaToggle.checked));
+  if (isCtaCampaign) {
+    const ctaErr = validateCtaRules({
+      text,
+      callText: ctaCallText ? ctaCallText.value.trim() : '',
+      urlText: ctaUrlText ? ctaUrlText.value.trim() : '',
+      urlLink: ctaUrlLink ? ctaUrlLink.value.trim() : '',
+      isCta: true
+    });
+    if (ctaErr) {
+      showToast('error', 'CTA Validation Error', ctaErr);
+      return;
+    }
   }
 
   // Validate scheduled timing
@@ -6965,12 +7046,32 @@ window.insertTplEmoji = function(mode, emoji) {
 };
 
 // WhatsApp Format Switcher (Standard vs Interactive CTA)
+function updateTplCtaCharCount(mode) {
+  const textarea = (mode === 'edit') ? modalEditTplBody : modalTemplateBody;
+  const numEl = document.getElementById(`tpl-${mode}-cta-char-num`);
+  const statusEl = document.getElementById(`tpl-${mode}-cta-char-status`);
+  if (!textarea || !numEl) return;
+  const len = textarea.value.length;
+  numEl.textContent = len;
+  if (statusEl) {
+    if (len >= 1024) {
+      statusEl.textContent = 'Limit Reached (1,024 max)';
+      statusEl.style.color = '#dc2626';
+    } else {
+      statusEl.textContent = `${1024 - len} characters left`;
+      statusEl.style.color = '#16a34a';
+    }
+  }
+}
+
 window.onTemplateFormatChange = function(mode) {
   const selFormat = document.querySelector(`input[name="tpl-${mode}-format"]:checked`)?.value || 'standard';
   const lblStd = document.getElementById(`tpl-${mode}-format-std-lbl`);
   const lblCta = document.getElementById(`tpl-${mode}-format-cta-lbl`);
   const wrapStdMedia = document.getElementById(`wrap-tpl-${mode}-standard-media`);
   const wrapCta = document.getElementById(`wrap-tpl-${mode}-cta`);
+  const ctaStrip = document.getElementById(`tpl-${mode}-cta-char-strip`);
+  const textarea = (mode === 'edit') ? modalEditTplBody : modalTemplateBody;
 
   if (lblStd && lblCta) {
     if (selFormat === 'cta') {
@@ -6980,6 +7081,11 @@ window.onTemplateFormatChange = function(mode) {
       lblStd.style.background = '#f8fafc';
       if (wrapStdMedia) wrapStdMedia.style.display = 'none';
       if (wrapCta) wrapCta.style.display = 'block';
+      if (ctaStrip) ctaStrip.style.display = 'flex';
+      if (textarea) {
+        textarea.maxLength = 1024;
+        if (textarea.value.length > 1024) textarea.value = textarea.value.slice(0, 1024);
+      }
     } else {
       lblStd.style.borderColor = '#10b981';
       lblStd.style.background = '#ecfdf5';
@@ -6987,8 +7093,13 @@ window.onTemplateFormatChange = function(mode) {
       lblCta.style.background = '#f8fafc';
       if (wrapStdMedia) wrapStdMedia.style.display = 'block';
       if (wrapCta) wrapCta.style.display = 'none';
+      if (ctaStrip) ctaStrip.style.display = 'none';
+      if (textarea) {
+        textarea.removeAttribute('maxLength');
+      }
     }
   }
+  updateTplCtaCharCount(mode);
 };
 
 // Channel Switcher in Create / Edit Modal
@@ -7004,6 +7115,7 @@ window.onTemplateChannelChange = function(mode) {
   const wrapFormat = document.getElementById(`wrap-tpl-${mode}-format`);
   const wrapStdMedia = document.getElementById(`wrap-tpl-${mode}-standard-media`);
   const wrapCta = document.getElementById(`wrap-tpl-${mode}-cta`);
+  const ctaStrip = document.getElementById(`tpl-${mode}-cta-char-strip`);
 
   if (optWa && optSms) {
     if (selChannel === 'whatsapp') {
@@ -7021,6 +7133,8 @@ window.onTemplateChannelChange = function(mode) {
       if (wrapFormat) wrapFormat.style.display = 'none';
       if (wrapStdMedia) wrapStdMedia.style.display = 'none';
       if (wrapCta) wrapCta.style.display = 'none';
+      if (ctaStrip) ctaStrip.style.display = 'none';
+      if (textarea) textarea.removeAttribute('maxLength');
     }
   }
 
@@ -7136,6 +7250,7 @@ if (modalTemplateBody) {
   modalTemplateBody.addEventListener('input', () => {
     const selChannel = document.querySelector('input[name="tpl-create-channel"]:checked')?.value || 'whatsapp';
     updateTplGsmUi('create', modalTemplateBody.value, selChannel);
+    updateTplCtaCharCount('create');
   });
 }
 
@@ -7144,8 +7259,28 @@ if (modalEditTplBody) {
   modalEditTplBody.addEventListener('input', () => {
     const selChannel = document.querySelector('input[name="tpl-edit-channel"]:checked')?.value || 'whatsapp';
     updateTplGsmUi('edit', modalEditTplBody.value, selChannel);
+    updateTplCtaCharCount('edit');
   });
 }
+
+// Wire Button Character Counters (20 chars max)
+['create', 'edit'].forEach(mode => {
+  const urlTxt = document.getElementById(`modal-tpl-${mode}-url-text`);
+  const callTxt = document.getElementById(`modal-tpl-${mode}-call-text`);
+  const urlCount = document.getElementById(`tpl-${mode}-url-char-count`);
+  const callCount = document.getElementById(`tpl-${mode}-call-char-count`);
+
+  if (urlTxt && urlCount) {
+    urlTxt.addEventListener('input', () => {
+      urlCount.textContent = `${urlTxt.value.length}/20`;
+    });
+  }
+  if (callTxt && callCount) {
+    callTxt.addEventListener('input', () => {
+      callCount.textContent = `${callTxt.value.length}/20`;
+    });
+  }
+});
 
 // Open Create Modal Wiring
 if (btnCreateTemplateModal) {
@@ -7174,6 +7309,12 @@ if (btnCreateTemplateModal) {
     if (urlLnk) urlLnk.value = '';
     if (callTxt) callTxt.value = '';
     if (callNum) callNum.value = '';
+
+    const createUrlCount = document.getElementById('tpl-create-url-char-count');
+    const createCallCount = document.getElementById('tpl-create-call-char-count');
+    if (createUrlCount) createUrlCount.textContent = '0/20';
+    if (createCallCount) createCallCount.textContent = '0/20';
+    updateTplCtaCharCount('create');
 
     // Setup Target User Assignment for Admin & Reseller
     const wrapTargetUser = document.getElementById('wrap-tpl-target-user');
@@ -7228,15 +7369,28 @@ if (btnModalSaveTemplate) {
     let cta_data = null;
 
     if (channel === 'whatsapp' && template_type === 'cta') {
-      const url_text = document.getElementById('modal-tpl-create-url-text')?.value.trim();
-      const url_link = document.getElementById('modal-tpl-create-url-link')?.value.trim();
-      const call_text = document.getElementById('modal-tpl-create-call-text')?.value.trim();
-      const call_number = document.getElementById('modal-tpl-create-call-number')?.value.trim();
+      const url_text = document.getElementById('modal-tpl-create-url-text')?.value.trim() || '';
+      const url_link = document.getElementById('modal-tpl-create-url-link')?.value.trim() || '';
+      const call_text = document.getElementById('modal-tpl-create-call-text')?.value.trim() || '';
+      const call_number = document.getElementById('modal-tpl-create-call-number')?.value.trim() || '';
 
       if (!url_link && !call_number) {
         showToast('warning', 'CTA Action Required', 'Please provide at least a Website URL or Call Phone Number for CTA buttons.');
         return;
       }
+
+      const ctaErr = validateCtaRules({
+        text: body,
+        callText: call_text,
+        urlText: url_text,
+        urlLink: url_link,
+        isCta: true
+      });
+      if (ctaErr) {
+        showToast('error', 'CTA Validation Error', ctaErr);
+        return;
+      }
+
       cta_data = { url_text, url_link, call_text, call_number };
     }
 
@@ -7313,15 +7467,28 @@ if (btnModalUpdateTemplate) {
     let cta_data = null;
 
     if (channel === 'whatsapp' && template_type === 'cta') {
-      const url_text = document.getElementById('modal-tpl-edit-url-text')?.value.trim();
-      const url_link = document.getElementById('modal-tpl-edit-url-link')?.value.trim();
-      const call_text = document.getElementById('modal-tpl-edit-call-text')?.value.trim();
-      const call_number = document.getElementById('modal-tpl-edit-call-number')?.value.trim();
+      const url_text = document.getElementById('modal-tpl-edit-url-text')?.value.trim() || '';
+      const url_link = document.getElementById('modal-tpl-edit-url-link')?.value.trim() || '';
+      const call_text = document.getElementById('modal-tpl-edit-call-text')?.value.trim() || '';
+      const call_number = document.getElementById('modal-tpl-edit-call-number')?.value.trim() || '';
 
       if (!url_link && !call_number) {
         showToast('warning', 'CTA Action Required', 'Please provide at least a Website URL or Call Phone Number for CTA buttons.');
         return;
       }
+
+      const ctaErr = validateCtaRules({
+        text: body,
+        callText: call_text,
+        urlText: url_text,
+        urlLink: url_link,
+        isCta: true
+      });
+      if (ctaErr) {
+        showToast('error', 'CTA Validation Error', ctaErr);
+        return;
+      }
+
       cta_data = { url_text, url_link, call_text, call_number };
     }
 
@@ -7939,6 +8106,12 @@ window.openEditTemplateModal = function(templateId) {
   if (urlLnk) urlLnk.value = cta?.url_link || '';
   if (callTxt) callTxt.value = cta?.call_text || '';
   if (callNum) callNum.value = cta?.call_number || '';
+
+  const editUrlCount = document.getElementById('tpl-edit-url-char-count');
+  const editCallCount = document.getElementById('tpl-edit-call-char-count');
+  if (editUrlCount) editUrlCount.textContent = `${(urlTxt ? urlTxt.value.length : 0)}/20`;
+  if (editCallCount) editCallCount.textContent = `${(callTxt ? callTxt.value.length : 0)}/20`;
+  updateTplCtaCharCount('edit');
 
   if (modalEditTplCat) modalEditTplCat.value = 'MARKETING';
   if (modalEditTemplate) {
@@ -8830,8 +9003,7 @@ async function populateComposerSelectors() {
         if (templateSelect.value) {
           const selectedText = decodeURIComponent(templateSelect.value);
           composerText.value = selectedText;
-          const charLen = composerText.value.length;
-          if (messageCharCount) messageCharCount.textContent = `${charLen} characters • (WhatsApp: 1 Credit per recipient)`;
+          updateComposerCharLimit();
           if (previewBubbleText) previewBubbleText.innerHTML = formatLiveMessagePreview(composerText.value.trim());
 
           const selectedOption = templateSelect.options[templateSelect.selectedIndex];
