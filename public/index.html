@@ -3012,19 +3012,24 @@
             <!-- Bottom Row: Inventory Distribution Bar (Slim Line) -->
             <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.1); position: relative; z-index: 1;">
               <div style="height: 5px; border-radius: 6px; background: rgba(0, 0, 0, 0.5); display: flex; overflow: hidden; margin-bottom: 8px;">
-                <div id="dist-bar-normal" style="width: 20%; background: #6366f1; transition: width 0.3s;" title="Normal / Bulk SMS"></div>
-                <div id="dist-bar-dp" style="width: 20%; background: #0284c7; transition: width 0.3s;" title="DP Media"></div>
-                <div id="dist-bar-cta" style="width: 20%; background: #d97706; transition: width 0.3s;" title="CTA Buttons"></div>
-                <div id="dist-bar-dpcta" style="width: 20%; background: #8b5cf6; transition: width 0.3s;" title="DP + CTA"></div>
-                <div id="dist-bar-own" style="width: 20%; background: #10b981; transition: width 0.3s;" title="Own Number SIM"></div>
+                <div id="dist-bar-sms" style="width: 16.6%; background: #2563eb; transition: width 0.3s;" title="GSM Bulk SMS"></div>
+                <div id="dist-bar-normal" style="width: 16.6%; background: #10b981; transition: width 0.3s;" title="Normal WhatsApp Text"></div>
+                <div id="dist-bar-dp" style="width: 16.6%; background: #0284c7; transition: width 0.3s;" title="WhatsApp DP Media"></div>
+                <div id="dist-bar-cta" style="width: 16.6%; background: #d97706; transition: width 0.3s;" title="WhatsApp CTA Buttons"></div>
+                <div id="dist-bar-dpcta" style="width: 16.6%; background: #8b5cf6; transition: width 0.3s;" title="WhatsApp Combo"></div>
+                <div id="dist-bar-own" style="width: 16.6%; background: #059669; transition: width 0.3s;" title="WhatsApp Own SIM"></div>
               </div>
 
               <!-- Distribution Legend Pills -->
               <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; font-size: 0.68rem;">
                 <div style="display: flex; flex-wrap: wrap; gap: 10px;">
                   <span style="display: inline-flex; align-items: center; gap: 4px; color: #cbd5e1;">
-                    <span style="width: 6px; height: 6px; border-radius: 50%; background: #6366f1;"></span>
-                    <span>WA Text & SMS:</span> <strong id="dist-val-normal" style="font-family: monospace; font-size: 0.72rem; color: #fff;">0</strong>
+                    <span style="width: 6px; height: 6px; border-radius: 50%; background: #2563eb;"></span>
+                    <span>GSM SMS:</span> <strong id="dist-val-sms" style="font-family: monospace; font-size: 0.72rem; color: #fff;">0</strong>
+                  </span>
+                  <span style="display: inline-flex; align-items: center; gap: 4px; color: #cbd5e1;">
+                    <span style="width: 6px; height: 6px; border-radius: 50%; background: #10b981;"></span>
+                    <span>WA Text:</span> <strong id="dist-val-normal" style="font-family: monospace; font-size: 0.72rem; color: #fff;">0</strong>
                   </span>
                   <span style="display: inline-flex; align-items: center; gap: 4px; color: #cbd5e1;">
                     <span style="width: 6px; height: 6px; border-radius: 50%; background: #0284c7;"></span>
@@ -3039,11 +3044,11 @@
                     <span>WA Combo:</span> <strong id="dist-val-dpcta" style="font-family: monospace; font-size: 0.72rem; color: #fff;">0</strong>
                   </span>
                   <span style="display: inline-flex; align-items: center; gap: 4px; color: #cbd5e1;">
-                    <span style="width: 6px; height: 6px; border-radius: 50%; background: #10b981;"></span>
+                    <span style="width: 6px; height: 6px; border-radius: 50%; background: #059669;"></span>
                     <span>WA SIM:</span> <strong id="dist-val-own" style="font-family: monospace; font-size: 0.72rem; color: #fff;">0</strong>
                   </span>
                 </div>
-                <span id="wallet-dist-summary-text" style="color: #94a3b8; font-size: 0.68rem; font-weight: 600;">5 Channels Active</span>
+                <span id="wallet-dist-summary-text" style="color: #94a3b8; font-size: 0.68rem; font-weight: 600;">6 Separate Channels Active</span>
               </div>
             </div>
           </div>
@@ -3100,40 +3105,57 @@
               <span style="font-weight: 800; color: #1e293b; display: inline-flex; align-items: center; gap: 5px;">
                 <i data-lucide="layers" style="width: 14px; height: 14px; color: #4f46e5;"></i> Dual Delivery Platform:
               </span>
-              <span style="background: #ecfdf5; color: #15803d; padding: 2px 8px; border-radius: 6px; font-weight: 700; border: 1px solid #bbf7d0; display: inline-flex; align-items: center; gap: 4px;">
-                <i data-lucide="message-circle" style="width: 12px; height: 12px;"></i> WhatsApp Marketing (5 Rich Formats)
-              </span>
               <span style="background: #eff6ff; color: #1d4ed8; padding: 2px 8px; border-radius: 6px; font-weight: 700; border: 1px solid #bfdbfe; display: inline-flex; align-items: center; gap: 4px;">
-                <i data-lucide="radio" style="width: 12px; height: 12px;"></i> GSM Bulk SMS Gateway (Cellular Towers)
+                <i data-lucide="radio" style="width: 12px; height: 12px;"></i> Dedicated GSM Bulk SMS Wallet
+              </span>
+              <span style="background: #ecfdf5; color: #15803d; padding: 2px 8px; border-radius: 6px; font-weight: 700; border: 1px solid #bbf7d0; display: inline-flex; align-items: center; gap: 4px;">
+                <i data-lucide="message-circle" style="width: 12px; height: 12px;"></i> Dedicated Normal WhatsApp Wallet
               </span>
             </div>
-            <span style="font-size: 0.7rem; color: #64748b;">
-              <strong>Normal Wallet</strong> powers both Plain WhatsApp Text & GSM SMS (1 credit/msg)
+            <span style="font-size: 0.7rem; color: #64748b; font-weight: 600;">
+              Separate credit balances for GSM Cellular SMS and WhatsApp
             </span>
           </div>
 
           <!-- Channel-Wise Credit Cards Grid (Ultra-Compact, Sleek & Low-Profile) -->
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 16px;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); gap: 10px; margin-bottom: 16px;">
             
-            <!-- 1. Normal / Plain Text: WhatsApp & GSM Bulk SMS -->
-            <div style="background: #ffffff; border-radius: 10px; padding: 10px 14px; border: 1px solid #e2e8f0; border-top: 3px solid #4f46e5; box-shadow: 0 2px 8px -2px rgba(0,0,0,0.04); display: flex; flex-direction: column; justify-content: space-between; transition: all 0.15s ease;" onmouseenter="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px -3px rgba(79,70,229,0.12)';" onmouseleave="this.style.transform='none'; this.style.boxShadow='0 2px 8px -2px rgba(0,0,0,0.04)';">
+            <!-- 1. Dedicated GSM Bulk SMS Wallet -->
+            <div style="background: #ffffff; border-radius: 10px; padding: 10px 14px; border: 1px solid #e2e8f0; border-top: 3px solid #2563eb; box-shadow: 0 2px 8px -2px rgba(0,0,0,0.04); display: flex; flex-direction: column; justify-content: space-between; transition: all 0.15s ease;" onmouseenter="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px -3px rgba(37,99,235,0.12)';" onmouseleave="this.style.transform='none'; this.style.boxShadow='0 2px 8px -2px rgba(0,0,0,0.04)';">
               <div>
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
                   <div style="display: flex; align-items: center; gap: 7px;">
-                    <div style="width: 26px; height: 26px; border-radius: 6px; background: #eef2ff; color: #4f46e5; display: flex; align-items: center; justify-content: center;">
-                      <i data-lucide="message-square" style="width: 14px; height: 14px;"></i>
+                    <div style="width: 26px; height: 26px; border-radius: 6px; background: #eff6ff; color: #2563eb; display: flex; align-items: center; justify-content: center;">
+                      <i data-lucide="radio" style="width: 14px; height: 14px;"></i>
                     </div>
-                    <div style="font-size: 0.8rem; font-weight: 700; color: #1e293b; white-space: nowrap;">WA Text & SMS</div>
+                    <div style="font-size: 0.8rem; font-weight: 700; color: #1e293b; white-space: nowrap;">GSM Bulk SMS</div>
                   </div>
-                  <div style="display: flex; gap: 3px;">
-                    <span style="font-size: 0.6rem; font-weight: 700; background: #ecfdf5; color: #15803d; padding: 1px 5px; border-radius: 6px; border: 1px solid #bbf7d0;">WA</span>
-                    <span style="font-size: 0.6rem; font-weight: 700; background: #eff6ff; color: #1d4ed8; padding: 1px 5px; border-radius: 6px; border: 1px solid #bfdbfe;">GSM</span>
-                  </div>
+                  <span style="font-size: 0.6rem; font-weight: 700; background: #eff6ff; color: #1d4ed8; padding: 1px 6px; border-radius: 6px; border: 1px solid #bfdbfe;">CELLULAR</span>
                 </div>
-                <div style="font-size: 0.68rem; color: #64748b; margin-bottom: 4px; line-height: 1.2;">Plain WhatsApp & GSM SMS</div>
+                <div style="font-size: 0.68rem; color: #64748b; margin-bottom: 4px; line-height: 1.2;">Mobile Tower SMS (No DLT)</div>
               </div>
               <div style="display: flex; align-items: baseline; justify-content: space-between; padding-top: 5px; border-top: 1px solid #f8fafc;">
-                <div id="card-val-normal" style="font-size: 1.25rem; font-weight: 800; color: #0f172a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -0.5px;">0</div>
+                <div id="card-val-sms" style="font-size: 1.25rem; font-weight: 800; color: #1d4ed8; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -0.5px;">0</div>
+                <span style="font-size: 0.65rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Credits</span>
+              </div>
+            </div>
+
+            <!-- 2. Normal WhatsApp (Plain Text) -->
+            <div style="background: #ffffff; border-radius: 10px; padding: 10px 14px; border: 1px solid #e2e8f0; border-top: 3px solid #10b981; box-shadow: 0 2px 8px -2px rgba(0,0,0,0.04); display: flex; flex-direction: column; justify-content: space-between; transition: all 0.15s ease;" onmouseenter="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px -3px rgba(16,185,129,0.12)';" onmouseleave="this.style.transform='none'; this.style.boxShadow='0 2px 8px -2px rgba(0,0,0,0.04)';">
+              <div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                  <div style="display: flex; align-items: center; gap: 7px;">
+                    <div style="width: 26px; height: 26px; border-radius: 6px; background: #ecfdf5; color: #10b981; display: flex; align-items: center; justify-content: center;">
+                      <i data-lucide="message-circle" style="width: 14px; height: 14px;"></i>
+                    </div>
+                    <div style="font-size: 0.8rem; font-weight: 700; color: #1e293b; white-space: nowrap;">Normal WhatsApp</div>
+                  </div>
+                  <span style="font-size: 0.6rem; font-weight: 700; background: #ecfdf5; color: #15803d; padding: 1px 6px; border-radius: 6px; border: 1px solid #bbf7d0;">TEXT</span>
+                </div>
+                <div style="font-size: 0.68rem; color: #64748b; margin-bottom: 4px; line-height: 1.2;">Standard WhatsApp Text</div>
+              </div>
+              <div style="display: flex; align-items: baseline; justify-content: space-between; padding-top: 5px; border-top: 1px solid #f8fafc;">
+                <div id="card-val-normal" style="font-size: 1.25rem; font-weight: 800; color: #047857; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -0.5px;">0</div>
                 <span style="font-size: 0.65rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Credits</span>
               </div>
             </div>
@@ -4329,7 +4351,11 @@
         </h4>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
           <div>
-            <label style="font-size:0.8rem;font-weight:700;color:#4f46e5;">💬 WhatsApp Text & GSM SMS:</label>
+            <label style="font-size:0.8rem;font-weight:700;color:#2563eb;">📡 GSM Bulk SMS Domestic:</label>
+            <input type="number" id="alloc-gsm_sms-domestic" class="form-input" placeholder="0" min="0">
+          </div>
+          <div>
+            <label style="font-size:0.8rem;font-weight:700;color:#10b981;">💬 Normal WhatsApp Text Domestic:</label>
             <input type="number" id="alloc-normal-domestic" class="form-input" placeholder="0" min="0">
           </div>
           <div>
@@ -4355,7 +4381,11 @@
         </h4>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div>
-            <label style="font-size:0.8rem;font-weight:700;color:#0ea5e9;">🌐 WA Text & GSM SMS Intl:</label>
+            <label style="font-size:0.8rem;font-weight:700;color:#2563eb;">🌐 GSM Bulk SMS Intl:</label>
+            <input type="number" id="alloc-gsm_sms-international" class="form-input" placeholder="0" min="0">
+          </div>
+          <div>
+            <label style="font-size:0.8rem;font-weight:700;color:#10b981;">💬 Normal WhatsApp Text Intl:</label>
             <input type="number" id="alloc-normal-international" class="form-input" placeholder="0" min="0">
           </div>
           <div>
@@ -4422,9 +4452,10 @@
             <thead style="background: #f8fafc; position: sticky; top: 0; z-index: 2; border-bottom: 1px solid #e2e8f0;">
               <tr>
                 <th style="padding: 8px 12px; text-align: left; font-size: 0.72rem; color: #475569; font-weight: 700;">Client Account</th>
-                <th style="padding: 8px 10px; text-align: right; font-size: 0.72rem; color: #475569; font-weight: 700;">Normal SMS</th>
-                <th style="padding: 8px 10px; text-align: right; font-size: 0.72rem; color: #475569; font-weight: 700;">DP Media</th>
-                <th style="padding: 8px 10px; text-align: right; font-size: 0.72rem; color: #475569; font-weight: 700;">CTA Buttons</th>
+                <th style="padding: 8px 10px; text-align: right; font-size: 0.72rem; color: #2563eb; font-weight: 700;">GSM SMS</th>
+                <th style="padding: 8px 10px; text-align: right; font-size: 0.72rem; color: #10b981; font-weight: 700;">WA Text</th>
+                <th style="padding: 8px 10px; text-align: right; font-size: 0.72rem; color: #0284c7; font-weight: 700;">DP Media</th>
+                <th style="padding: 8px 10px; text-align: right; font-size: 0.72rem; color: #d97706; font-weight: 700;">CTA Buttons</th>
                 <th style="padding: 8px 10px; text-align: right; font-size: 0.72rem; color: #475569; font-weight: 700;">Total Usable</th>
                 <th style="padding: 8px 12px; text-align: center; font-size: 0.72rem; color: #475569; font-weight: 700;">Action</th>
               </tr>
@@ -5520,11 +5551,12 @@
           <div class="form-group" style="margin-bottom: 0;">
             <label style="font-size: 0.78rem; font-weight: 700; color: #475569;">Telecom Channel</label>
             <select id="modal-order-type" class="form-input" onchange="calculateTopupAmount()">
-              <option value="normal">📱 Normal (GSM Bulk SMS & Text)</option>
-              <option value="dp">🖼️ DP (Media Graphic)</option>
-              <option value="cta">🔘 CTA (Interactive Buttons)</option>
-              <option value="dp_cta">⚡ DP + CTA Combo</option>
-              <option value="own_number">📲 Own Dedicated SIM</option>
+              <option value="gsm_sms">📡 GSM Bulk SMS (Cellular Telecom Route)</option>
+              <option value="normal">💬 Normal WhatsApp (Standard Text)</option>
+              <option value="dp">🖼️ WhatsApp DP (Media Graphic)</option>
+              <option value="cta">🔘 WhatsApp CTA (Interactive Buttons)</option>
+              <option value="dp_cta">⚡ WhatsApp DP + CTA Combo</option>
+              <option value="own_number">📲 WhatsApp Own Dedicated SIM</option>
             </select>
           </div>
         </div>
@@ -6182,6 +6214,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=1793769700001"></script>
+  <script src="app.js?v=1793770000001"></script>
 </body>
 </html>

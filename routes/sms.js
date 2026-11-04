@@ -458,7 +458,7 @@ router.post('/', authenticate, async (req, res) => {
       `SELECT balance FROM user_credits
        WHERE user_id = $1 AND credit_type = $2 AND destination = $3
        FOR UPDATE`,
-      [effectiveUserId, 'normal', campaignDest]
+      [effectiveUserId, 'gsm_sms', campaignDest]
     );
 
     const currentBalance =
@@ -471,7 +471,7 @@ router.post('/', authenticate, async (req, res) => {
           ? `Target account (${targetUser.email}) has insufficient credits`
           : 'Insufficient credits';
       return res.status(400).json({
-        error: `${accountNote}. Required: ${creditCost} normal (${campaignDest}) credits [${messageCount} messages × ${partsPerMessage} part(s)], but only ${currentBalance} available.`,
+        error: `${accountNote}. Required: ${creditCost} GSM SMS (${campaignDest}) credits [${messageCount} messages × ${partsPerMessage} part(s)], but only ${currentBalance} available.`,
       });
     }
 
@@ -480,14 +480,14 @@ router.post('/', authenticate, async (req, res) => {
       `UPDATE user_credits
        SET balance = balance - $1
        WHERE user_id = $2 AND credit_type = $3 AND destination = $4`,
-      [creditCost, effectiveUserId, 'normal', campaignDest]
+      [creditCost, effectiveUserId, 'gsm_sms', campaignDest]
     );
 
     // Insert campaign record
     const insertCampaign = await client.query(
       `INSERT INTO campaigns
          (user_id, title, channel_type, campaign_type, destination, message_text, total_numbers, status, scheduled_at, attachments)
-       VALUES ($1, $2, 'sms', 'normal', $3, $4, $5, 'Submitted', $6, '[]'::jsonb)
+       VALUES ($1, $2, 'sms', 'gsm_sms', $3, $4, $5, 'Submitted', $6, '[]'::jsonb)
        RETURNING id, created_at, status`,
       [effectiveUserId, campaignTitle, campaignDest, messageText, messageCount, scheduledDate]
     );
@@ -506,7 +506,7 @@ router.post('/', authenticate, async (req, res) => {
     await client.query(
       `INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [req.user.id, effectiveUserId, 'normal', campaignDest, creditCost, txReason]
+      [req.user.id, effectiveUserId, 'gsm_sms', campaignDest, creditCost, txReason]
     );
 
     // Audit trail
@@ -663,7 +663,7 @@ router.get('/metrics', authenticate, async (req, res) => {
         FROM campaigns c
         LEFT JOIN credit_transactions ct
           ON ct.to_user_id = c.user_id
-         AND ct.credit_type = 'normal'
+         AND ct.credit_type IN ('gsm_sms', 'normal')
          AND ct.reason ILIKE '%campaign #' || c.id || '%'
         WHERE c.channel_type = 'sms'
       `;
@@ -677,7 +677,7 @@ router.get('/metrics', authenticate, async (req, res) => {
         JOIN users u ON c.user_id = u.id
         LEFT JOIN credit_transactions ct
           ON ct.to_user_id = c.user_id
-         AND ct.credit_type = 'normal'
+         AND ct.credit_type IN ('gsm_sms', 'normal')
          AND ct.reason ILIKE '%campaign #' || c.id || '%'
         WHERE c.channel_type = 'sms'
           AND (c.user_id = $1 OR u.reseller_id = $1)
@@ -692,7 +692,7 @@ router.get('/metrics', authenticate, async (req, res) => {
         FROM campaigns c
         LEFT JOIN credit_transactions ct
           ON ct.to_user_id = c.user_id
-         AND ct.credit_type = 'normal'
+         AND ct.credit_type IN ('gsm_sms', 'normal')
          AND ct.reason ILIKE '%campaign #' || c.id || '%'
         WHERE c.channel_type = 'sms'
           AND c.user_id = $1
@@ -839,7 +839,7 @@ router.delete('/:id', authenticate, async (req, res) => {
       await client.query(
         `UPDATE user_credits
          SET balance = balance + $1
-         WHERE user_id = $2 AND credit_type = 'normal' AND destination = $3`,
+         WHERE user_id = $2 AND credit_type = 'gsm_sms' AND destination = $3`,
         [refundAmount, campaign.user_id, campaign.destination]
       );
 
@@ -849,7 +849,7 @@ router.delete('/:id', authenticate, async (req, res) => {
         [
           req.user.id,
           campaign.user_id,
-          'normal',
+          'gsm_sms',
           campaign.destination,
           refundAmount,
           `Refund for cancelled SMS campaign #${campaignId} (${campaign.title})`,

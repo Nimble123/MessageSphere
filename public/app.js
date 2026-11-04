@@ -618,8 +618,8 @@ async function checkSession() {
 
 function updateCreditDisplays() {
   if (!currentUser) return;
-  const domTotal = (currentUser.credits_normal_domestic || 0) + (currentUser.credits_dp_domestic || 0) + (currentUser.credits_cta_domestic || 0) + (currentUser.credits_dp_cta_domestic || 0) + (currentUser.credits_own_number_domestic || 0);
-  const intlTotal = (currentUser.credits_normal_international || 0) + (currentUser.credits_dp_international || 0) + (currentUser.credits_cta_international || 0) + (currentUser.credits_dp_cta_international || 0) + (currentUser.credits_own_number_international || 0);
+  const domTotal = (currentUser.credits_gsm_sms_domestic || 0) + (currentUser.credits_normal_domestic || 0) + (currentUser.credits_dp_domestic || 0) + (currentUser.credits_cta_domestic || 0) + (currentUser.credits_dp_cta_domestic || 0) + (currentUser.credits_own_number_domestic || 0);
+  const intlTotal = (currentUser.credits_gsm_sms_international || 0) + (currentUser.credits_normal_international || 0) + (currentUser.credits_dp_international || 0) + (currentUser.credits_cta_international || 0) + (currentUser.credits_dp_cta_international || 0) + (currentUser.credits_own_number_international || 0);
 
   const domPill = document.getElementById('topbar-domestic-credits');
   const intlPill = document.getElementById('topbar-intl-credits');
@@ -718,21 +718,24 @@ function updateWalletView() {
 
   const route = walletActiveRoute || 'domestic';
 
+  const domSms = Number(currentUser.credits_gsm_sms_domestic || 0);
   const domNormal = Number(currentUser.credits_normal_domestic || 0);
   const domDp = Number(currentUser.credits_dp_domestic || 0);
   const domCta = Number(currentUser.credits_cta_domestic || 0);
   const domDpCta = Number(currentUser.credits_dp_cta_domestic || 0);
   const domOwn = Number(currentUser.credits_own_number_domestic || 0);
-  const domTotal = domNormal + domDp + domCta + domDpCta + domOwn;
+  const domTotal = domSms + domNormal + domDp + domCta + domDpCta + domOwn;
 
+  const intlSms = Number(currentUser.credits_gsm_sms_international || 0);
   const intlNormal = Number(currentUser.credits_normal_international || 0);
   const intlDp = Number(currentUser.credits_dp_international || 0);
   const intlCta = Number(currentUser.credits_cta_international || 0);
   const intlDpCta = Number(currentUser.credits_dp_cta_international || 0);
   const intlOwn = Number(currentUser.credits_own_number_international || 0);
-  const intlTotal = intlNormal + intlDp + intlCta + intlDpCta + intlOwn;
+  const intlTotal = intlSms + intlNormal + intlDp + intlCta + intlDpCta + intlOwn;
 
   // Active route numbers
+  const activeSms = route === 'domestic' ? domSms : intlSms;
   const activeNormal = route === 'domestic' ? domNormal : intlNormal;
   const activeDp = route === 'domestic' ? domDp : intlDp;
   const activeCta = route === 'domestic' ? domCta : intlCta;
@@ -751,7 +754,7 @@ function updateWalletView() {
     if (currentUser?.role === 'admin') {
       roleBadge.textContent = 'MASTER TELECOM VAULT';
       if (roleIcon) roleIcon.setAttribute('data-lucide', 'shield-check');
-      if (routeTitle) routeTitle.textContent = `${route === 'domestic' ? 'Domestic Telecom Route (India +91)' : 'International Telecom Route (Global)'} • 5 Channels Active`;
+      if (routeTitle) routeTitle.textContent = `${route === 'domestic' ? 'Domestic Telecom Route (India +91)' : 'International Telecom Route (Global)'} • 6 Channels Active`;
     } else if (currentUser?.role === 'reseller') {
       roleBadge.textContent = 'RESELLER MASTER INVENTORY';
       if (roleIcon) roleIcon.setAttribute('data-lucide', 'store');
@@ -785,6 +788,7 @@ function updateWalletView() {
   }
 
   // Channel Grid Cards
+  setEl('card-val-sms', activeSms);
   setEl('card-val-normal', activeNormal);
   setEl('card-val-dp', activeDp);
   setEl('card-val-cta', activeCta);
@@ -792,6 +796,7 @@ function updateWalletView() {
   setEl('card-val-own', activeOwn);
 
   // Distribution legend values
+  setEl('dist-val-sms', activeSms);
   setEl('dist-val-normal', activeNormal);
   setEl('dist-val-dp', activeDp);
   setEl('dist-val-cta', activeCta);
@@ -806,9 +811,10 @@ function updateWalletView() {
       const pct = Math.max(0.5, (val / activeTotal) * 100).toFixed(1);
       el.style.width = pct + '%';
     } else {
-      el.style.width = '20%';
+      el.style.width = '16.6%';
     }
   };
+  setBarWidth('dist-bar-sms', activeSms);
   setBarWidth('dist-bar-normal', activeNormal);
   setBarWidth('dist-bar-dp', activeDp);
   setBarWidth('dist-bar-cta', activeCta);
@@ -872,11 +878,13 @@ async function loadResellerWalletData() {
     let totalClientCredits = 0;
     clients.forEach(c => {
       totalClientCredits += (
+        Number(c.credits_gsm_sms_domestic || 0) +
         Number(c.credits_normal_domestic || 0) +
         Number(c.credits_dp_domestic || 0) +
         Number(c.credits_cta_domestic || 0) +
         Number(c.credits_dp_cta_domestic || 0) +
         Number(c.credits_own_number_domestic || 0) +
+        Number(c.credits_gsm_sms_international || 0) +
         Number(c.credits_normal_international || 0) +
         Number(c.credits_dp_international || 0) +
         Number(c.credits_cta_international || 0) +
@@ -885,8 +893,8 @@ async function loadResellerWalletData() {
       );
     });
 
-    const myDom = Number(currentUser.credits_normal_domestic || 0) + Number(currentUser.credits_dp_domestic || 0) + Number(currentUser.credits_cta_domestic || 0) + Number(currentUser.credits_dp_cta_domestic || 0) + Number(currentUser.credits_own_number_domestic || 0);
-    const myIntl = Number(currentUser.credits_normal_international || 0) + Number(currentUser.credits_dp_international || 0) + Number(currentUser.credits_cta_international || 0) + Number(currentUser.credits_dp_cta_international || 0) + Number(currentUser.credits_own_number_international || 0);
+    const myDom = Number(currentUser.credits_gsm_sms_domestic || 0) + Number(currentUser.credits_normal_domestic || 0) + Number(currentUser.credits_dp_domestic || 0) + Number(currentUser.credits_cta_domestic || 0) + Number(currentUser.credits_dp_cta_domestic || 0) + Number(currentUser.credits_own_number_domestic || 0);
+    const myIntl = Number(currentUser.credits_gsm_sms_international || 0) + Number(currentUser.credits_normal_international || 0) + Number(currentUser.credits_dp_international || 0) + Number(currentUser.credits_cta_international || 0) + Number(currentUser.credits_dp_cta_international || 0) + Number(currentUser.credits_own_number_international || 0);
     const myTotal = myDom + myIntl;
 
     const vaultStockEl = document.getElementById('reseller-stat-vault-stock');
@@ -917,23 +925,25 @@ window.renderResellerClientsTable = function(clients) {
   const tbody = document.getElementById('reseller-clients-tbody');
   if (!tbody) return;
   if (!clients || clients.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 24px; color: #94a3b8;">No client accounts found under your reseller account.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 24px; color: #94a3b8;">No client accounts found under your reseller account.</td></tr>`;
     return;
   }
   tbody.innerHTML = clients.map(c => {
+    const sms = Number(c.credits_gsm_sms_domestic || 0);
     const normal = Number(c.credits_normal_domestic || 0);
     const dp = Number(c.credits_dp_domestic || 0);
     const cta = Number(c.credits_cta_domestic || 0);
     const dpcta = Number(c.credits_dp_cta_domestic || 0);
     const own = Number(c.credits_own_number_domestic || 0);
-    const total = normal + dp + cta + dpcta + own;
+    const total = sms + normal + dp + cta + dpcta + own;
     return `
       <tr style="border-bottom: 1px solid #f1f5f9;">
         <td style="padding: 9px 12px;">
           <div style="font-weight: 700; color: #1e293b;">${escapeHtml(c.email)}</div>
           <div style="font-size: 0.72rem; color: #64748b;">${escapeHtml(c.company_name || c.full_name || 'Standard Client')}</div>
         </td>
-        <td style="padding: 9px 10px; text-align: right; font-family: monospace; font-weight: 700; color: #4f46e5;">${normal.toLocaleString()}</td>
+        <td style="padding: 9px 10px; text-align: right; font-family: monospace; font-weight: 700; color: #2563eb;">${sms.toLocaleString()}</td>
+        <td style="padding: 9px 10px; text-align: right; font-family: monospace; font-weight: 700; color: #10b981;">${normal.toLocaleString()}</td>
         <td style="padding: 9px 10px; text-align: right; font-family: monospace; font-weight: 700; color: #0284c7;">${dp.toLocaleString()}</td>
         <td style="padding: 9px 10px; text-align: right; font-family: monospace; font-weight: 700; color: #d97706;">${cta.toLocaleString()}</td>
         <td style="padding: 9px 10px; text-align: right; font-family: monospace; font-weight: 800; color: #0f172a;">${total.toLocaleString()}</td>
@@ -4693,11 +4703,11 @@ function renderUsersTable() {
   }
 
   tbody.innerHTML = filtered.map(u => {
-    const domTotal = (u.credits_normal_domestic||0) + (u.credits_dp_domestic||0) + (u.credits_cta_domestic||0) + (u.credits_dp_cta_domestic||0) + (u.credits_own_number_domestic||0);
-    const intlTotal = (u.credits_normal_international||0) + (u.credits_dp_international||0) + (u.credits_cta_international||0) + (u.credits_dp_cta_international||0) + (u.credits_own_number_international||0);
+    const domTotal = (u.credits_gsm_sms_domestic||0) + (u.credits_normal_domestic||0) + (u.credits_dp_domestic||0) + (u.credits_cta_domestic||0) + (u.credits_dp_cta_domestic||0) + (u.credits_own_number_domestic||0);
+    const intlTotal = (u.credits_gsm_sms_international||0) + (u.credits_normal_international||0) + (u.credits_dp_international||0) + (u.credits_cta_international||0) + (u.credits_dp_cta_international||0) + (u.credits_own_number_international||0);
 
-    const domBreakdown = `SMS/Text: ${(u.credits_normal_domestic||0).toLocaleString()} • DP: ${(u.credits_dp_domestic||0).toLocaleString()} • CTA: ${(u.credits_cta_domestic||0).toLocaleString()} • Own: ${(u.credits_own_number_domestic||0).toLocaleString()}`;
-    const intlBreakdown = `Normal: ${(u.credits_normal_international||0).toLocaleString()} • DP: ${(u.credits_dp_international||0).toLocaleString()} • CTA: ${(u.credits_cta_international||0).toLocaleString()} • Own: ${(u.credits_own_number_international||0).toLocaleString()}`;
+    const domBreakdown = `GSM SMS: ${(u.credits_gsm_sms_domestic||0).toLocaleString()} • WA Text: ${(u.credits_normal_domestic||0).toLocaleString()} • DP: ${(u.credits_dp_domestic||0).toLocaleString()} • CTA: ${(u.credits_cta_domestic||0).toLocaleString()} • Own: ${(u.credits_own_number_domestic||0).toLocaleString()}`;
+    const intlBreakdown = `GSM SMS: ${(u.credits_gsm_sms_international||0).toLocaleString()} • WA Text: ${(u.credits_normal_international||0).toLocaleString()} • DP: ${(u.credits_dp_international||0).toLocaleString()} • CTA: ${(u.credits_cta_international||0).toLocaleString()} • Own: ${(u.credits_own_number_international||0).toLocaleString()}`;
 
     return `
       <tr>
@@ -5254,8 +5264,8 @@ if (btnModalSaveCredits) {
 
     const updates = {};
     const keys = [
-      'normal-domestic', 'dp-domestic', 'cta-domestic', 'dp_cta-domestic', 'own_number-domestic',
-      'normal-international', 'dp-international', 'cta-international', 'dp_cta-international', 'own_number-international'
+      'gsm_sms-domestic', 'normal-domestic', 'dp-domestic', 'cta-domestic', 'dp_cta-domestic', 'own_number-domestic',
+      'gsm_sms-international', 'normal-international', 'dp-international', 'cta-international', 'dp_cta-international', 'own_number-international'
     ];
 
     keys.forEach(k => {
@@ -9674,11 +9684,12 @@ window.openUser360Modal = async function(userId, evt) {
 
     // Tab 1: Credit Portfolio Table
     const channels = [
-      { key: 'normal', name: '📱 Normal (GSM Bulk SMS & WhatsApp Text)' },
-      { key: 'dp', name: 'Profile / Display Picture (DP)' },
-      { key: 'cta', name: 'Call-to-Action (CTA Buttons)' },
-      { key: 'dp_cta', name: 'Combo (DP + CTA)' },
-      { key: 'own_number', name: 'Own Number / Direct Gateway' }
+      { key: 'gsm_sms', name: '📡 GSM Bulk SMS (Cellular Telecom Route)' },
+      { key: 'normal', name: '💬 Normal WhatsApp (Standard Text)' },
+      { key: 'dp', name: '🖼️ WhatsApp Profile / Media (DP)' },
+      { key: 'cta', name: '🔘 WhatsApp Call-to-Action (CTA Buttons)' },
+      { key: 'dp_cta', name: '⚡ WhatsApp Combo (DP + CTA)' },
+      { key: 'own_number', name: '📲 WhatsApp Own Dedicated SIM' }
     ];
 
     const creditsTbody = document.getElementById('u360-credits-tbody');
@@ -9913,8 +9924,8 @@ async function populateSmsUserSelector() {
     smsAvailableUsers.forEach(u => {
       const opt = document.createElement('option');
       opt.value = u.id;
-      const bal = u.credits_normal_domestic || 0;
-      opt.textContent = `${u.email} (${u.role}) — ${bal.toLocaleString()} credits`;
+      const bal = u.credits_gsm_sms_domestic || 0;
+      opt.textContent = `${u.email} (${u.role}) — ${bal.toLocaleString()} GSM SMS credits`;
       sel.appendChild(opt);
     });
   } catch(e) { /* ignore */ }
@@ -10020,11 +10031,11 @@ window.updateSmsCreditsPreview = function() {
     const targetId = parseInt(targetSel.value, 10);
     const foundUser = smsAvailableUsers.find(u => Number(u.id) === targetId);
     if (foundUser) {
-      userBal = foundUser.credits_normal_domestic || 0;
+      userBal = foundUser.credits_gsm_sms_domestic || 0;
       accountLabel = `${foundUser.email.split('@')[0]} Available`;
     }
   } else if (window.currentUser) {
-    userBal = (window.currentUser.credits_normal_domestic || 0);
+    userBal = (window.currentUser.credits_gsm_sms_domestic || 0);
   }
 
   const balCheckEl = document.getElementById('sms-est-balance-check');
@@ -10152,7 +10163,7 @@ window.loadSmsCampaigns = async function() {
 
     const balEl = document.getElementById('sms-kpi-balance');
     if (balEl && window.currentUser) {
-      const smsBal = (window.currentUser.credits_normal_domestic || 0);
+      const smsBal = (window.currentUser.credits_gsm_sms_domestic || 0);
       balEl.textContent = smsBal.toLocaleString();
     }
 

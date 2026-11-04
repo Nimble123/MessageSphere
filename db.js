@@ -17,7 +17,7 @@ async function getClient() {
   return pool.connect();
 }
 
-const CREDIT_TYPES = ['normal', 'dp', 'cta', 'dp_cta', 'own_number'];
+const CREDIT_TYPES = ['gsm_sms', 'normal', 'dp', 'cta', 'dp_cta', 'own_number'];
 const DESTINATIONS = ['domestic', 'international'];
 
 async function initDB() {
@@ -329,6 +329,21 @@ async function initDB() {
         const newHash = await bcrypt.hash(adminPassword, 10);
         await client.query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [newHash, adminCheck.rows[0].id]);
         console.log(`[AUTH] Admin password synchronized to: ${adminPassword}`);
+      }
+    }
+
+    // Ensure all existing users have user_credits rows for all CREDIT_TYPES (including gsm_sms)
+    const allUsersRes = await client.query(`SELECT id, role FROM users`);
+    for (const u of allUsersRes.rows) {
+      for (const dest of DESTINATIONS) {
+        for (const type of CREDIT_TYPES) {
+          const defaultBal = (u.role === 'admin') ? 10000000 : 0;
+          await client.query(`
+            INSERT INTO user_credits (user_id, credit_type, destination, balance)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (user_id, credit_type, destination) DO NOTHING
+          `, [u.id, type, dest, defaultBal]);
+        }
       }
     }
 
