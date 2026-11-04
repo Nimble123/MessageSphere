@@ -4887,6 +4887,11 @@ window.openCampaignDetailModal = async function(campaignId) {
           <span class="status-badge" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;font-size:0.8rem;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-weight:600;">
             <i data-lucide="check-check" style="width:14px;height:14px;"></i> Delivery Reconciled & Wallet Settled
           </span>
+          ${isAdmin ? `
+            <button type="button" class="btn-action btn-action-primary" onclick="modalCampaignDetail.style.display='none'; openReportModal(${c.id}, true);" style="background:#0284c7;display:inline-flex;align-items:center;gap:6px;padding:6px 12px;font-size:0.8rem;font-weight:600;" title="Re-upload revised carrier delivery file and adjust wallet refunds">
+              <i data-lucide="rotate-ccw" style="width:14px;height:14px;"></i> Re-Upload / Revise Report
+            </button>
+          ` : ''}
         `;
       } else if (c.status === 'Rejected') {
         actionButtons += `
@@ -6040,7 +6045,7 @@ if (btnModalSaveCredits) {
   });
 }
 
-// Upload Report Modal
+// Upload / Revise Report Modal (Enterprise Reconciliation & Pre-Validation)
 const modalUploadReport = document.getElementById('modal-upload-report');
 const modalReportCampaignId = document.getElementById('modal-report-campaign-id');
 const modalReportFile = document.getElementById('modal-report-file');
@@ -6049,36 +6054,167 @@ const reportFileLabel = document.getElementById('report-file-label');
 const btnModalProcessReport = document.getElementById('btn-modal-process-report');
 const modalReportConfirm = document.getElementById('modal-report-confirm');
 
-window.openReportModal = function(campaignId) {
+window.openReportModal = function(campaignId, isRevision = false) {
   if (!currentUser || currentUser.role !== 'admin') {
     showToast('error', 'Access Denied', 'Only Platform Super Admin is authorized to upload and reconcile delivery reports.');
     return;
   }
   modalReportCampaignId.value = campaignId;
+  modalReportCampaignId.dataset.isRevision = isRevision ? 'true' : 'false';
   modalReportFile.value = '';
   if (modalReportConfirm) modalReportConfirm.checked = false;
-  reportFileLabel.textContent = 'Select or Drag Delivery Report File';
+  if (btnModalProcessReport) {
+    btnModalProcessReport.disabled = true;
+    btnModalProcessReport.textContent = isRevision ? 'Confirm & Revise Settlement' : 'Process & Reconcile Delivery';
+  }
+
+  const titleEl = document.getElementById('report-modal-title');
+  if (titleEl) {
+    titleEl.innerHTML = `<i data-lucide="${isRevision ? 'rotate-ccw' : 'file-bar-chart'}" style="width:20px;height:20px;color:${isRevision ? '#0284c7' : '#4f46e5'};"></i> <span>${isRevision ? 'Revise Delivery Report (Campaign #' + campaignId + ')' : 'Reconcile Campaign Delivery Report (#' + campaignId + ')'}</span>`;
+  }
+
+  const descEl = document.getElementById('report-modal-desc');
+  if (descEl) {
+    descEl.textContent = isRevision
+      ? 'Upload an updated/revised carrier DLR file. The system will safely recalculate delivery numbers and adjust wallet refunds automatically.'
+      : 'Upload a carrier DLR CSV or TXT file to verify message delivery and automatically settle undelivered refunds.';
+  }
+
+  const confirmLabel = document.getElementById('modal-report-confirm-label');
+  if (confirmLabel) {
+    confirmLabel.textContent = isRevision
+      ? 'I have verified the revised report preview and authorize recalculating delivery counts and wallet refund delta.'
+      : 'I have reviewed the matched delivery breakdown and authorize automated wallet reconciliation.';
+  }
+
+  const previewBox = document.getElementById('report-preview-box');
+  if (previewBox) {
+    previewBox.style.display = 'none';
+    previewBox.innerHTML = '';
+  }
+
+  reportFileLabel.textContent = 'Select or Drag Carrier DLR File (.CSV / .TXT)';
   modalUploadReport.style.display = 'flex';
+  if (window.lucide) {
+    try { lucide.createIcons({ root: modalUploadReport }); } catch(e) {}
+  }
 };
 
 if (reportDropzone) {
   reportDropzone.addEventListener('click', () => modalReportFile.click());
-  modalReportFile.addEventListener('change', (e) => {
+  modalReportFile.addEventListener('change', async (e) => {
     const f = e.target.files[0];
-    if (f) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const rows = String(reader.result || '').split(/\r?\n/).filter(line => line.trim() && !/^(phone|mobile|number|recipient|msisdn)/i.test(line.trim()));
-        let delivered = 0;
-        let failed = 0;
-        rows.forEach(line => {
-          const parts = line.split(/[\t,;]+/);
-          const status = String(parts[1] || 'delivered').trim().toLowerCase();
-          if (['delivered', 'sent', 'success', 'd', 'true', '1'].includes(status)) delivered++; else failed++;
-        });
-        reportFileLabel.textContent = `${f.name} · Preview: ${rows.length.toLocaleString()} rows, ${delivered.toLocaleString()} delivered, ${failed.toLocaleString()} failed`;
-      };
-      reader.readAsText(f.slice(0, 20 * 1024 * 1024));
+    const previewBox = document.getElementById('report-preview-box');
+    if (!f) {
+      if (previewBox) previewBox.style.display = 'none';
+      if (btnModalProcessReport) btnModalProcessReport.disabled = true;
+      return;
+    }
+
+    reportFileLabel.textContent = `${f.name} (${(f.size / 1024).toFixed(1)} KB)`;
+    if (previewBox) {
+      previewBox.style.display = 'block';
+      previewBox.innerHTML = `
+        <div style="text-align:center;padding:16px;color:#4f46e5;font-size:0.84rem;font-weight:600;">
+          <i data-lucide="loader-2" class="spin" style="width:20px;height:20px;margin-bottom:6px;display:inline-block;"></i>
+          <div>Analyzing DLR file &amp; cross-referencing campaign recipients...</div>
+        </div>
+      `;
+      if (window.lucide) lucide.createIcons({ root: previewBox });
+    }
+
+    const campaignId = modalReportCampaignId.value;
+    const formData = new FormData();
+    formData.append('reportFile', f);
+
+    try {
+      const res = await apiFetch(`/campaigns/${campaignId}/report/preview`, {
+        method: 'POST',
+        body: formData
+      });
+
+      const matchBadgeColor = res.matchRate >= 80 ? '#15803d' : (res.matchRate >= 50 ? '#b45309' : '#b91c1c');
+      const matchBadgeBg = res.matchRate >= 80 ? '#ecfdf5' : (res.matchRate >= 50 ? '#fffbeb' : '#fef2f2');
+      const matchBadgeBorder = res.matchRate >= 80 ? '#bbf7d0' : (res.matchRate >= 50 ? '#fde68a' : '#fecaca');
+
+      let warningsHtml = '';
+      if (res.warnings && res.warnings.length > 0) {
+        warningsHtml = `
+          <div style="margin-top:12px;background:${res.isSevereMismatch ? '#fef2f2' : '#fffbeb'};border:1.5px solid ${res.isSevereMismatch ? '#fecaca' : '#fde68a'};border-radius:8px;padding:10px 12px;font-size:0.78rem;color:${res.isSevereMismatch ? '#991b1b' : '#92400e'};">
+            <div style="font-weight:700;display:flex;align-items:center;gap:5px;margin-bottom:4px;">
+              <i data-lucide="${res.isSevereMismatch ? 'alert-triangle' : 'info'}" style="width:14px;height:14px;"></i>
+              ${res.isSevereMismatch ? 'Recipient Mismatch Warning' : 'Reconciliation Notes'}
+            </div>
+            <ul style="margin:0;padding-left:18px;line-height:1.45;">
+              ${res.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}
+            </ul>
+          </div>
+        `;
+      }
+
+      let walletImpactHtml = '';
+      if (res.isRevision) {
+        const delta = res.deltaFailed || 0;
+        if (delta > 0) {
+          walletImpactHtml = `<span style="color:#0284c7;font-weight:700;">+${delta.toLocaleString()} credits will be refunded (additional failed)</span>`;
+        } else if (delta < 0) {
+          walletImpactHtml = `<span style="color:#b91c1c;font-weight:700;">-${Math.abs(delta).toLocaleString()} credits will be debited back (recovered delivery)</span>`;
+        } else {
+          walletImpactHtml = `<span style="color:#15803d;font-weight:700;">0 credit change (failed count unchanged)</span>`;
+        }
+      } else {
+        walletImpactHtml = `<span style="color:#0284c7;font-weight:700;">${res.projectedFailed.toLocaleString()} credits will be auto-refunded to wallet</span>`;
+      }
+
+      if (previewBox) {
+        previewBox.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+            <strong style="font-size:0.86rem;color:#0f172a;">Pre-Reconciliation Match Analysis</strong>
+            <span style="font-size:0.74rem;font-weight:700;padding:2px 8px;border-radius:12px;background:${matchBadgeBg};color:${matchBadgeColor};border:1px solid ${matchBadgeBorder};">
+              ${res.matchRate}% Recipient Match
+            </span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:8px;font-size:0.78rem;">
+            <div style="background:#f8fafc;padding:8px 10px;border-radius:6px;border:1px solid #e2e8f0;">
+              <span style="color:#64748b;">Campaign Target:</span>
+              <div style="font-size:0.95rem;font-weight:800;color:#0f172a;">${res.totalCampaignNumbers.toLocaleString()}</div>
+            </div>
+            <div style="background:#f8fafc;padding:8px 10px;border-radius:6px;border:1px solid #e2e8f0;">
+              <span style="color:#64748b;">Report File Rows:</span>
+              <div style="font-size:0.95rem;font-weight:800;color:#0f172a;">${res.fileTotalRows.toLocaleString()}</div>
+            </div>
+            <div style="background:#ecfdf5;padding:8px 10px;border-radius:6px;border:1px solid #bbf7d0;">
+              <span style="color:#166534;">Projected Delivered:</span>
+              <div style="font-size:0.95rem;font-weight:800;color:#15803d;">${res.projectedDelivered.toLocaleString()}</div>
+            </div>
+            <div style="background:#fef2f2;padding:8px 10px;border-radius:6px;border:1px solid #fecaca;">
+              <span style="color:#991b1b;">Projected Failed:</span>
+              <div style="font-size:0.95rem;font-weight:800;color:#b91c1c;">${res.projectedFailed.toLocaleString()}</div>
+            </div>
+          </div>
+
+          <div style="margin-top:10px;padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:0.76rem;">
+            <strong>Wallet Impact:</strong> ${walletImpactHtml}
+          </div>
+
+          ${warningsHtml}
+        `;
+        if (window.lucide) lucide.createIcons({ root: previewBox });
+      }
+
+      if (btnModalProcessReport) {
+        btnModalProcessReport.disabled = false;
+      }
+    } catch(err) {
+      if (previewBox) {
+        previewBox.innerHTML = `
+          <div style="color:#dc2626;font-size:0.8rem;padding:8px;">
+            <strong>Validation Error:</strong> ${escapeHtml(err.message)}
+          </div>
+        `;
+      }
+      if (btnModalProcessReport) btnModalProcessReport.disabled = true;
     }
   });
 }
@@ -6087,23 +6223,24 @@ if (btnModalProcessReport) {
   btnModalProcessReport.addEventListener('click', async () => {
     const campaignId = modalReportCampaignId.value;
     const file = modalReportFile.files[0];
+    const isRevision = modalReportCampaignId.dataset.isRevision === 'true';
 
     if (!file) {
       showToast('warning', 'File Required', 'Please select a delivery report CSV or TXT file.');
       return;
     }
     if (!modalReportConfirm || !modalReportConfirm.checked) {
-      showToast('warning', 'Confirmation Required', 'Review the external report and confirm reconciliation before processing it.');
+      showToast('warning', 'Confirmation Required', 'Please confirm the reconciliation preview before proceeding.');
       return;
     }
 
     btnModalProcessReport.disabled = true;
-    btnModalProcessReport.textContent = 'Streaming & Processing Report...';
+    btnModalProcessReport.textContent = isRevision ? 'Re-evaluating & Revising Settlement...' : 'Streaming & Processing Report...';
 
     const formData = new FormData();
     formData.append('reportFile', file);
     formData.append('confirm', 'true');
-    formData.append('reason', 'Super Admin confirmed verified external delivery report');
+    formData.append('reason', isRevision ? 'Super Admin revised DLR delivery report' : 'Super Admin confirmed verified external delivery report');
 
     try {
       const res = await apiFetch(`/campaigns/${campaignId}/report`, {
@@ -6111,22 +6248,28 @@ if (btnModalProcessReport) {
         body: formData
       });
 
-      showToast('success', 'Report Processed!', `Delivered: ${res.deliveredCount.toLocaleString()} | Failed: ${res.failedCount.toLocaleString()}`);
-      if (res.refundedCredits > 0) {
-        showToast('info', 'Auto-Refund Applied', `${res.refundedCredits.toLocaleString()} failed credits refunded to user wallet.`);
+      showToast('success', isRevision ? 'Report Revised!' : 'Report Processed!', `Delivered: ${res.deliveredCount.toLocaleString()} | Failed: ${res.failedCount.toLocaleString()}`);
+      if (res.refundedCredits !== 0) {
+        if (res.refundedCredits > 0) {
+          showToast('info', 'Refund Applied', `+${res.refundedCredits.toLocaleString()} credits refunded to wallet.`);
+        } else {
+          showToast('info', 'Refund Adjusted', `${Math.abs(res.refundedCredits).toLocaleString()} over-refunded credits adjusted from wallet.`);
+        }
       }
       modalUploadReport.style.display = 'none';
-      loadCampaigns();
+      if (typeof loadCampaigns === 'function') loadCampaigns();
+      if (typeof loadSmsCampaigns === 'function') loadSmsCampaigns();
 
-      // Refresh credits to show refunded credits
+      // Refresh credits to show updated wallet balance
       const me = await apiFetch('/auth/me');
       currentUser = me;
+      window.currentUser = me;
       updateCreditDisplays();
     } catch (err) {
       showToast('error', 'Processing Failed', err.message);
     } finally {
       btnModalProcessReport.disabled = false;
-      btnModalProcessReport.textContent = 'Process & Auto-Refund Failed';
+      btnModalProcessReport.textContent = isRevision ? 'Confirm & Revise Settlement' : 'Process & Reconcile Delivery';
     }
   });
 }

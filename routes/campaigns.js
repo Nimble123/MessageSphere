@@ -1121,7 +1121,136 @@ router.post('/:id/notes', authenticate, requireRoles('admin', 'reseller'), async
   finally { client.release(); }
 });
 
-// POST /api/campaigns/:id/report - Upload and stream-process delivery report with auto-refund
+// POST /api/campaigns/:id/report/preview - Dry-run validation of delivery report against campaign recipients
+router.post('/:id/report/preview', authenticate, requireRoles('admin'), reportUpload.single('reportFile'), async (req, res) => {
+  const campaignId = parseInt(req.params.id, 10);
+  const reportFile = req.file;
+
+  if (!reportFile) {
+    return res.status(400).json({ error: 'Report file is required for preview' });
+  }
+
+  function normalizeReportPhone(raw) {
+    if (!raw) return '';
+    let cleaned = raw.replace(/[^0-9]/g, '').trim();
+    if (cleaned.startsWith('0')) cleaned = cleaned.substring(1);
+    if (/^[6-9]\d{9}$/.test(cleaned)) cleaned = '91' + cleaned;
+    return cleaned;
+  }
+
+  try {
+    const campRes = await query(`SELECT id, title, total_numbers, status, delivered_count, failed_count, report_processed_at FROM campaigns WHERE id = $1`, [campaignId]);
+    if (campRes.rows.length === 0) {
+      if (reportFile.path) fs.unlink(reportFile.path, () => {});
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+    const campaign = campRes.rows[0];
+
+    // Get all recipient phone numbers for this campaign
+    const recipsRes = await query(`SELECT phone_number FROM campaign_recipients WHERE campaign_id = $1`, [campaignId]);
+    const campaignPhoneSet = new Set(recipsRes.rows.map(r => r.phone_number));
+    const totalCampaignNumbers = campaignPhoneSet.size || parseInt(campaign.total_numbers, 10) || 0;
+
+    const fileStream = fs.createReadStream(reportFile.path);
+    const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
+
+    let fileTotalRows = 0;
+    let fileDeliveredCount = 0;
+    let fileFailedCount = 0;
+    let matchedCount = 0;
+    let unmatchedInFileCount = 0;
+    const matchedPhonesSet = new Set();
+    const matchedDeliveredPhones = new Set();
+    const matchedFailedPhones = new Set();
+
+    for await (const line of rl) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      if (/^(phone|mobile|number|recipient|msisdn)/i.test(trimmed)) continue;
+
+      fileTotalRows++;
+      const parts = trimmed.split(/[\t,;]+/);
+      const phone = normalizeReportPhone(parts[0]);
+      if (!phone) continue;
+
+      let isDeliv = true;
+      if (parts.length >= 2) {
+        const statusText = parts[1].trim().toLowerCase();
+        isDeliv = ['delivered', 'sent', 'success', 'd', 'true', '1'].includes(statusText);
+      }
+
+      if (campaignPhoneSet.has(phone)) {
+        matchedCount++;
+        matchedPhonesSet.add(phone);
+        if (isDeliv) {
+          matchedDeliveredPhones.add(phone);
+        } else {
+          matchedFailedPhones.add(phone);
+        }
+      } else {
+        unmatchedInFileCount++;
+      }
+
+      if (isDeliv) fileDeliveredCount++; else fileFailedCount++;
+    }
+
+    if (reportFile.path) fs.unlink(reportFile.path, () => {});
+
+    // Missing numbers from campaign that were not mentioned in file (treated as Failed)
+    const missingFromCampaignCount = Math.max(0, totalCampaignNumbers - matchedPhonesSet.size);
+    const projectedDelivered = matchedDeliveredPhones.size;
+    const projectedFailed = matchedFailedPhones.size + missingFromCampaignCount;
+    const matchRate = totalCampaignNumbers > 0 ? Math.min(100, Math.round((matchedPhonesSet.size / totalCampaignNumbers) * 1000) / 10) : 0;
+
+    let warnings = [];
+    let isSevereMismatch = false;
+
+    if (fileTotalRows !== totalCampaignNumbers) {
+      warnings.push(`File contains ${fileTotalRows.toLocaleString()} numbers, while this campaign has ${totalCampaignNumbers.toLocaleString()} recipients.`);
+    }
+
+    if (unmatchedInFileCount > 0) {
+      warnings.push(`${unmatchedInFileCount.toLocaleString()} numbers in the file do not belong to this campaign and will be safely ignored.`);
+    }
+
+    if (matchRate < 50) {
+      isSevereMismatch = true;
+      warnings.push(`CRITICAL WARNING: Only ${matchRate}% (${matchedPhonesSet.size.toLocaleString()} / ${totalCampaignNumbers.toLocaleString()}) of campaign numbers match! You might have selected a file from a different campaign.`);
+    } else if (missingFromCampaignCount > 0) {
+      warnings.push(`${missingFromCampaignCount.toLocaleString()} campaign numbers were missing from this report file and will be treated as Failed (auto-refunded).`);
+    }
+
+    const isRevision = Boolean(campaign.report_processed_at || campaign.status === 'Report Updated');
+    let deltaFailed = 0;
+    if (isRevision) {
+      const prevFailed = parseInt(campaign.failed_count, 10) || 0;
+      deltaFailed = projectedFailed - prevFailed;
+    }
+
+    return res.json({
+      campaignId,
+      campaignTitle: campaign.title,
+      totalCampaignNumbers,
+      fileTotalRows,
+      matchedNumbersCount: matchedPhonesSet.size,
+      unmatchedInFileCount,
+      missingFromCampaignCount,
+      matchRate,
+      projectedDelivered,
+      projectedFailed,
+      isRevision,
+      deltaFailed,
+      isSevereMismatch,
+      warnings
+    });
+  } catch (err) {
+    if (reportFile && reportFile.path) fs.unlink(reportFile.path, () => {});
+    console.error('Report preview error:', err);
+    return res.status(500).json({ error: 'Failed to preview delivery report' });
+  }
+});
+
+// POST /api/campaigns/:id/report - Upload and stream-process delivery report with auto-refund & revision support
 router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.single('reportFile'), async (req, res) => {
   const campaignId = parseInt(req.params.id, 10);
   const reportFile = req.file;
@@ -1191,12 +1320,22 @@ router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.sin
       return res.status(404).json({ error: 'Campaign not found' });
     }
     const campaign = campRes.rows[0];
-    if (!['Approved', 'Completed'].includes(campaign.status) || campaign.report_processed_at) {
+
+    // Allow Approved, Completed, AND Report Updated (for Admin DLR revisions)
+    if (!['Approved', 'Completed', 'Report Updated'].includes(campaign.status)) {
       await client.query('ROLLBACK');
-      return res.status(409).json({ error: 'A delivery report may be processed once for an Approved or Completed campaign.' });
+      return res.status(409).json({ error: `Cannot process delivery report for campaign in status "${campaign.status}".` });
     }
 
-    // Update delivered statuses in campaign_recipients in chunks
+    const isRevision = Boolean(campaign.report_processed_at || campaign.status === 'Report Updated');
+    const prevFailed = parseInt(campaign.failed_count, 10) || 0;
+
+    // If re-uploading / revising, reset all recipients to Pending first
+    if (isRevision) {
+      await client.query(`UPDATE campaign_recipients SET status = 'Pending', updated_at = NOW() WHERE campaign_id = $1`, [campaignId]);
+    }
+
+    // Update delivered statuses in campaign_recipients in chunks (strictly scoped to this campaign_id)
     const BATCH_SIZE = 2000;
     for (let i = 0; i < deliveredNumbers.length; i += BATCH_SIZE) {
       const chunk = deliveredNumbers.slice(i, i + BATCH_SIZE);
@@ -1207,7 +1346,7 @@ router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.sin
       );
     }
 
-    // Mark explicit failed numbers or any remaining numbers not delivered as Failed
+    // Mark explicit failed numbers in campaign_recipients in chunks
     if (failedNumbers.length > 0) {
       for (let i = 0; i < failedNumbers.length; i += BATCH_SIZE) {
         const chunk = failedNumbers.slice(i, i + BATCH_SIZE);
@@ -1219,14 +1358,14 @@ router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.sin
       }
     }
 
-    // Any remaining pending recipients are marked Failed
+    // Any remaining pending recipients (numbers in campaign not confirmed delivered) are marked Failed
     await client.query(
       `UPDATE campaign_recipients SET status = 'Failed', updated_at = NOW() 
        WHERE campaign_id = $1 AND status != 'Delivered'`,
       [campaignId]
     );
 
-    // Compute exact delivered and failed counts from database
+    // Compute exact delivered and failed counts strictly from this campaign's database rows
     const countCheck = await client.query(
       `SELECT 
          COUNT(*) FILTER (WHERE status = 'Delivered') as delivered,
@@ -1239,54 +1378,96 @@ router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.sin
     const actualDelivered = parseInt(countCheck.rows[0].delivered, 10) || 0;
     const actualFailed = parseInt(countCheck.rows[0].failed, 10) || 0;
 
-    // Auto-refund failed credits if not already refunded (accounting for multi-part SMS)
-    let refundedFailedCount = 0;
-    if (actualFailed > 0 && !campaign.failed_refunded) {
-      let refundMultiplier = 1;
-      if (campaign.channel_type === 'sms' && typeof calculateSmsMetrics === 'function') {
-        const smsMetrics = calculateSmsMetrics(campaign.message_text);
-        refundMultiplier = smsMetrics.parts_count || 1;
-      }
-      const refundCredits = actualFailed * refundMultiplier;
-      refundedFailedCount = refundCredits;
-
-      // Check campaign owner's refund destination rule
-      const ownerRes = await client.query(
-        `SELECT id, email, role, reseller_id, refund_destination FROM users WHERE id = $1`,
-        [campaign.user_id]
-      );
-      const owner = ownerRes.rows[0];
-
-      let refundRecipientId = campaign.user_id;
-      let isRoutedToReseller = false;
-
-      if (owner && owner.refund_destination === 'reseller' && owner.reseller_id) {
-        refundRecipientId = owner.reseller_id;
-        isRoutedToReseller = true;
-      }
-
-      // Add credits to beneficiary wallet (reseller or user)
-      await client.query(`
-        UPDATE user_credits 
-        SET balance = balance + $1 
-        WHERE user_id = $2 AND credit_type = $3 AND destination = $4
-      `, [refundCredits, refundRecipientId, campaign.campaign_type, campaign.destination]);
-
-      // Reason note: clear attribution
-      const refundReason = isRoutedToReseller
-        ? `Auto-refund for ${actualFailed} failed deliveries in Campaign #${campaignId} ("${campaign.title}") of client ${owner.email} (${refundCredits} credits)`
-        : `Auto-refund for ${actualFailed} failed deliveries in campaign #${campaignId} (${refundCredits} credits)`;
-
-      // Passbook ledger entry: created ONLY for the recipient who actually receives the refund!
-      await client.query(`
-        INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, refund_client_email, refund_campaign_id)
-        VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8)
-      `, [req.user.id, refundRecipientId, campaign.campaign_type, campaign.destination, refundCredits, refundReason, owner ? owner.email : null, campaignId]);
-
-      await client.query(`UPDATE campaigns SET failed_refunded = TRUE WHERE id = $1`, [campaignId]);
+    // Compute SMS multi-part credit multiplier if applicable
+    let refundMultiplier = 1;
+    if (campaign.channel_type === 'sms' && typeof calculateSmsMetrics === 'function') {
+      const smsMetrics = calculateSmsMetrics(campaign.message_text);
+      refundMultiplier = smsMetrics.parts_count || 1;
     }
 
-    // Update campaign record
+    // Check campaign owner's refund destination rule
+    const ownerRes = await client.query(
+      `SELECT id, email, role, reseller_id, refund_destination FROM users WHERE id = $1`,
+      [campaign.user_id]
+    );
+    const owner = ownerRes.rows[0];
+
+    let refundRecipientId = campaign.user_id;
+    let isRoutedToReseller = false;
+    if (owner && owner.refund_destination === 'reseller' && owner.reseller_id) {
+      refundRecipientId = owner.reseller_id;
+      isRoutedToReseller = true;
+    }
+
+    let netRefundDelta = 0;
+
+    if (!isRevision) {
+      // INITIAL REPORT SETTLEMENT
+      if (actualFailed > 0 && !campaign.failed_refunded) {
+        const refundCredits = actualFailed * refundMultiplier;
+        netRefundDelta = refundCredits;
+
+        // Add credits to beneficiary wallet
+        await client.query(`
+          UPDATE user_credits 
+          SET balance = balance + $1 
+          WHERE user_id = $2 AND credit_type = $3 AND destination = $4
+        `, [refundCredits, refundRecipientId, campaign.campaign_type, campaign.destination]);
+
+        const refundReason = isRoutedToReseller
+          ? `Auto-refund for ${actualFailed} failed deliveries in Campaign #${campaignId} ("${campaign.title}") of client ${owner.email} (${refundCredits} credits)`
+          : `Auto-refund for ${actualFailed} failed deliveries in campaign #${campaignId} (${refundCredits} credits)`;
+
+        await client.query(`
+          INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, refund_client_email, refund_campaign_id)
+          VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8)
+        `, [req.user.id, refundRecipientId, campaign.campaign_type, campaign.destination, refundCredits, refundReason, owner ? owner.email : null, campaignId]);
+
+        await client.query(`UPDATE campaigns SET failed_refunded = TRUE WHERE id = $1`, [campaignId]);
+      }
+    } else {
+      // REVISION / RE-RECONCILIATION DELTA SETTLEMENT
+      const deltaFailedCount = actualFailed - prevFailed;
+      const deltaCredits = deltaFailedCount * refundMultiplier;
+      netRefundDelta = deltaCredits;
+
+      if (deltaCredits > 0) {
+        // More failed than previously: Grant additional refund
+        await client.query(`
+          UPDATE user_credits 
+          SET balance = balance + $1 
+          WHERE user_id = $2 AND credit_type = $3 AND destination = $4
+        `, [deltaCredits, refundRecipientId, campaign.campaign_type, campaign.destination]);
+
+        const refundReason = isRoutedToReseller
+          ? `DLR Revision (+): Additional refund for ${deltaFailedCount} failed deliveries in Campaign #${campaignId} of client ${owner.email} (+${deltaCredits} credits)`
+          : `DLR Revision (+): Additional refund for ${deltaFailedCount} failed deliveries in campaign #${campaignId} (+${deltaCredits} credits)`;
+
+        await client.query(`
+          INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, refund_client_email, refund_campaign_id)
+          VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8)
+        `, [req.user.id, refundRecipientId, campaign.campaign_type, campaign.destination, deltaCredits, refundReason, owner ? owner.email : null, campaignId]);
+      } else if (deltaCredits < 0) {
+        // Fewer failed than previously: Deduct over-refunded credits
+        const deductionAmt = Math.abs(deltaCredits);
+        await client.query(`
+          UPDATE user_credits 
+          SET balance = balance - $1 
+          WHERE user_id = $2 AND credit_type = $3 AND destination = $4
+        `, [deductionAmt, refundRecipientId, campaign.campaign_type, campaign.destination]);
+
+        const adjustReason = isRoutedToReseller
+          ? `DLR Revision (-): Reversal adjustment for ${Math.abs(deltaFailedCount)} recovered deliveries in Campaign #${campaignId} of client ${owner.email} (-${deductionAmt} credits)`
+          : `DLR Revision (-): Reversal adjustment for ${Math.abs(deltaFailedCount)} recovered deliveries in campaign #${campaignId} (-${deductionAmt} credits)`;
+
+        await client.query(`
+          INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, refund_client_email, refund_campaign_id)
+          VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8)
+        `, [req.user.id, refundRecipientId, campaign.campaign_type, campaign.destination, deductionAmt, adjustReason, owner ? owner.email : null, campaignId]);
+      }
+    }
+
+    // Update campaign record with new counts
     await client.query(`
       UPDATE campaigns 
       SET status = 'Report Updated', 
@@ -1301,22 +1482,31 @@ router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.sin
       actorId: req.user.id,
       entityType: 'campaign',
       entityId: campaignId,
-      action: 'delivery_report_processed',
-      details: { deliveredCount: actualDelivered, failedCount: actualFailed, refundedCredits: refundedFailedCount, sourceFile: reportFile.originalname, reason: String(req.body.reason || 'Verified external delivery report').slice(0, 1000) }
+      action: isRevision ? 'delivery_report_re_processed' : 'delivery_report_processed',
+      details: { 
+        isRevision,
+        previousFailedCount: prevFailed,
+        deliveredCount: actualDelivered, 
+        failedCount: actualFailed, 
+        refundDelta: netRefundDelta, 
+        sourceFile: reportFile.originalname, 
+        reason: String(req.body.reason || (isRevision ? 'Super Admin revised DLR delivery report' : 'Verified external delivery report')).slice(0, 1000) 
+      }
     });
 
     await client.query('COMMIT');
 
     return res.json({
-      message: 'Report processed successfully!',
+      message: isRevision ? 'Delivery report revised successfully!' : 'Report processed successfully!',
+      isRevision,
       deliveredCount: actualDelivered,
       failedCount: actualFailed,
-      refundedCredits: refundedFailedCount
+      refundedCredits: netRefundDelta
     });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Process report error:', err);
-    return res.status(500).json({ error: 'Failed to process report' });
+    return res.status(500).json({ error: 'Failed to process report: ' + err.message });
   } finally {
     client.release();
     if (reportFile && reportFile.path) fs.unlink(reportFile.path, () => {});
