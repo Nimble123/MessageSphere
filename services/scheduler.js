@@ -29,26 +29,29 @@ async function checkScheduledCampaigns() {
       const client = await getClient();
       try {
         await client.query('BEGIN');
-        await client.query(`
+        const updateRes = await client.query(`
           UPDATE campaigns 
           SET scheduled_triggered = TRUE, 
               status = 'Approved'
           WHERE id = $1 AND status = 'Submitted'
         `, [c.id]);
-        await logAudit(client, {
-          entityType: 'campaign', entityId: c.id, action: 'scheduled_campaign_released_to_manual_queue',
-          details: { scheduledAt: c.scheduled_at, manualDispatch: true }
-        });
-        await client.query(`
-          INSERT INTO admin_reminders (campaign_id, title, message, scheduled_for, reminder_type)
-          VALUES ($1, $2, $3, $4, $5)
-        `, [
-          c.id,
-          `⚡ Dispatch Ready: Campaign #${c.id} in Queue`,
-          `Campaign #${c.id} ("${c.title}") [${c.owner_email}] reached its scheduled dispatch time and is now waiting in the Operator Dispatch Queue.`,
-          c.scheduled_at,
-          'scheduled_dispatch_ready'
-        ]);
+
+        if (updateRes.rowCount > 0) {
+          await logAudit(client, {
+            entityType: 'campaign', entityId: c.id, action: 'scheduled_campaign_released_to_manual_queue',
+            details: { scheduledAt: c.scheduled_at, manualDispatch: true }
+          });
+          await client.query(`
+            INSERT INTO admin_reminders (campaign_id, title, message, scheduled_for, reminder_type)
+            VALUES ($1, $2, $3, $4, $5)
+          `, [
+            c.id,
+            `⚡ Dispatch Ready: Campaign #${c.id} in Queue`,
+            `Campaign #${c.id} ("${c.title}") [${c.owner_email}] reached its scheduled dispatch time and is now waiting in the Operator Dispatch Queue.`,
+            c.scheduled_at,
+            'scheduled_dispatch_ready'
+          ]);
+        }
         await client.query('COMMIT');
       } catch (updateErr) {
         await client.query('ROLLBACK');

@@ -7,6 +7,7 @@ const readline = require('readline');
 const { query, getClient } = require('../db');
 const { authenticate, requireRoles } = require('../middleware/auth');
 const { logAudit } = require('../services/audit');
+const { calculateSmsMetrics, normalizePhoneNumber } = require('../services/telecom');
 
 const MAX_SMS_RECIPIENTS = Number(process.env.MAX_CAMPAIGN_RECIPIENTS || 50000);
 
@@ -46,53 +47,6 @@ function runCsvUpload(req, res) {
       resolve();
     });
   });
-}
-
-// ---------------------------------------------------------------------------
-// GSM-7 character metrics (3GPP TS 23.038)
-// ---------------------------------------------------------------------------
-const GSM_7_EXTENDED_CHARS = new Set(['^', '{', '}', '\\', '[', '~', ']', '|', '€']);
-const GSM_7_REGEX =
-  /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#$%&'()*+,\-./:;<=>?¡¿\^{}\[~\]|€]*$/;
-
-/**
- * Calculate SMS encoding & segment count for a given message text.
- * @param {string} text  Raw message content
- * @returns {{ character_count: number, is_unicode: boolean, parts_count: number, carrier_warning: string|null }}
- */
-function calculateSmsMetrics(text) {
-  const content = String(text || '').trim();
-  const rawGlyphCount = Array.from(content).length;
-
-  const isUnicode = !GSM_7_REGEX.test(content);
-
-  let effectiveCharCount = 0;
-  let partsCount = 1;
-
-  if (isUnicode) {
-    effectiveCharCount = rawGlyphCount;
-    // Unicode rule: 75 characters per part (1-75 = 1 credit, 76-150 = 2 credits, 151-225 = 3 credits, etc.)
-    partsCount = Math.ceil(effectiveCharCount / 75) || 1;
-  } else {
-    // GSM-7: extended chars count as 2
-    for (const ch of content) {
-      effectiveCharCount += GSM_7_EXTENDED_CHARS.has(ch) ? 2 : 1;
-    }
-    // GSM-7 rule: 160 characters per part (1-160 = 1 credit, 161-320 = 2 credits, 321-480 = 3 credits, etc.)
-    partsCount = Math.ceil(effectiveCharCount / 160) || 1;
-  }
-
-  let carrierWarning = null;
-  if (partsCount >= 5) {
-    carrierWarning = `High Segment Warning: Message requires ${partsCount} SMS parts (${partsCount} credits per number). Carriers may throttle or drop messages exceeding 4 parts.`;
-  }
-
-  return {
-    character_count: effectiveCharCount,
-    is_unicode: isUnicode,
-    parts_count: partsCount || 1,
-    carrier_warning: carrierWarning,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -362,15 +316,24 @@ router.post('/', authenticate, async (req, res) => {
   }
 
   // ------------------------------------------------------------------
-  // DND / Blacklist filter (Robust digit normalization for +91 / 91 / 10-digit)
+  // DND / Blacklist filter (Indexed ANY query with robust digit normalization)
   // ------------------------------------------------------------------
+  const candidateNumbers = Array.from(new Set(rawNumberList.map((n) => String(n).trim()).filter(Boolean)));
+  const candidate10Digits = candidateNumbers.map((n) => n.slice(-10)).filter((n) => n.length === 10);
+
   const blacklistedRes = await query(
     `SELECT phone_number FROM blacklist
-     WHERE user_id IN ($1, $2) 
-        OR user_id IS NULL 
-        OR user_id IN (SELECT id FROM users WHERE role = 'admin')
-        OR user_id IN (SELECT reseller_id FROM users WHERE id IN ($1, $2) AND reseller_id IS NOT NULL)`,
-    [req.user.id, effectiveUserId]
+     WHERE (
+       user_id IN ($1, $2) 
+       OR user_id IS NULL 
+       OR user_id IN (SELECT id FROM users WHERE role = 'admin')
+       OR user_id IN (SELECT reseller_id FROM users WHERE id IN ($1, $2) AND reseller_id IS NOT NULL)
+     )
+     AND (
+       phone_number = ANY($3::varchar[])
+       OR RIGHT(phone_number, 10) = ANY($4::varchar[])
+     )`,
+    [req.user.id, effectiveUserId, candidateNumbers, candidate10Digits]
   );
   
   const blacklistedSet = new Set();
@@ -380,10 +343,8 @@ router.post('/', authenticate, async (req, res) => {
     const digits = raw.replace(/[^0-9]/g, '');
     if (digits) {
       blacklistedSet.add(digits);
-      if (digits.startsWith('91') && digits.length === 12) {
-        blacklistedSet.add(digits.substring(2)); // also match 10-digit variant
-      } else if (digits.length === 10) {
-        blacklistedSet.add('91' + digits); // also match 91-prefixed variant
+      if (digits.length >= 10) {
+        blacklistedSet.add(digits.slice(-10));
       }
     }
   });
@@ -393,7 +354,8 @@ router.post('/', authenticate, async (req, res) => {
 
   rawNumberList.forEach((num) => {
     const digitsOnly = String(num || '').replace(/[^0-9]/g, '');
-    if (blacklistedSet.has(num) || blacklistedSet.has(digitsOnly)) {
+    const last10 = digitsOnly.slice(-10);
+    if (blacklistedSet.has(num) || blacklistedSet.has(digitsOnly) || (last10.length === 10 && blacklistedSet.has(last10))) {
       skippedBlacklisted++;
     } else {
       validNumbers.push(num);
@@ -503,9 +465,9 @@ router.post('/', authenticate, async (req, res) => {
         : `Deduction for SMS campaign #${campaignId} (${campaignTitle})`;
 
     await client.query(
-      `INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, direction)
-       VALUES ($1, $2, $3, $4, $5, $6, 'debit')`,
-      [effectiveUserId, effectiveUserId, 'gsm_sms', campaignDest, creditCost, txReason]
+      `INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, direction, refund_campaign_id)
+       VALUES ($1, $2, $3, $4, $5, $6, 'debit', $7)`,
+      [effectiveUserId, effectiveUserId, 'gsm_sms', campaignDest, creditCost, txReason, campaignId]
     );
 
     // Audit trail
@@ -682,61 +644,78 @@ router.get('/', authenticate, async (req, res) => {
 // ===========================================================================
 router.get('/metrics', authenticate, async (req, res) => {
   try {
-    let sql = '';
-    let params = [];
+    let campaignsSql = '';
+    let campaignsParams = [];
+    let creditsSql = '';
+    let creditsParams = [];
 
     if (req.user.role === 'admin') {
-      sql = `
+      campaignsSql = `
         SELECT
           COUNT(*)                                         AS total_campaigns,
-          COALESCE(SUM(c.total_numbers), 0)               AS total_messages,
-          COALESCE(SUM(ct.amount), 0)                     AS credits_used
-        FROM campaigns c
-        LEFT JOIN credit_transactions ct
-          ON ct.to_user_id = c.user_id
-         AND ct.credit_type IN ('gsm_sms', 'normal')
-         AND ct.reason ILIKE '%campaign #' || c.id || '%'
-        WHERE c.channel_type = 'sms'
+          COALESCE(SUM(total_numbers), 0)                 AS total_messages
+        FROM campaigns
+        WHERE channel_type = 'sms'
+      `;
+      creditsSql = `
+        SELECT COALESCE(SUM(amount), 0) AS credits_used
+        FROM credit_transactions
+        WHERE credit_type IN ('gsm_sms', 'normal')
+          AND direction = 'debit'
       `;
     } else if (req.user.role === 'reseller') {
-      sql = `
+      campaignsSql = `
         SELECT
-          COUNT(*)                                         AS total_campaigns,
-          COALESCE(SUM(c.total_numbers), 0)               AS total_messages,
-          COALESCE(SUM(ct.amount), 0)                     AS credits_used
+          COUNT(c.id)                                     AS total_campaigns,
+          COALESCE(SUM(c.total_numbers), 0)               AS total_messages
         FROM campaigns c
         JOIN users u ON c.user_id = u.id
-        LEFT JOIN credit_transactions ct
-          ON ct.to_user_id = c.user_id
-         AND ct.credit_type IN ('gsm_sms', 'normal')
-         AND ct.reason ILIKE '%campaign #' || c.id || '%'
         WHERE c.channel_type = 'sms'
           AND (c.user_id = $1 OR u.reseller_id = $1)
       `;
-      params = [req.user.id];
+      campaignsParams = [req.user.id];
+
+      creditsSql = `
+        SELECT COALESCE(SUM(ct.amount), 0) AS credits_used
+        FROM credit_transactions ct
+        JOIN users u ON ct.to_user_id = u.id
+        WHERE ct.credit_type IN ('gsm_sms', 'normal')
+          AND ct.direction = 'debit'
+          AND (ct.to_user_id = $1 OR u.reseller_id = $1)
+      `;
+      creditsParams = [req.user.id];
     } else {
-      sql = `
+      campaignsSql = `
         SELECT
           COUNT(*)                                         AS total_campaigns,
-          COALESCE(SUM(c.total_numbers), 0)               AS total_messages,
-          COALESCE(SUM(ct.amount), 0)                     AS credits_used
-        FROM campaigns c
-        LEFT JOIN credit_transactions ct
-          ON ct.to_user_id = c.user_id
-         AND ct.credit_type IN ('gsm_sms', 'normal')
-         AND ct.reason ILIKE '%campaign #' || c.id || '%'
-        WHERE c.channel_type = 'sms'
-          AND c.user_id = $1
+          COALESCE(SUM(total_numbers), 0)                 AS total_messages
+        FROM campaigns
+        WHERE channel_type = 'sms'
+          AND user_id = $1
       `;
-      params = [req.user.id];
+      campaignsParams = [req.user.id];
+
+      creditsSql = `
+        SELECT COALESCE(SUM(amount), 0) AS credits_used
+        FROM credit_transactions
+        WHERE credit_type IN ('gsm_sms', 'normal')
+          AND direction = 'debit'
+          AND to_user_id = $1
+      `;
+      creditsParams = [req.user.id];
     }
 
-    const result = await query(sql, params);
-    const row = result.rows[0] || {};
+    const [campResult, credResult] = await Promise.all([
+      query(campaignsSql, campaignsParams),
+      query(creditsSql, creditsParams)
+    ]);
+
+    const campRow = campResult.rows[0] || {};
+    const credRow = credResult.rows[0] || {};
     return res.json({
-      total_campaigns: parseInt(row.total_campaigns, 10) || 0,
-      total_messages: parseInt(row.total_messages, 10) || 0,
-      credits_used: parseInt(row.credits_used, 10) || 0,
+      total_campaigns: parseInt(campRow.total_campaigns, 10) || 0,
+      total_messages: parseInt(campRow.total_messages, 10) || 0,
+      credits_used: parseInt(credRow.credits_used, 10) || 0,
     });
   } catch (err) {
     console.error('SMS metrics error:', err);
@@ -845,21 +824,18 @@ router.delete('/:id', authenticate, async (req, res) => {
       });
     }
 
-    // Refund all credits (total_numbers × parts implied by campaign cost — stored as total_numbers for SMS)
-    // The credit cost at creation was partsPerMessage * messageCount; for refund we refund exactly
-    // what was deducted. We infer this from credit_transactions for accuracy.
+    // Calculate exact refund based on multi-part metrics and recipient count
+    const metrics = calculateSmsMetrics(campaign.message_text);
+    const computedRefund = (metrics.parts_count || 1) * (parseInt(campaign.total_numbers, 10) || 0);
+
     const txResult = await client.query(
       `SELECT ABS(amount) AS amount
        FROM credit_transactions
        WHERE to_user_id = $1 AND credit_type = 'gsm_sms' AND destination = $2
-         AND reason ILIKE '%campaign #' || $3 || '%'
+         AND refund_campaign_id = $3
        ORDER BY id DESC LIMIT 1`,
-      [campaign.user_id, campaign.destination, String(campaignId)]
+      [campaign.user_id, campaign.destination, campaignId]
     );
-
-    // Calculate exact fallback refund based on parts if transaction record missing
-    const metrics = calculateSmsMetrics(campaign.message_text);
-    const computedRefund = (metrics.parts_count || 1) * (parseInt(campaign.total_numbers, 10) || 0);
 
     const refundAmount =
       txResult.rows.length > 0

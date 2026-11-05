@@ -612,7 +612,7 @@ router.get('/blacklist', authenticate, async (req, res) => {
         SELECT b.*, u.email as owner_email, u.role as owner_role
         FROM blacklist b
         LEFT JOIN users u ON b.user_id = u.id
-        WHERE b.user_id = $1 OR b.user_id IS NULL
+        WHERE b.user_id = $1
         ORDER BY b.created_at DESC
       `;
       params = [req.user.id];

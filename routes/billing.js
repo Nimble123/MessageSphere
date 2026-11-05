@@ -7,43 +7,127 @@ const { authenticate, requireRoles } = require('../middleware/auth');
 // GET /api/billing/summary - Accounts receivable & Khata overview metrics
 router.get('/summary', authenticate, async (req, res) => {
   try {
-    let filterClause = '';
-    let params = [];
-
     if (req.user.role === 'admin') {
-      filterClause = 'WHERE cr.status != \'Rejected\'';
+      const summarySql = `
+        SELECT
+          -- Platform Direct Receivables (Direct platform clients & resellers)
+          COALESCE(COUNT(*) FILTER (WHERE u.reseller_id IS NULL), 0) AS platform_orders,
+          COALESCE(SUM(cr.amount_inr) FILTER (WHERE u.reseller_id IS NULL), 0) AS platform_billed,
+          COALESCE(SUM(cr.paid_amount) FILTER (WHERE u.reseller_id IS NULL), 0) AS platform_paid,
+          COALESCE(SUM(GREATEST(0, cr.amount_inr - COALESCE(cr.paid_amount, 0))) FILTER (WHERE u.reseller_id IS NULL), 0) AS platform_due,
+
+          -- Downstream Reseller Client Receivables (Retail)
+          COALESCE(COUNT(*) FILTER (WHERE u.reseller_id IS NOT NULL), 0) AS retail_orders,
+          COALESCE(SUM(cr.amount_inr) FILTER (WHERE u.reseller_id IS NOT NULL), 0) AS retail_billed,
+          COALESCE(SUM(cr.paid_amount) FILTER (WHERE u.reseller_id IS NOT NULL), 0) AS retail_paid,
+          COALESCE(SUM(GREATEST(0, cr.amount_inr - COALESCE(cr.paid_amount, 0))) FILTER (WHERE u.reseller_id IS NOT NULL), 0) AS retail_due,
+
+          -- Combined Totals
+          COALESCE(COUNT(*), 0) AS total_orders,
+          COALESCE(SUM(cr.amount_inr), 0) AS total_billed,
+          COALESCE(SUM(cr.paid_amount), 0) AS total_paid,
+          COALESCE(SUM(GREATEST(0, cr.amount_inr - COALESCE(cr.paid_amount, 0))), 0) AS total_due,
+          COALESCE(COUNT(CASE WHEN cr.payment_status = 'Unpaid' OR (COALESCE(cr.paid_amount, 0) = 0 AND cr.amount_inr > 0) THEN 1 END), 0) AS count_unpaid,
+          COALESCE(COUNT(CASE WHEN cr.payment_status = 'Partial' OR (cr.paid_amount > 0 AND cr.paid_amount < cr.amount_inr) THEN 1 END), 0) AS count_partial,
+          COALESCE(COUNT(CASE WHEN cr.payment_status = 'Paid' OR (cr.paid_amount >= cr.amount_inr AND cr.amount_inr > 0) THEN 1 END), 0) AS count_paid
+        FROM credit_requests cr
+        JOIN users u ON cr.user_id = u.id
+        WHERE cr.status != 'Rejected'
+      `;
+      const result = await query(summarySql);
+      const row = result.rows[0] || {};
+      return res.json({
+        total_orders: parseInt(row.total_orders, 10) || 0,
+        total_billed: Math.round(parseFloat(row.total_billed || 0) * 100) / 100,
+        total_paid: Math.round(parseFloat(row.total_paid || 0) * 100) / 100,
+        total_due: Math.round(parseFloat(row.total_due || 0) * 100) / 100,
+        count_unpaid: parseInt(row.count_unpaid, 10) || 0,
+        count_partial: parseInt(row.count_partial, 10) || 0,
+        count_paid: parseInt(row.count_paid, 10) || 0,
+        platform_direct: {
+          orders: parseInt(row.platform_orders, 10) || 0,
+          billed: Math.round(parseFloat(row.platform_billed || 0) * 100) / 100,
+          paid: Math.round(parseFloat(row.platform_paid || 0) * 100) / 100,
+          due: Math.round(parseFloat(row.platform_due || 0) * 100) / 100
+        },
+        retail_clients: {
+          orders: parseInt(row.retail_orders, 10) || 0,
+          billed: Math.round(parseFloat(row.retail_billed || 0) * 100) / 100,
+          paid: Math.round(parseFloat(row.retail_paid || 0) * 100) / 100,
+          due: Math.round(parseFloat(row.retail_due || 0) * 100) / 100
+        }
+      });
     } else if (req.user.role === 'reseller') {
-      filterClause = 'JOIN users u ON cr.user_id = u.id WHERE (cr.user_id = $1 OR u.reseller_id = $1) AND cr.status != \'Rejected\'';
-      params = [req.user.id];
+      const summarySql = `
+        SELECT
+          -- Receivables (Client orders owed to Reseller)
+          COALESCE(COUNT(*) FILTER (WHERE u.reseller_id = $1 AND cr.user_id != $1), 0) AS recv_orders,
+          COALESCE(SUM(cr.amount_inr) FILTER (WHERE u.reseller_id = $1 AND cr.user_id != $1), 0) AS recv_billed,
+          COALESCE(SUM(cr.paid_amount) FILTER (WHERE u.reseller_id = $1 AND cr.user_id != $1), 0) AS recv_paid,
+          COALESCE(SUM(GREATEST(0, cr.amount_inr - COALESCE(cr.paid_amount, 0))) FILTER (WHERE u.reseller_id = $1 AND cr.user_id != $1), 0) AS recv_due,
+
+          -- Payables (Reseller orders owed to Platform Admin)
+          COALESCE(COUNT(*) FILTER (WHERE cr.user_id = $1), 0) AS pay_orders,
+          COALESCE(SUM(cr.amount_inr) FILTER (WHERE cr.user_id = $1), 0) AS pay_billed,
+          COALESCE(SUM(cr.paid_amount) FILTER (WHERE cr.user_id = $1), 0) AS pay_paid,
+          COALESCE(SUM(GREATEST(0, cr.amount_inr - COALESCE(cr.paid_amount, 0))) FILTER (WHERE cr.user_id = $1), 0) AS pay_due,
+
+          -- Counts for client receivables
+          COALESCE(COUNT(CASE WHEN (u.reseller_id = $1 AND cr.user_id != $1) AND (cr.payment_status = 'Unpaid' OR (COALESCE(cr.paid_amount, 0) = 0 AND cr.amount_inr > 0)) THEN 1 END), 0) AS count_unpaid,
+          COALESCE(COUNT(CASE WHEN (u.reseller_id = $1 AND cr.user_id != $1) AND (cr.payment_status = 'Partial' OR (cr.paid_amount > 0 AND cr.paid_amount < cr.amount_inr)) THEN 1 END), 0) AS count_partial,
+          COALESCE(COUNT(CASE WHEN (u.reseller_id = $1 AND cr.user_id != $1) AND (cr.payment_status = 'Paid' OR (cr.paid_amount >= cr.amount_inr AND cr.amount_inr > 0)) THEN 1 END), 0) AS count_paid
+        FROM credit_requests cr
+        JOIN users u ON cr.user_id = u.id
+        WHERE (cr.user_id = $1 OR u.reseller_id = $1) AND cr.status != 'Rejected'
+      `;
+      const result = await query(summarySql, [req.user.id]);
+      const row = result.rows[0] || {};
+      return res.json({
+        total_orders: parseInt(row.recv_orders, 10) || 0,
+        total_billed: Math.round(parseFloat(row.recv_billed || 0) * 100) / 100,
+        total_paid: Math.round(parseFloat(row.recv_paid || 0) * 100) / 100,
+        total_due: Math.round(parseFloat(row.recv_due || 0) * 100) / 100,
+        count_unpaid: parseInt(row.count_unpaid, 10) || 0,
+        count_partial: parseInt(row.count_partial, 10) || 0,
+        count_paid: parseInt(row.count_paid, 10) || 0,
+        receivables: {
+          orders: parseInt(row.recv_orders, 10) || 0,
+          billed: Math.round(parseFloat(row.recv_billed || 0) * 100) / 100,
+          paid: Math.round(parseFloat(row.recv_paid || 0) * 100) / 100,
+          due: Math.round(parseFloat(row.recv_due || 0) * 100) / 100
+        },
+        payables: {
+          orders: parseInt(row.pay_orders, 10) || 0,
+          billed: Math.round(parseFloat(row.pay_billed || 0) * 100) / 100,
+          paid: Math.round(parseFloat(row.pay_paid || 0) * 100) / 100,
+          due: Math.round(parseFloat(row.pay_due || 0) * 100) / 100
+        }
+      });
     } else {
-      filterClause = 'WHERE cr.user_id = $1 AND cr.status != \'Rejected\'';
-      params = [req.user.id];
+      const sql = `
+        SELECT 
+          COALESCE(COUNT(*), 0) AS total_orders,
+          COALESCE(SUM(cr.amount_inr), 0) AS total_billed,
+          COALESCE(SUM(cr.paid_amount), 0) AS total_paid,
+          COALESCE(SUM(GREATEST(0, cr.amount_inr - COALESCE(cr.paid_amount, 0))), 0) AS total_due,
+          COALESCE(COUNT(CASE WHEN cr.payment_status = 'Unpaid' OR (COALESCE(cr.paid_amount, 0) = 0 AND cr.amount_inr > 0) THEN 1 END), 0) AS count_unpaid,
+          COALESCE(COUNT(CASE WHEN cr.payment_status = 'Partial' OR (cr.paid_amount > 0 AND cr.paid_amount < cr.amount_inr) THEN 1 END), 0) AS count_partial,
+          COALESCE(COUNT(CASE WHEN cr.payment_status = 'Paid' OR (cr.paid_amount >= cr.amount_inr AND cr.amount_inr > 0) THEN 1 END), 0) AS count_paid
+        FROM credit_requests cr
+        WHERE cr.user_id = $1 AND cr.status != 'Rejected'
+      `;
+      const result = await query(sql, [req.user.id]);
+      const row = result.rows[0] || {};
+      return res.json({
+        total_orders: parseInt(row.total_orders, 10) || 0,
+        total_billed: Math.round(parseFloat(row.total_billed || 0) * 100) / 100,
+        total_paid: Math.round(parseFloat(row.total_paid || 0) * 100) / 100,
+        total_due: Math.round(parseFloat(row.total_due || 0) * 100) / 100,
+        count_unpaid: parseInt(row.count_unpaid, 10) || 0,
+        count_partial: parseInt(row.count_partial, 10) || 0,
+        count_paid: parseInt(row.count_paid, 10) || 0
+      });
     }
-
-    const sql = `
-      SELECT 
-        COALESCE(COUNT(*), 0) AS total_orders,
-        COALESCE(SUM(cr.amount_inr), 0) AS total_billed,
-        COALESCE(SUM(cr.paid_amount), 0) AS total_paid,
-        COALESCE(SUM(GREATEST(0, cr.amount_inr - COALESCE(cr.paid_amount, 0))), 0) AS total_due,
-        COALESCE(COUNT(CASE WHEN cr.payment_status = 'Unpaid' OR (COALESCE(cr.paid_amount, 0) = 0 AND cr.amount_inr > 0) THEN 1 END), 0) AS count_unpaid,
-        COALESCE(COUNT(CASE WHEN cr.payment_status = 'Partial' OR (cr.paid_amount > 0 AND cr.paid_amount < cr.amount_inr) THEN 1 END), 0) AS count_partial,
-        COALESCE(COUNT(CASE WHEN cr.payment_status = 'Paid' OR (cr.paid_amount >= cr.amount_inr AND cr.amount_inr > 0) THEN 1 END), 0) AS count_paid
-      FROM credit_requests cr
-      ${filterClause}
-    `;
-
-    const result = await query(sql, params);
-    const row = result.rows[0] || {};
-    return res.json({
-      total_orders: parseInt(row.total_orders, 10) || 0,
-      total_billed: parseFloat(row.total_billed) || 0,
-      total_paid: parseFloat(row.total_paid) || 0,
-      total_due: parseFloat(row.total_due) || 0,
-      count_unpaid: parseInt(row.count_unpaid, 10) || 0,
-      count_partial: parseInt(row.count_partial, 10) || 0,
-      count_paid: parseInt(row.count_paid, 10) || 0
-    });
   } catch (err) {
     console.error('Billing summary error:', err);
     return res.status(500).json({ error: 'Failed to compute billing summary' });

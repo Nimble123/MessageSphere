@@ -7,6 +7,10 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Enable reverse proxy trust (Cloudflare, Nginx, ALB) for accurate client IP resolution
+app.set('trust proxy', 1);
+
 const allowedOrigins = (process.env.CORS_ORIGIN || '')
   .split(',')
   .map(origin => origin.trim())
@@ -65,10 +69,14 @@ app.use('/api/reports', require('./routes/reports'));
 app.use('/api/sms', require('./routes/sms'));
 app.use('/api/headers', require('./routes/headers'));
 
-// Global error handler
+// Global error handler - Never leak raw stack traces or internal errors to clients in production
 app.use((err, req, res, next) => {
   console.error('Unhandled server error:', err);
-  res.status(500).json({ error: err.message || 'Internal Server Error' });
+  const isProd = process.env.NODE_ENV === 'production';
+  const statusCode = err.status || 500;
+  res.status(statusCode).json({
+    error: isProd ? 'Internal Server Error' : (err.message || 'Internal Server Error')
+  });
 });
 
 async function startServer() {

@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { query } = require('../db');
 const { authenticate } = require('../middleware/auth');
+const { calculateSmsMetrics } = require('../services/telecom');
 
 // Multer storage for message template media attachments (Image, PDF, Video)
 const uploadDir = path.join(__dirname, '../uploads');
@@ -49,11 +50,7 @@ const upload = multer({
   }
 });
 
-// GSM-7 Basic & Extended Character Set (Standard Latin Telecom Specification 3GPP TS 23.038)
-const GSM_7_EXTENDED_CHARS = new Set(['^', '{', '}', '\\', '[', '~', ']', '|', '€']);
-const GSM_7_REGEX = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#$%&'()*+,\-./:;<=>?¡¿\^{}\[~\]|€]*$/;
-
-// Calculate SMS Segments & Encoding based on exact GSM rules
+// Calculate SMS Segments & Encoding based on exact 3GPP / GSM 03.38 rules
 function calculateTemplateMetrics(text, channel = 'whatsapp') {
   const content = String(text || '').trim();
   const rawGlyphCount = Array.from(content).length;
@@ -67,36 +64,7 @@ function calculateTemplateMetrics(text, channel = 'whatsapp') {
     };
   }
 
-  // Check if any character triggers Unicode (e.g. Hindi, Emojis, Regional scripts)
-  const isUnicode = !GSM_7_REGEX.test(content);
-
-  let effectiveCharCount = 0;
-  let partsCount = 1;
-
-  if (isUnicode) {
-    effectiveCharCount = rawGlyphCount;
-    // System Bulk SMS Rule: 75 chars per part (1-75 = 1 credit, 76-150 = 2 credits, etc.)
-    partsCount = Math.ceil(effectiveCharCount / 75) || 1;
-  } else {
-    // GSM-7 Rule: basic chars count as 1, extended chars (^ { } \ [ ~ ] | €) count as 2
-    for (const ch of content) {
-      effectiveCharCount += GSM_7_EXTENDED_CHARS.has(ch) ? 2 : 1;
-    }
-    // System Bulk SMS Rule: 160 chars per part (1-160 = 1 credit, 161-320 = 2 credits, etc.)
-    partsCount = Math.ceil(effectiveCharCount / 160) || 1;
-  }
-
-  let carrierWarning = null;
-  if (partsCount >= 5) {
-    carrierWarning = `High Segment Warning: Message requires ${partsCount} SMS parts (${partsCount} credits per number). Carriers may throttle or drop messages exceeding 4 parts.`;
-  }
-
-  return {
-    character_count: effectiveCharCount,
-    is_unicode: isUnicode,
-    parts_count: partsCount || 1,
-    carrier_warning: carrierWarning
-  };
+  return calculateSmsMetrics(content);
 }
 
 // Unified Template Access Checker

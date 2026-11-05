@@ -6,7 +6,7 @@ const isRemoteDb = process.env.DATABASE_URL && !process.env.DATABASE_URL.include
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || (process.env.NODE_ENV !== 'production' ? 'postgresql://localhost:5432/messagesphere' : undefined),
-  ssl: isRemoteDb ? { rejectUnauthorized: false } : false,
+  ssl: isRemoteDb ? { rejectUnauthorized: process.env.PG_SSL_REJECT_UNAUTHORIZED === 'true' } : false,
   max: parseInt(process.env.PG_POOL_MAX || '50', 10),
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000
@@ -315,6 +315,19 @@ async function initDB() {
         ADD COLUMN IF NOT EXISTS channel_rates JSONB DEFAULT '{}'::jsonb;
     `);
     await client.query(`ALTER TABLE user_credits ADD COLUMN IF NOT EXISTS rate_inr NUMERIC(10, 4) DEFAULT 0.1500;`);
+    
+    // Balance non-negative integrity constraint
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'user_credits_balance_non_negative'
+        ) THEN
+          UPDATE user_credits SET balance = 0 WHERE balance < 0;
+          ALTER TABLE user_credits ADD CONSTRAINT user_credits_balance_non_negative CHECK (balance >= 0);
+        END IF;
+      END $$;
+    `);
     
     // GST vs Non-GST Invoicing & Smart Reseller Auto-Refund Schema Migrations
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS tax_mode VARCHAR(20) DEFAULT 'non_gst';`);

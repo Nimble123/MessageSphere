@@ -8369,9 +8369,9 @@ setupAllTemplateMediaListeners('edit');
 
 // GSM-7 Basic & Extended Character Set (Standard Latin Telecom Specification 3GPP TS 23.038)
 const GSM_7_EXTENDED_CHARS = new Set(['^', '{', '}', '\\', '[', '~', ']', '|', '€']);
-const GSM_7_REGEX = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#$%&'()*+,\-./:;<=>?¡¿\^{}\[~\]|€]*$/;
+const GSM_7_REGEX = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&'()*+,\-./:;<=>?¡¿ÄÖÑÜ§äöñüà\^{}\[~\]|€]*$/;
 
-// Live GSM & Unicode Calculation Helper
+// Live GSM & Unicode Calculation Helper (Compliant with 3GPP Concatenation Standards)
 function computeGsmMetrics(text, channel = 'whatsapp', forceUnicode = false) {
   const str = String(text || '');
   const rawGlyphCount = Array.from(str).length;
@@ -8394,26 +8394,26 @@ function computeGsmMetrics(text, channel = 'whatsapp', forceUnicode = false) {
 
   if (isUnicode) {
     effectiveCharCount = rawGlyphCount;
-    // System Bulk SMS Rule: 75 chars per part (1-75 = 1 credit, 76-150 = 2 credits, etc.)
-    if (effectiveCharCount <= 75) {
+    // Standard 3GPP Unicode SMS Rule: 70 chars for single part, 67 chars per part for concatenated multi-part
+    if (effectiveCharCount <= 70) {
       parts = effectiveCharCount === 0 ? 0 : 1;
-      charsLeft = 75 - effectiveCharCount;
+      charsLeft = 70 - effectiveCharCount;
     } else {
-      parts = Math.ceil(effectiveCharCount / 75);
-      charsLeft = (parts * 75) - effectiveCharCount;
+      parts = Math.ceil(effectiveCharCount / 67);
+      charsLeft = (parts * 67) - effectiveCharCount;
     }
   } else {
     // GSM-7 Rule: basic chars = 1, extended chars (^ { } \ [ ~ ] | €) = 2
     for (const ch of str) {
       effectiveCharCount += GSM_7_EXTENDED_CHARS.has(ch) ? 2 : 1;
     }
-    // System Bulk SMS Rule: 160 chars per part (1-160 = 1 credit, 161-320 = 2 credits, etc.)
+    // Standard 3GPP GSM-7 SMS Rule: 160 chars for single part, 153 chars per part for concatenated multi-part
     if (effectiveCharCount <= 160) {
       parts = effectiveCharCount === 0 ? 0 : 1;
       charsLeft = 160 - effectiveCharCount;
     } else {
-      parts = Math.ceil(effectiveCharCount / 160);
-      charsLeft = (parts * 160) - effectiveCharCount;
+      parts = Math.ceil(effectiveCharCount / 153);
+      charsLeft = (parts * 153) - effectiveCharCount;
     }
   }
 
@@ -8428,8 +8428,8 @@ function computeGsmMetrics(text, channel = 'whatsapp', forceUnicode = false) {
     charsLeft,
     carrierWarning,
     infoText: isUnicode 
-      ? `Unicode (Hindi/Regional) • ${parts || 1} Part(s) (75 chars/part) • ${charsLeft} left in part`
-      : `GSM-7 Latin • ${parts || 1} Part(s) (160 chars/part) • ${charsLeft} left in part`,
+      ? `Unicode (Hindi/Regional) • ${parts || 1} Part(s) (70/67 chars) • ${charsLeft} left in part`
+      : `GSM-7 Latin • ${parts || 1} Part(s) (160/153 chars) • ${charsLeft} left in part`,
     badgeText: isUnicode 
       ? `${effectiveCharCount} chars • ${parts || 1} Part${parts > 1 ? 's' : ''} (Unicode)`
       : `${effectiveCharCount} chars • ${parts || 1} Part${parts > 1 ? 's' : ''} (GSM-7)`
@@ -12181,9 +12181,9 @@ checkSession();
 // GSM BULK SMS MODULE
 // ============================================================
 
-// --- GSM-7 Engine (mirrors backend calculateTemplateMetrics) ---
+// --- GSM-7 Engine (mirrors backend services/telecom.js) ---
 const GSM7_EXTENDED = new Set(['^', '{', '}', '\\', '[', '~', ']', '|', '€']);
-const GSM7_REGEX = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#$%&'()*+,\-./:;<=>?¡¿\^{}\[~\]|€]*$/;
+const GSM7_REGEX = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&'()*+,\-./:;<=>?¡¿ÄÖÑÜ§äöñüà\^{}\[~\]|€]*$/;
 
 let smsManualEncoding = 'gsm7'; // 'gsm7' or 'unicode'
 
@@ -12199,15 +12199,15 @@ function computeSmsMetrics(text, forcedEncoding) {
   }
   let parts = 1;
   if (isUnicode) {
-    // Unicode: 75 characters per part (1-75 = 1 credit, 76-150 = 2 credits, 151-225 = 3 credits, etc.)
-    parts = Math.ceil(effectiveLen / 75) || 1;
+    // 3GPP Concatenation: 70 single, 67 multi
+    parts = effectiveLen <= 70 ? (effectiveLen === 0 ? 0 : 1) : Math.ceil(effectiveLen / 67);
   } else {
-    // GSM-7: 160 characters per part (1-160 = 1 credit, 161-320 = 2 credits, 321-480 = 3 credits, etc.)
-    parts = Math.ceil(effectiveLen / 160) || 1;
+    // 3GPP Concatenation: 160 single, 153 multi
+    parts = effectiveLen <= 160 ? (effectiveLen === 0 ? 0 : 1) : Math.ceil(effectiveLen / 153);
   }
   let warning = null;
   if (parts >= 5) warning = `${parts} parts per number — carriers may throttle messages over 4 parts.`;
-  return { effectiveLen, isUnicode, parts, warning, autoDetectedUnicode: hasUnicodeChars };
+  return { effectiveLen, isUnicode, parts: parts || 1, warning, autoDetectedUnicode: hasUnicodeChars };
 }
 
 // --- State ---
@@ -12392,7 +12392,7 @@ window.onSmsMessageInput = function() {
   if (charEl) charEl.textContent = effectiveLen;
   const encLabel = document.getElementById('sms-encoding-label');
   if (encLabel) {
-    encLabel.textContent = isUnicode ? 'Unicode (75 chars/part)' : 'GSM-7 (160 chars/part)';
+    encLabel.textContent = isUnicode ? 'Unicode (70 single / 67 multi chars)' : 'GSM-7 (160 single / 153 multi chars)';
     encLabel.style.color = isUnicode ? '#d97706' : '#10b981';
   }
   const partsEl = document.getElementById('sms-parts-count');

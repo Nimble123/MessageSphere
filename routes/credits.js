@@ -2,22 +2,98 @@ const express = require('express');
 const router = express.Router();
 const { query } = require('../db');
 const { authenticate } = require('../middleware/auth');
+const { sanitizeCsvCell } = require('../services/telecom');
 
 /**
- * Determine if a transaction is a credit (+) or debit (-) from the perspective of the user
+ * Determine if a transaction is a credit (+) or debit (-) from the perspective of the viewing user.
+ * Structured direction (direction column) has absolute authority over legacy regex/keywords.
+ *
  * @param {object} tx - transaction row
  * @param {number} viewerUserId - ID of the viewing user
- * @returns {{ direction: 'credit'|'debit', signed_amount: number, is_credit: boolean }}
+ * @param {string} viewerRole - 'admin', 'reseller', or 'user'
+ * @returns {{ direction: 'credit'|'debit'|'refund', signed_amount: number, is_credit: boolean, category: string, flow_type: string, badge_text: string, badge_color: string, badge_bg: string, badge_border: string }}
  */
 function resolveTransactionDirection(tx, viewerUserId, viewerRole) {
   const amt = Math.abs(Number(tx.amount) || 0);
   const structuredDir = tx.direction ? String(tx.direction).toLowerCase() : null;
   const reasonLower = String(tx.reason || '').toLowerCase();
-  const isRefund = structuredDir === 'refund' || Boolean(tx.refund_campaign_id) || reasonLower.includes('refund');
-  const isDeduction = structuredDir === 'debit' || reasonLower.includes('deduction') || reasonLower.includes('debit') || reasonLower.includes('clawback');
 
-  // 1. REFUND / REVERSAL FLOW
-  // Any refund or auto-refund restores credits to the user/reseller. It is ALWAYS positive (+).
+  // 1. Structured Direction has absolute precedence
+  if (structuredDir === 'debit') {
+    return {
+      direction: 'debit',
+      category: 'campaign_deduction',
+      signed_amount: -amt,
+      is_credit: false,
+      flow_type: 'debit',
+      badge_text: 'Campaign Debit (-)',
+      badge_color: '#b91c1c',
+      badge_bg: '#fef2f2',
+      badge_border: '#fecaca'
+    };
+  }
+
+  if (structuredDir === 'refund') {
+    return {
+      direction: 'refund',
+      category: 'refund',
+      signed_amount: amt,
+      is_credit: true,
+      flow_type: 'refund',
+      badge_text: 'Refund Restored (+)',
+      badge_color: '#0284c7',
+      badge_bg: '#f0f9ff',
+      badge_border: '#bae6fd'
+    };
+  }
+
+  if (structuredDir === 'credit') {
+    // If viewer is sender (from_user_id) allocating to client, and viewer is not admin:
+    if (Number(tx.from_user_id) === Number(viewerUserId) && Number(tx.to_user_id) !== Number(viewerUserId) && viewerRole !== 'admin') {
+      return {
+        direction: 'debit',
+        category: 'allotment_out',
+        signed_amount: -amt,
+        is_credit: false,
+        flow_type: 'debit',
+        badge_text: 'Transferred Out (-)',
+        badge_color: '#d97706',
+        badge_bg: '#fffbeb',
+        badge_border: '#fde68a'
+      };
+    }
+    return {
+      direction: 'credit',
+      category: 'allotment',
+      signed_amount: amt,
+      is_credit: true,
+      flow_type: 'credit',
+      badge_text: 'Credit In (+)',
+      badge_color: '#15803d',
+      badge_bg: '#ecfdf5',
+      badge_border: '#bbf7d0'
+    };
+  }
+
+  // 2. Legacy fallback when structuredDir is null
+  const isExplicitDebit = reasonLower.includes('deduction for') || reasonLower.includes('clawback') || reasonLower.includes('reversal adjustment');
+  if (isExplicitDebit) {
+    return {
+      direction: 'debit',
+      category: 'campaign_deduction',
+      signed_amount: -amt,
+      is_credit: false,
+      flow_type: 'debit',
+      badge_text: 'Campaign Debit (-)',
+      badge_color: '#b91c1c',
+      badge_bg: '#fef2f2',
+      badge_border: '#fecaca'
+    };
+  }
+
+  const isRefund = (Boolean(tx.refund_campaign_id) && !reasonLower.includes('reversal adjustment')) ||
+                   reasonLower.includes('auto-refund') ||
+                   (reasonLower.includes('refund for') && !reasonLower.includes('reversal'));
   if (isRefund) {
     return {
       direction: 'refund',
@@ -32,54 +108,8 @@ function resolveTransactionDirection(tx, viewerUserId, viewerRole) {
     };
   }
 
-  // 2. CAMPAIGN DEDUCTION / USAGE FLOW
-  // Deductions for campaigns are ALWAYS negative (-) debits, regardless of who views them.
-  if (isDeduction) {
-    return {
-      direction: 'debit',
-      category: 'campaign_deduction',
-      signed_amount: -amt,
-      is_credit: false,
-      flow_type: 'debit',
-      badge_text: 'Campaign Debit (-)',
-      badge_color: '#b91c1c',
-      badge_bg: '#fef2f2',
-      badge_border: '#fecaca'
-    };
-  }
-
-  // 3. CREDIT ALLOTMENT / RECHARGE / SALE FLOW
-  // If viewer is recipient (to_user_id):
-  if (Number(tx.to_user_id) === Number(viewerUserId)) {
-    return {
-      direction: 'credit',
-      category: 'allotment',
-      signed_amount: amt,
-      is_credit: true,
-      flow_type: 'credit',
-      badge_text: 'Credit In (+)',
-      badge_color: '#15803d',
-      badge_bg: '#ecfdf5',
-      badge_border: '#bbf7d0'
-    };
-  }
-
-  // If viewer is sender (from_user_id) allocating to a client
-  if (Number(tx.from_user_id) === Number(viewerUserId) && Number(tx.to_user_id) !== Number(viewerUserId)) {
-    if (viewerRole === 'admin') {
-      return {
-        direction: 'credit',
-        category: 'allotment',
-        signed_amount: amt,
-        is_credit: true,
-        flow_type: 'credit',
-        badge_text: 'Allotment (+)',
-        badge_color: '#15803d',
-        badge_bg: '#ecfdf5',
-        badge_border: '#bbf7d0'
-      };
-    }
-
+  // 3. Sender vs Recipient perspective for legacy rows
+  if (Number(tx.from_user_id) === Number(viewerUserId) && Number(tx.to_user_id) !== Number(viewerUserId) && viewerRole !== 'admin') {
     return {
       direction: 'debit',
       category: 'allotment_out',
@@ -93,7 +123,6 @@ function resolveTransactionDirection(tx, viewerUserId, viewerRole) {
     };
   }
 
-  // Fallback for third-party view (e.g. Admin inspecting any account's transaction)
   return {
     direction: 'credit',
     category: 'allotment',
@@ -169,14 +198,18 @@ async function buildLedgerQuery(req, isExport = false) {
     paramIdx++;
   }
 
-  // Filter by structured direction column
+  // Filter by direction BEFORE pagination
   if (direction && direction !== 'all') {
     if (direction === 'credit' || direction === 'allotment') {
-      whereClauses.push(`ct.direction = 'credit'`);
+      whereClauses.push(`(ct.direction = 'credit' OR (ct.direction IS NULL AND ct.to_user_id = $${paramIdx}))`);
+      params.push(viewerUserId);
+      paramIdx++;
     } else if (direction === 'debit' || direction === 'deduction' || direction === 'campaign_deduction') {
-      whereClauses.push(`ct.direction = 'debit'`);
+      whereClauses.push(`(ct.direction = 'debit' OR (ct.direction IS NULL AND ct.from_user_id = $${paramIdx}))`);
+      params.push(viewerUserId);
+      paramIdx++;
     } else if (direction === 'refund') {
-      whereClauses.push(`ct.direction = 'refund'`);
+      whereClauses.push(`(ct.direction = 'refund' OR (ct.direction IS NULL AND ct.refund_campaign_id IS NOT NULL))`);
     }
   }
 
@@ -224,6 +257,19 @@ async function buildLedgerQuery(req, isExport = false) {
     ${whereSql}
   `;
 
+  // SQL-level aggregate summary across entire dataset (independent of pagination limit)
+  const summarySql = `
+    SELECT
+      COALESCE(SUM(CASE WHEN ct.direction = 'refund' OR (ct.direction IS NULL AND ct.refund_campaign_id IS NOT NULL) THEN ct.amount ELSE 0 END), 0) as total_refunds,
+      COALESCE(SUM(CASE WHEN ct.direction = 'credit' OR (ct.direction IS NULL AND ct.to_user_id = $${paramIdx}) THEN ct.amount ELSE 0 END), 0) as total_inflow,
+      COALESCE(SUM(CASE WHEN ct.direction = 'debit' OR (ct.direction IS NULL AND ct.from_user_id = $${paramIdx}) THEN ct.amount ELSE 0 END), 0) as total_outflow
+    FROM credit_transactions ct
+    LEFT JOIN users u_from ON ct.from_user_id = u_from.id
+    LEFT JOIN users u_to ON ct.to_user_id = u_to.id
+    ${whereSql}
+  `;
+  const summaryParams = [...params, viewerUserId];
+
   const sql = `
     SELECT ct.*, 
            u_from.email as from_email,
@@ -236,7 +282,7 @@ async function buildLedgerQuery(req, isExport = false) {
     LIMIT ${limitVal} OFFSET ${offsetVal}
   `;
 
-  return { sql, countSql, countParams: params.slice(), params, viewerUserId, limitVal, offsetVal };
+  return { sql, countSql, countParams: params.slice(), summarySql, summaryParams, params, viewerUserId, limitVal, offsetVal };
 }
 
 // ===========================================================================
@@ -244,72 +290,55 @@ async function buildLedgerQuery(req, isExport = false) {
 // ===========================================================================
 router.get('/transactions', authenticate, async (req, res) => {
   try {
-    const { sql, countSql, countParams, params, viewerUserId, limitVal, offsetVal } = await buildLedgerQuery(req, false);
-    const [result, countResult] = await Promise.all([
+    const { sql, countSql, countParams, summarySql, summaryParams, params, viewerUserId, limitVal, offsetVal } = await buildLedgerQuery(req, false);
+    const [result, countResult, summaryResult] = await Promise.all([
       query(sql, params),
-      query(countSql, countParams)
+      query(countSql, countParams),
+      query(summarySql, summaryParams)
     ]);
 
     const totalCount = parseInt(countResult.rows[0]?.total_count || 0, 10);
+    const sumRow = summaryResult.rows[0] || {};
+    const totalInflow = Number(sumRow.total_inflow) || 0;
+    const totalOutflow = Number(sumRow.total_outflow) || 0;
+    const totalRefunds = Number(sumRow.total_refunds) || 0;
 
-    // Filter by direction if requested ('credit' vs 'debit')
-    const directionFilter = req.query.direction;
+    const enriched = result.rows.map(tx => {
+      const dir = resolveTransactionDirection(tx, viewerUserId, req.user.role);
+      let safeReason = tx.reason || '';
+      let fromEmail = tx.from_email || 'System';
+      let toEmail = tx.to_email || 'Recipient';
+      let counterparty = Number(tx.to_user_id) === Number(viewerUserId) ? (tx.from_email || 'System / Issuer') : (tx.to_email || 'Recipient Account');
 
-    const enriched = result.rows
-      .map(tx => {
-        const dir = resolveTransactionDirection(tx, viewerUserId, req.user.role);
-        let safeReason = tx.reason || '';
-        let counterparty = Number(tx.to_user_id) === Number(viewerUserId) ? (tx.from_email || 'System / Issuer') : (tx.to_email || 'Recipient Account');
-        if (req.user.role !== 'admin') {
-          safeReason = safeReason
-            .replace(/Allotted by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Telecom Balance Allotment: ')
-            .replace(/Deduction by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Balance Adjustment: ')
-            .replace(/\bby reseller\b/gi, 'via Telecom Gateway')
-            .replace(/\[Created by [^\]]+ on behalf of account\]/gi, '');
-          if (req.user.role === 'user') {
-            counterparty = 'Direct Telecom Platform';
-          }
+      if (req.user.role !== 'admin') {
+        safeReason = safeReason
+          .replace(/Allotted by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Telecom Balance Allotment: ')
+          .replace(/Deduction by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Balance Adjustment: ')
+          .replace(/\bby reseller\b/gi, 'via Telecom Gateway')
+          .replace(/\[Created by [^\]]+ on behalf of account\]/gi, '');
+        if (req.user.role === 'user') {
+          counterparty = 'Direct Telecom Platform';
+          fromEmail = 'Direct Telecom Platform';
+          toEmail = req.user.email;
         }
-        return {
-          ...tx,
-          reason: safeReason,
-          direction: dir.direction,
-          category: dir.category,
-          flow_type: dir.flow_type,
-          badge_text: dir.badge_text,
-          badge_color: dir.badge_color,
-          badge_bg: dir.badge_bg,
-          badge_border: dir.badge_border,
-          signed_amount: dir.signed_amount,
-          is_credit: dir.is_credit,
-          counterparty_email: counterparty
-        };
-      })
-      .filter(tx => {
-        if (!directionFilter || directionFilter === 'all') return true;
-        if (directionFilter === 'credit' || directionFilter === 'allotment') {
-          return tx.category === 'allotment';
-        }
-        if (directionFilter === 'debit' || directionFilter === 'deduction' || directionFilter === 'campaign_deduction') {
-          return tx.category === 'campaign_deduction' || tx.direction === 'debit';
-        }
-        if (directionFilter === 'refund') {
-          return tx.category === 'refund' || tx.direction === 'refund';
-        }
-        return tx.direction === directionFilter;
-      });
-
-    let totalInflow = 0;
-    let totalOutflow = 0;
-    let totalRefunds = 0;
-    enriched.forEach(t => {
-      if (t.category === 'refund' || t.direction === 'refund') {
-        totalRefunds += Math.abs(t.signed_amount);
-      } else if (t.is_credit) {
-        totalInflow += Math.abs(t.signed_amount);
-      } else {
-        totalOutflow += Math.abs(t.signed_amount);
       }
+
+      return {
+        ...tx,
+        reason: safeReason,
+        from_email: fromEmail,
+        to_email: toEmail,
+        direction: dir.direction,
+        category: dir.category,
+        flow_type: dir.flow_type,
+        badge_text: dir.badge_text,
+        badge_color: dir.badge_color,
+        badge_bg: dir.badge_bg,
+        badge_border: dir.badge_border,
+        signed_amount: dir.signed_amount,
+        is_credit: dir.is_credit,
+        counterparty_email: counterparty
+      };
     });
 
     if (req.query.paginate === 'true' || req.query.page) {
@@ -341,47 +370,40 @@ router.get('/transactions/export', authenticate, async (req, res) => {
     const { sql, params, viewerUserId } = await buildLedgerQuery(req, true);
     const result = await query(sql, params);
 
-    const directionFilter = req.query.direction;
-    const enriched = result.rows
-      .map(tx => {
-        const dir = resolveTransactionDirection(tx, viewerUserId, req.user.role);
-        let safeReason = tx.reason || '';
-        let counterparty = Number(tx.to_user_id) === Number(viewerUserId) ? (tx.from_email || 'System') : (tx.to_email || 'Recipient');
-        if (req.user.role !== 'admin') {
-          safeReason = safeReason
-            .replace(/Allotted by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Telecom Balance Allotment: ')
-            .replace(/Deduction by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Balance Adjustment: ')
-            .replace(/\bby reseller\b/gi, 'via Telecom Gateway')
-            .replace(/\[Created by [^\]]+ on behalf of account\]/gi, '');
-          if (req.user.role === 'user') {
-            counterparty = 'Direct Telecom Platform';
-          }
+    const enriched = result.rows.map(tx => {
+      const dir = resolveTransactionDirection(tx, viewerUserId, req.user.role);
+      let safeReason = tx.reason || '';
+      let fromEmail = tx.from_email || 'System';
+      let toEmail = tx.to_email || 'Recipient';
+      let counterparty = Number(tx.to_user_id) === Number(viewerUserId) ? (tx.from_email || 'System') : (tx.to_email || 'Recipient');
+
+      if (req.user.role !== 'admin') {
+        safeReason = safeReason
+          .replace(/Allotted by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Telecom Balance Allotment: ')
+          .replace(/Deduction by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Balance Adjustment: ')
+          .replace(/\bby reseller\b/gi, 'via Telecom Gateway')
+          .replace(/\[Created by [^\]]+ on behalf of account\]/gi, '');
+        if (req.user.role === 'user') {
+          counterparty = 'Direct Telecom Platform';
+          fromEmail = 'Direct Telecom Platform';
+          toEmail = req.user.email;
         }
-        return {
-          ...tx,
-          reason: safeReason,
-          direction: dir.direction,
-          category: dir.category,
-          flow_type: dir.flow_type,
-          badge_text: dir.badge_text,
-          signed_amount: dir.signed_amount,
-          is_credit: dir.is_credit,
-          counterparty_email: counterparty
-        };
-      })
-      .filter(tx => {
-        if (!directionFilter || directionFilter === 'all') return true;
-        if (directionFilter === 'credit' || directionFilter === 'allotment') {
-          return tx.category === 'allotment';
-        }
-        if (directionFilter === 'debit' || directionFilter === 'deduction' || directionFilter === 'campaign_deduction') {
-          return tx.category === 'campaign_deduction' || tx.direction === 'debit';
-        }
-        if (directionFilter === 'refund') {
-          return tx.category === 'refund' || tx.direction === 'refund';
-        }
-        return tx.direction === directionFilter;
-      });
+      }
+
+      return {
+        ...tx,
+        reason: safeReason,
+        from_email: fromEmail,
+        to_email: toEmail,
+        direction: dir.direction,
+        category: dir.category,
+        flow_type: dir.flow_type,
+        badge_text: dir.badge_text,
+        signed_amount: dir.signed_amount,
+        is_credit: dir.is_credit,
+        counterparty_email: counterparty
+      };
+    });
 
     const timestamp = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -390,16 +412,22 @@ router.get('/transactions/export', authenticate, async (req, res) => {
     let csv = 'Transaction ID,Timestamp (IST),Direction,Amount,Channel,Destination,Reason / Reference,From Account,To Account\n';
     enriched.forEach(tx => {
       const id = tx.id;
-      const dateStr = `"${new Date(tx.created_at).toLocaleString('en-IN')}"`;
-      const dir = tx.direction === 'credit' ? 'CREDIT IN (+)' : 'DEBIT OUT (-)';
+      const dateStr = sanitizeCsvCell(new Date(tx.created_at).toLocaleString('en-IN'));
+      let dir = 'CREDIT IN (+)';
+      if (tx.direction === 'refund') {
+        dir = 'REFUND RESTORED (+)';
+      } else if (tx.direction === 'debit') {
+        dir = 'DEBIT OUT (-)';
+      }
+      const dirCell = sanitizeCsvCell(dir);
       const amt = tx.signed_amount;
-      const channel = `"${tx.credit_type}"`;
-      const dest = `"${tx.destination}"`;
-      const reason = `"${(tx.reason || '').replace(/"/g, '""')}"`;
-      const fromAcc = `"${(tx.from_email || 'System').replace(/"/g, '""')}"`;
-      const toAcc = `"${(tx.to_email || 'User').replace(/"/g, '""')}"`;
+      const channel = sanitizeCsvCell(tx.credit_type);
+      const dest = sanitizeCsvCell(tx.destination);
+      const reason = sanitizeCsvCell(tx.reason || '');
+      const fromAcc = sanitizeCsvCell(tx.from_email);
+      const toAcc = sanitizeCsvCell(tx.to_email);
 
-      csv += `${id},${dateStr},${dir},${amt},${channel},${dest},${reason},${fromAcc},${toAcc}\n`;
+      csv += `${id},${dateStr},${dirCell},${amt},${channel},${dest},${reason},${fromAcc},${toAcc}\n`;
     });
 
     return res.send(csv);

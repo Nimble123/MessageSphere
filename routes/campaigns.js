@@ -8,7 +8,7 @@ const archiver = require('archiver');
 const { query, getClient } = require('../db');
 const { authenticate, requireRoles } = require('../middleware/auth');
 const { logAudit } = require('../services/audit');
-const { calculateSmsMetrics } = require('./sms');
+const { calculateSmsMetrics, normalizePhoneNumber, SMPP_DELIVERED_STATUSES, SMPP_FAILED_STATUSES, sanitizeCsvCell } = require('../services/telecom');
 const MAX_CAMPAIGN_RECIPIENTS = Number(process.env.MAX_CAMPAIGN_RECIPIENTS || 50000);
 
 // Setup multer storage for campaign attachments and reports
@@ -318,19 +318,40 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
   });
 
   // Query DND blacklist for user and exclude (includes global & admin-level blacklists + effective user + user's reseller)
+  const candidateNumbers = Array.from(numberSet);
+  const candidate10Digits = candidateNumbers.map(n => n.slice(-10)).filter(n => n.length === 10);
+
   const blacklistedRes = await query(`
     SELECT phone_number FROM blacklist 
-    WHERE user_id IN ($1, $2) 
+    WHERE (
+       user_id IN ($1, $2) 
        OR user_id IS NULL 
        OR user_id IN (SELECT id FROM users WHERE role = 'admin')
        OR user_id IN (SELECT reseller_id FROM users WHERE id IN ($1, $2) AND reseller_id IS NOT NULL)
-  `, [req.user.id, effectiveUserId]);
-  const blacklistedSet = new Set(blacklistedRes.rows.map(r => r.phone_number));
+    )
+    AND (
+       phone_number = ANY($3::varchar[])
+       OR RIGHT(phone_number, 10) = ANY($4::varchar[])
+    )
+  `, [req.user.id, effectiveUserId, candidateNumbers, candidate10Digits]);
+
+  const blacklistedSet = new Set();
+  blacklistedRes.rows.forEach(r => {
+    const raw = String(r.phone_number || '').trim();
+    if (!raw) return;
+    const digits = raw.replace(/[^0-9]/g, '');
+    if (digits) {
+      blacklistedSet.add(digits);
+      if (digits.length >= 10) blacklistedSet.add(digits.slice(-10));
+    }
+  });
   
   const validNumbers = [];
   let skippedBlacklisted = 0;
   numberSet.forEach(num => {
-    if (blacklistedSet.has(num)) {
+    const digitsOnly = String(num).replace(/[^0-9]/g, '');
+    const last10 = digitsOnly.slice(-10);
+    if (blacklistedSet.has(num) || blacklistedSet.has(digitsOnly) || (last10.length === 10 && blacklistedSet.has(last10))) {
       skippedBlacklisted++;
     } else {
       validNumbers.push(num);
@@ -795,17 +816,50 @@ router.get('/files/:filename', authenticate, async (req, res) => {
   const filename = path.basename(req.params.filename);
   if (!filename || filename !== req.params.filename) return res.status(400).json({ error: 'Invalid file name' });
   try {
-    const result = await query(
-      `SELECT * FROM campaigns
-       WHERE attachments::text LIKE $1 OR attachment_url LIKE $2
-       ORDER BY id DESC LIMIT 1`,
-      [`%${filename}%`, `%${filename}`]
-    );
-    if (result.rows.length === 0 || !(await canAccessCampaign(req, result.rows[0]))) {
-      return res.status(404).json({ error: 'File not found' });
-    }
     const filePath = path.join(uploadDir, filename);
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+
+    let hasAccess = req.user.role === 'admin';
+
+    if (!hasAccess) {
+      // Check if file belongs to any campaign accessible to the user
+      const campaigns = await query(
+        `SELECT c.id, c.user_id, u.reseller_id
+         FROM campaigns c
+         JOIN users u ON c.user_id = u.id
+         WHERE c.attachments::text ILIKE $1 OR c.attachment_url ILIKE $1`,
+        [`%${filename}%`]
+      );
+
+      for (const c of campaigns.rows) {
+        if (c.user_id === req.user.id || (req.user.role === 'reseller' && c.reseller_id === req.user.id)) {
+          hasAccess = true;
+          break;
+        }
+      }
+
+      if (!hasAccess) {
+        // Also check if file is part of an accessible template
+        const templates = await query(
+          `SELECT t.id, t.user_id, u.reseller_id
+           FROM templates t
+           JOIN users u ON t.user_id = u.id
+           WHERE t.attachments::text ILIKE $1 OR t.attachment_url ILIKE $1`,
+          [`%${filename}%`]
+        );
+        for (const t of templates.rows) {
+          if (t.user_id === req.user.id || (req.user.role === 'reseller' && t.reseller_id === req.user.id)) {
+            hasAccess = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!hasAccess) {
+      return res.status(404).json({ error: 'File not found or access denied' });
+    }
+
     res.setHeader('Content-Disposition', `attachment; filename="${filename.replace(/[\r\n"]/g, '_')}"`);
     res.setHeader('Content-Type', 'application/octet-stream');
     return res.sendFile(filePath);
@@ -1208,13 +1262,13 @@ router.post('/:id/report/preview', authenticate, requireRoles('admin'), reportUp
 
       fileTotalRows++;
       const parts = trimmed.split(/[\t,;]+/);
-      const phone = normalizeReportPhone(parts[0]);
+      const phone = normalizePhoneNumber(parts[0]);
       if (!phone) continue;
 
       let isDeliv = true;
       if (parts.length >= 2) {
         const statusText = parts[1].trim().toLowerCase();
-        isDeliv = ['delivered', 'sent', 'success', 'd', 'true', '1'].includes(statusText);
+        isDeliv = SMPP_DELIVERED_STATUSES.has(statusText);
       }
 
       if (campaignPhoneSet.has(phone)) {
@@ -1234,10 +1288,11 @@ router.post('/:id/report/preview', authenticate, requireRoles('admin'), reportUp
 
     if (reportFile.path) fs.unlink(reportFile.path, () => {});
 
-    // Missing numbers from campaign that were not mentioned in file (treated as Failed)
+    // Missing numbers handling
+    const treatMissingAsFailed = req.query.treat_missing_as_failed === 'true' || req.body.treat_missing_as_failed === 'true';
     const missingFromCampaignCount = Math.max(0, totalCampaignNumbers - matchedPhonesSet.size);
     const projectedDelivered = matchedDeliveredPhones.size;
-    const projectedFailed = matchedFailedPhones.size + missingFromCampaignCount;
+    const projectedFailed = matchedFailedPhones.size + (treatMissingAsFailed ? missingFromCampaignCount : 0);
     const matchRate = totalCampaignNumbers > 0 ? Math.min(100, Math.round((matchedPhonesSet.size / totalCampaignNumbers) * 1000) / 10) : 0;
 
     let warnings = [];
@@ -1255,7 +1310,11 @@ router.post('/:id/report/preview', authenticate, requireRoles('admin'), reportUp
       isSevereMismatch = true;
       warnings.push(`CRITICAL WARNING: Only ${matchRate}% (${matchedPhonesSet.size.toLocaleString()} / ${totalCampaignNumbers.toLocaleString()}) of campaign numbers match! You might have selected a file from a different campaign.`);
     } else if (missingFromCampaignCount > 0) {
-      warnings.push(`${missingFromCampaignCount.toLocaleString()} campaign numbers were missing from this report file and will be treated as Failed (auto-refunded).`);
+      warnings.push(
+        treatMissingAsFailed
+          ? `${missingFromCampaignCount.toLocaleString()} campaign numbers were missing from this report file and will be treated as Failed (auto-refunded).`
+          : `${missingFromCampaignCount.toLocaleString()} campaign numbers were not found in this report file and will remain in their current status.`
+      );
     }
 
     const isRevision = Boolean(campaign.report_processed_at || campaign.status === 'Report Updated');
@@ -1328,18 +1387,20 @@ router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.sin
       // Split by comma, tab, or semicolon
       const parts = trimmed.split(/[\t,;]+/);
       if (parts.length >= 2) {
-        const phone = normalizeReportPhone(parts[0]);
+        const phone = normalizePhoneNumber(parts[0]);
         const statusText = parts[1].trim().toLowerCase();
         if (!phone) continue;
 
-        if (statusText === 'delivered' || statusText === 'sent' || statusText === 'success' || statusText === 'd' || statusText === 'true' || statusText === '1') {
+        if (SMPP_DELIVERED_STATUSES.has(statusText)) {
           deliveredNumbers.push(phone);
+        } else if (SMPP_FAILED_STATUSES.has(statusText)) {
+          failedNumbers.push(phone);
         } else {
           failedNumbers.push(phone);
         }
       } else if (parts.length === 1) {
         // If only phone number is provided in a list, assume Delivered
-        const phone = normalizeReportPhone(parts[0]);
+        const phone = normalizePhoneNumber(parts[0]);
         if (phone) deliveredNumbers.push(phone);
       }
     }
@@ -1396,12 +1457,15 @@ router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.sin
       }
     }
 
-    // Any remaining pending recipients (numbers in campaign not confirmed delivered) are marked Failed
-    await client.query(
-      `UPDATE campaign_recipients SET status = 'Failed', updated_at = NOW() 
-       WHERE campaign_id = $1 AND status != 'Delivered'`,
-      [campaignId]
-    );
+    // If treatMissingAsFailed is explicitly true, mark unconfirmed pending recipients as Failed
+    const treatMissingAsFailed = req.body.treat_missing_as_failed === 'true' || req.body.treatMissingAsFailed === 'true';
+    if (treatMissingAsFailed) {
+      await client.query(
+        `UPDATE campaign_recipients SET status = 'Failed', updated_at = NOW() 
+         WHERE campaign_id = $1 AND status != 'Delivered'`,
+        [campaignId]
+      );
+    }
 
     // Compute exact delivered and failed counts strictly from this campaign's database rows
     const countCheck = await client.query(
@@ -1488,22 +1552,40 @@ router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.sin
           VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8, 'refund')
         `, [req.user.id, refundRecipientId, campaign.campaign_type, campaign.destination, deltaCredits, refundReason, owner ? owner.email : null, campaignId]);
       } else if (deltaCredits < 0) {
-        // Fewer failed than previously: Deduct over-refunded credits
+        // Fewer failed than previously: Deduct over-refunded credits safely without allowing negative balance
         const deductionAmt = Math.abs(deltaCredits);
-        await client.query(`
-          UPDATE user_credits 
-          SET balance = balance - $1 
-          WHERE user_id = $2 AND credit_type = $3 AND destination = $4
-        `, [deductionAmt, refundRecipientId, campaign.campaign_type, campaign.destination]);
 
-        const adjustReason = isRoutedToReseller
-          ? `DLR Revision (-): Reversal adjustment for ${Math.abs(deltaFailedCount)} recovered deliveries in Campaign #${campaignId} of client ${owner.email} (-${deductionAmt} credits)`
-          : `DLR Revision (-): Reversal adjustment for ${Math.abs(deltaFailedCount)} recovered deliveries in campaign #${campaignId} (-${deductionAmt} credits)`;
+        const walletRes = await client.query(`
+          SELECT balance FROM user_credits 
+          WHERE user_id = $1 AND credit_type = $2 AND destination = $3
+          FOR UPDATE
+        `, [refundRecipientId, campaign.campaign_type, campaign.destination]);
 
+        const currentBalance = walletRes.rows.length > 0 ? Number(walletRes.rows[0].balance) : 0;
+        const actualDeduction = Math.min(deductionAmt, currentBalance);
+        const uncollectibleDeficit = deductionAmt - actualDeduction;
+
+        if (actualDeduction > 0) {
+          await client.query(`
+            UPDATE user_credits 
+            SET balance = balance - $1 
+            WHERE user_id = $2 AND credit_type = $3 AND destination = $4
+          `, [actualDeduction, refundRecipientId, campaign.campaign_type, campaign.destination]);
+        }
+
+        let adjustReason = isRoutedToReseller
+          ? `DLR Revision (-): Reversal adjustment for ${Math.abs(deltaFailedCount)} recovered deliveries in Campaign #${campaignId} of client ${owner.email} (-${actualDeduction} credits)`
+          : `DLR Revision (-): Reversal adjustment for ${Math.abs(deltaFailedCount)} recovered deliveries in campaign #${campaignId} (-${actualDeduction} credits)`;
+
+        if (uncollectibleDeficit > 0) {
+          adjustReason += ` [Warning: ${uncollectibleDeficit} credits uncollectible due to insufficient wallet balance]`;
+        }
+
+        // Note: direction is 'debit' and refund_campaign_id is null so this reversal is never classified as a positive refund!
         await client.query(`
           INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, refund_client_email, refund_campaign_id, direction)
-          VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8, 'debit')
-        `, [req.user.id, refundRecipientId, campaign.campaign_type, campaign.destination, deductionAmt, adjustReason, owner ? owner.email : null, campaignId]);
+          VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, NULL, 'debit')
+        `, [req.user.id, refundRecipientId, campaign.campaign_type, campaign.destination, actualDeduction, adjustReason, owner ? owner.email : null]);
       }
     }
 
@@ -1619,6 +1701,29 @@ router.get('/operator/bulk-export', authenticate, requireRoles('admin'), async (
     }
 
     const campaigns = campResult.rows;
+
+    // Audit logging for bulk dispatch export
+    const auditClient = await getClient();
+    try {
+      await auditClient.query('BEGIN');
+      await logAudit(auditClient, {
+        actorId: req.user.id,
+        entityType: 'campaign',
+        entityId: campaigns[0] ? campaigns[0].id : null,
+        action: 'operator_bulk_export_downloaded',
+        details: {
+          campaignCount: campaigns.length,
+          campaignIds: campaigns.map(c => c.id)
+        }
+      });
+      await auditClient.query('COMMIT');
+    } catch (auditErr) {
+      await auditClient.query('ROLLBACK');
+      console.error('Bulk export audit log error:', auditErr);
+    } finally {
+      auditClient.release();
+    }
+
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const zipFilename = `MessageSphere_Dispatch_Package_${timestamp}.zip`;
 
@@ -1639,9 +1744,18 @@ router.get('/operator/bulk-export', authenticate, requireRoles('admin'), async (
     let manifestCsv = 'Campaign ID,Title,User Email,Status,Total Numbers,Channel Type,Campaign Type,Destination,Scheduled At,Sender Header,Created At\n';
 
     for (const c of campaigns) {
-      const sanitizedTitle = (c.title || 'Campaign_' + c.id).replace(/"/g, '""');
-      const cleanHeader = (c.sender_header || 'None').replace(/"/g, '""');
-      manifestCsv += `${c.id},"${sanitizedTitle}","${c.owner_email}","${c.status}",${c.total_numbers},"${c.channel_type}","${c.campaign_type}","${c.destination}","${c.scheduled_at || 'Immediate'}","${cleanHeader}","${c.created_at}"\n`;
+      const safeId = sanitizeCsvCell(c.id);
+      const safeTitle = sanitizeCsvCell(c.title || 'Campaign_' + c.id);
+      const safeEmail = sanitizeCsvCell(c.owner_email);
+      const safeStatus = sanitizeCsvCell(c.status);
+      const safeTotal = sanitizeCsvCell(c.total_numbers);
+      const safeChannel = sanitizeCsvCell(c.channel_type);
+      const safeType = sanitizeCsvCell(c.campaign_type);
+      const safeDest = sanitizeCsvCell(c.destination);
+      const safeSched = sanitizeCsvCell(c.scheduled_at || 'Immediate');
+      const safeHeader = sanitizeCsvCell(c.sender_header || 'None');
+      const safeDate = sanitizeCsvCell(c.created_at);
+      manifestCsv += `${safeId},${safeTitle},${safeEmail},${safeStatus},${safeTotal},${safeChannel},${safeType},${safeDest},${safeSched},${safeHeader},${safeDate}\n`;
 
       const safeFolder = `Campaign_${c.id}_${(c.title || 'Untitled').replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 
@@ -1651,7 +1765,7 @@ router.get('/operator/bulk-export', authenticate, requireRoles('admin'), async (
       `, [c.id]);
 
       const numbersTxt = recipientsRes.rows.map(r => r.phone_number).join('\n');
-      const numbersCsv = 'Mobile Number\n' + recipientsRes.rows.map(r => r.phone_number).join('\n');
+      const numbersCsv = 'Mobile Number\n' + recipientsRes.rows.map(r => sanitizeCsvCell(r.phone_number)).join('\n');
 
       archive.append(numbersTxt, { name: `${safeFolder}/numbers.txt` });
       archive.append(numbersCsv, { name: `${safeFolder}/numbers.csv` });
