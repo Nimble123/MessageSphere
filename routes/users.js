@@ -376,8 +376,9 @@ router.post('/', authenticate, requireRoles('admin', 'reseller'), async (req, re
     return res.status(403).json({ error: 'Resellers can only create Users.' });
   }
 
-  if (!['user', 'reseller'].includes(assignedRole)) {
-    return res.status(400).json({ error: 'Invalid role specified' });
+  const allowedRoles = req.user.role === 'admin' ? ['user', 'reseller', 'admin'] : ['user'];
+  if (!allowedRoles.includes(assignedRole)) {
+    return res.status(400).json({ error: `Invalid role specified. Permitted: ${allowedRoles.join(', ')}` });
   }
 
   const client = await getClient();
@@ -845,8 +846,8 @@ router.patch('/:id/reset-password', authenticate, requireRoles('admin', 'reselle
     try {
       await client.query('BEGIN');
       await client.query('UPDATE users SET password_hash = $1, token_version = token_version + 1 WHERE id = $2', [hash, targetId]);
-      if (reset_request_id && req.user.role === 'admin') {
-        await client.query(`UPDATE password_reset_requests SET status = 'Resolved', resolved_at = NOW(), resolved_by = $1, resolution_note = 'Password reset completed by administrator' WHERE id = $2 AND user_id = $3 AND status = 'Pending'`, [req.user.id, parseInt(reset_request_id, 10), targetId]);
+      if (reset_request_id && (req.user.role === 'admin' || req.user.role === 'reseller')) {
+        await client.query(`UPDATE password_reset_requests SET status = 'Resolved', resolved_at = NOW(), resolved_by = $1, resolution_note = $4 WHERE id = $2 AND user_id = $3 AND status = 'Pending'`, [req.user.id, parseInt(reset_request_id, 10), targetId, `Password reset completed by ${req.user.role}`]);
       }
       await logAudit(client, { actorId: req.user.id, entityType: 'user', entityId: targetId, action: 'password_reset_completed', details: { resetRequestId: reset_request_id || null } });
       await client.query('COMMIT');
@@ -929,6 +930,96 @@ router.delete('/:id', authenticate, requireRoles('admin', 'reseller'), async (re
   } catch (err) {
     console.error('Delete user error:', err);
     return res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// POST /api/users/:id/reassign-clients - Super Admin reassigns managed client accounts to another reseller or to platform
+router.post('/:id/reassign-clients', authenticate, requireRoles('admin'), async (req, res) => {
+  const sourceResellerId = parseInt(req.params.id, 10);
+  if (isNaN(sourceResellerId)) return res.status(400).json({ error: 'Invalid source reseller ID' });
+
+  // target_reseller_id: null (platform root) OR positive integer of destination reseller
+  let targetResellerId = req.body.target_reseller_id;
+  if (targetResellerId === 'null' || targetResellerId === '' || targetResellerId === undefined) {
+    targetResellerId = null;
+  } else {
+    targetResellerId = parseInt(targetResellerId, 10);
+    if (isNaN(targetResellerId)) {
+      return res.status(400).json({ error: 'Target reseller ID must be a valid ID or null' });
+    }
+  }
+
+  if (targetResellerId !== null && targetResellerId === sourceResellerId) {
+    return res.status(400).json({ error: 'Target reseller cannot be the same as the source reseller' });
+  }
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Verify source reseller exists and is actually a reseller
+    const sourceCheck = await client.query('SELECT id, email, role FROM users WHERE id = $1', [sourceResellerId]);
+    if (sourceCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Source account not found' });
+    }
+    if (sourceCheck.rows[0].role !== 'reseller') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Source account is not a reseller' });
+    }
+
+    // 2. If target is provided, verify it exists and is an active reseller
+    let targetEmail = 'Platform Root (Direct Client)';
+    if (targetResellerId !== null) {
+      const targetCheck = await client.query('SELECT id, email, role, is_blocked FROM users WHERE id = $1', [targetResellerId]);
+      if (targetCheck.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Target destination reseller not found' });
+      }
+      if (targetCheck.rows[0].role !== 'reseller') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Target destination account is not a reseller' });
+      }
+      targetEmail = targetCheck.rows[0].email;
+    }
+
+    // 3. Count clients currently assigned
+    const countRes = await client.query('SELECT COUNT(*)::int as count FROM users WHERE reseller_id = $1', [sourceResellerId]);
+    const clientCount = countRes.rows[0].count;
+
+    if (clientCount === 0) {
+      await client.query('ROLLBACK');
+      return res.json({ message: 'No client accounts currently assigned to this reseller.', reassignedCount: 0 });
+    }
+
+    // 4. Atomically reassign clients
+    await client.query(`UPDATE users SET reseller_id = $1 WHERE reseller_id = $2`, [targetResellerId, sourceResellerId]);
+
+    await logAudit(client, {
+      actorId: req.user.id,
+      entityType: 'reseller',
+      entityId: sourceResellerId,
+      action: 'clients_reassigned',
+      details: {
+        sourceReseller: sourceCheck.rows[0].email,
+        targetResellerId,
+        targetResellerEmail: targetEmail,
+        reassignedCount: clientCount
+      }
+    });
+
+    await client.query('COMMIT');
+    return res.json({
+      message: `Successfully reassigned ${clientCount} client account(s) from ${sourceCheck.rows[0].email} to ${targetEmail}.`,
+      reassignedCount: clientCount,
+      targetResellerId
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Reassign clients error:', err);
+    return res.status(500).json({ error: 'Failed to reassign client accounts' });
+  } finally {
+    client.release();
   }
 });
 

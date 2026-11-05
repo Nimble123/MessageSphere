@@ -44,19 +44,43 @@ router.post('/login', loginLimiter, async (req, res) => {
     return res.status(400).json({ error: 'Email and password are required' });
   }
 
+  const cleanEmail = email.trim().toLowerCase();
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+
   try {
-    const result = await query('SELECT * FROM users WHERE email = $1', [email.trim().toLowerCase()]);
+    const result = await query('SELECT * FROM users WHERE email = $1', [cleanEmail]);
     if (result.rows.length === 0) {
+      await logAudit(null, {
+        actorId: null,
+        entityType: 'user',
+        entityId: null,
+        action: 'login_failed',
+        details: { email: cleanEmail, reason: 'unknown_account', ip: clientIp }
+      });
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
     const user = result.rows[0];
     if (user.is_blocked) {
+      await logAudit(null, {
+        actorId: user.id,
+        entityType: 'user',
+        entityId: user.id,
+        action: 'login_blocked',
+        details: { email: user.email, reason: 'account_suspended', ip: clientIp }
+      });
       return res.status(403).json({ error: 'Your account has been blocked. Please contact support.' });
     }
 
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
+      await logAudit(null, {
+        actorId: user.id,
+        entityType: 'user',
+        entityId: user.id,
+        action: 'login_failed',
+        details: { email: user.email, reason: 'invalid_credentials', ip: clientIp }
+      });
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
@@ -65,6 +89,14 @@ router.post('/login', loginLimiter, async (req, res) => {
       JWT_SECRET,
       { expiresIn: '7d' }
     );
+
+    await logAudit(null, {
+      actorId: user.id,
+      entityType: 'user',
+      entityId: user.id,
+      action: 'login_success',
+      details: { email: user.email, role: user.role, ip: clientIp }
+    });
 
     const credits = await getUserCredits(user.id);
 
@@ -116,6 +148,24 @@ router.get('/me', authenticate, async (req, res) => {
   }
 });
 
+// POST /api/auth/logout - Invalidate active session via token_version increment
+router.post('/logout', authenticate, async (req, res) => {
+  try {
+    await query('UPDATE users SET token_version = token_version + 1 WHERE id = $1', [req.user.id]);
+    await logAudit(null, {
+      actorId: req.user.id,
+      entityType: 'user',
+      entityId: req.user.id,
+      action: 'logout_session_revoked',
+      details: { email: req.user.email, ip: req.ip }
+    });
+    return res.json({ message: 'Successfully logged out. Active sessions revoked.' });
+  } catch (err) {
+    console.error('Logout error:', err);
+    return res.status(500).json({ error: 'Failed to revoke session on logout' });
+  }
+});
+
 // POST /api/auth/forgot-password - manual reset queue; no email is sent by this portal.
 router.post('/forgot-password', forgotPasswordLimiter, async (req, res) => {
   const email = String(req.body.email || '').trim().toLowerCase();
@@ -145,15 +195,32 @@ router.post('/forgot-password', forgotPasswordLimiter, async (req, res) => {
   }
 });
 
-router.get('/password-reset-requests', authenticate, requireRoles('admin'), async (req, res) => {
+router.get('/password-reset-requests', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
   try {
-    const result = await query(`SELECT pr.*, u.email, u.full_name, u.company_name FROM password_reset_requests pr JOIN users u ON u.id = pr.user_id WHERE pr.status = 'Pending' ORDER BY pr.requested_at ASC`);
+    let sql, params = [];
+    if (req.user.role === 'admin') {
+      sql = `SELECT pr.*, u.email, u.full_name, u.company_name, u.reseller_id 
+             FROM password_reset_requests pr 
+             JOIN users u ON u.id = pr.user_id 
+             WHERE pr.status = 'Pending' 
+             ORDER BY pr.requested_at ASC`;
+    } else {
+      sql = `SELECT pr.*, u.email, u.full_name, u.company_name, u.reseller_id 
+             FROM password_reset_requests pr 
+             JOIN users u ON u.id = pr.user_id 
+             WHERE pr.status = 'Pending' AND u.reseller_id = $1
+             ORDER BY pr.requested_at ASC`;
+      params = [req.user.id];
+    }
+    const result = await query(sql, params);
     return res.json(result.rows);
-  } catch (err) { return res.status(500).json({ error: 'Failed to load password reset requests' }); }
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to load password reset requests' });
+  }
 });
 
 // PATCH /api/auth/password-reset-requests/:id/reject - documented manual verification decision.
-router.patch('/password-reset-requests/:id/reject', authenticate, requireRoles('admin'), async (req, res) => {
+router.patch('/password-reset-requests/:id/reject', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
   const requestId = parseInt(req.params.id, 10);
   const reason = String(req.body.reason || '').trim();
   if (!Number.isInteger(requestId) || requestId <= 0) return res.status(400).json({ error: 'Invalid reset request ID' });
@@ -161,7 +228,24 @@ router.patch('/password-reset-requests/:id/reject', authenticate, requireRoles('
   const client = await getClient();
   try {
     await client.query('BEGIN');
-    const result = await client.query(`UPDATE password_reset_requests SET status = 'Rejected', resolved_at = NOW(), resolved_by = $1, resolution_note = $2 WHERE id = $3 AND status = 'Pending' RETURNING user_id`, [req.user.id, reason.slice(0, 1000), requestId]);
+
+    // Role check: Resellers can only reject requests belonging to their managed clients
+    if (req.user.role === 'reseller') {
+      const checkRes = await client.query(`
+        SELECT pr.id FROM password_reset_requests pr
+        JOIN users u ON u.id = pr.user_id
+        WHERE pr.id = $1 AND u.reseller_id = $2
+      `, [requestId, req.user.id]);
+      if (checkRes.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Permission denied: Resellers can only reject reset requests for their own clients' });
+      }
+    }
+
+    const result = await client.query(
+      `UPDATE password_reset_requests SET status = 'Rejected', resolved_at = NOW(), resolved_by = $1, resolution_note = $2 WHERE id = $3 AND status = 'Pending' RETURNING user_id`,
+      [req.user.id, reason.slice(0, 1000), requestId]
+    );
     if (!result.rows.length) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Pending reset request not found' });

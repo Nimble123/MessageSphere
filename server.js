@@ -43,7 +43,7 @@ app.use((req, res, next) => {
   res.set('X-Frame-Options', 'DENY');
   res.set('Referrer-Policy', 'same-origin');
   res.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  res.set('Content-Security-Policy', "default-src 'self'; connect-src 'self'; img-src 'self' data: blob: https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+  res.set('Content-Security-Policy', "default-src 'self'; connect-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
   next();
 });
 
@@ -63,6 +63,7 @@ app.use('/api/audit', require('./routes/audit'));
 app.use('/api/resellers', require('./routes/resellers'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/sms', require('./routes/sms'));
+app.use('/api/headers', require('./routes/headers'));
 
 // Global error handler
 app.use((err, req, res, next) => {

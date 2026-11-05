@@ -64,4 +64,18 @@ router.patch('/retention/:key', authenticate, requireRoles('admin'), async (req,
   } finally { client.release(); }
 });
 
+// POST /api/audit/retention/purge-now - Super Admin manually triggers retention policy purge
+router.post('/retention/purge-now', authenticate, requireRoles('admin'), async (req, res) => {
+  try {
+    const { runDataRetentionPurge } = require('../services/scheduler');
+    const counts = await runDataRetentionPurge();
+    return res.json({
+      message: 'Data retention purge executed successfully.',
+      purged: counts
+    });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to execute data retention purge' });
+  }
+});
+
 module.exports = router;

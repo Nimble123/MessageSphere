@@ -576,7 +576,16 @@ if (btnSubmitForgotPassword) {
   });
 }
 
-btnShellLogout.addEventListener('click', () => {
+btnShellLogout.addEventListener('click', async () => {
+  const token = getAuthToken();
+  if (token) {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+    } catch (_) {}
+  }
   sessionStorage.removeItem('ms_impersonator_token');
   sessionStorage.removeItem('ms_impersonator_info');
   setAuthToken(null);
@@ -733,6 +742,7 @@ if (changePassForm) {
 }
 
 async function checkSession() {
+  resolveHostBranding();
   if (window.location.protocol === 'file:') {
     showAuthView();
     showAuthError('This portal needs its secure backend. Run “npm start” in the project folder, then open http://localhost:3000 — do not open public/index.html directly.');
@@ -3127,6 +3137,10 @@ if (btnDismissAllReminders) {
 }
 
 window.openOperatorDispatchModal = function() {
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('error', 'Access Restricted', 'Operator dispatch queue is reserved exclusively for Super Admin platform operators.');
+    return;
+  }
   const modal = document.getElementById('modal-operator-dispatch');
   if (modal) {
     modal.style.display = 'flex';
@@ -3539,7 +3553,7 @@ function renderRecentDashboardCampaigns(campaigns) {
       `;
     }
 
-    if (isManagement && isPending) {
+    if (currentUser && currentUser.role === 'admin' && isPending) {
       actionButtons = `
         <button class="btn-action btn-action-primary" onclick="openOperatorDispatchModal()" style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;font-size:0.78rem;" title="Process in Operator Queue">
           <i data-lucide="send" style="width:13px;height:13px;"></i> Dispatch
@@ -10498,6 +10512,23 @@ function applyBrandProfile(profile) {
   document.querySelectorAll('.brand-title').forEach(el => { el.textContent = profile.brand_name; });
   const loginBrand = document.querySelector('#auth-screen .auth-brand span');
   if (loginBrand) loginBrand.textContent = profile.brand_name;
+  if (profile.logo_url) {
+    document.querySelectorAll('.brand-logo, #auth-screen .auth-brand img').forEach(img => {
+      img.src = profile.logo_url;
+      img.style.display = 'inline-block';
+    });
+  }
+}
+
+async function resolveHostBranding() {
+  try {
+    const res = await fetch('/api/resellers/branding/resolve');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && data.custom_branding && data.branding) {
+      applyBrandProfile(data.branding);
+    }
+  } catch (_) {}
 }
 
 async function applyWhiteLabel() {

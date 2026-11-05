@@ -66,14 +66,67 @@ async function checkScheduledCampaigns() {
   }
 }
 
+let purgeInterval = null;
+
+// Periodic Data Retention Worker - Enforces retention policies configured in retention_settings
+async function runDataRetentionPurge() {
+  try {
+    const settingsRes = await query('SELECT setting_key, retention_days FROM retention_settings');
+    const settings = {};
+    settingsRes.rows.forEach(r => { settings[r.setting_key] = parseInt(r.retention_days, 10); });
+
+    let purgedCounts = { audit_logs: 0, delivery_reports: 0, campaigns: 0 };
+
+    // 1. Purge Audit Events
+    if (settings.audit_logs && settings.audit_logs > 0) {
+      const res = await query(
+        `DELETE FROM audit_events WHERE created_at < NOW() - ($1 || ' days')::interval`,
+        [settings.audit_logs]
+      );
+      purgedCounts.audit_logs = res.rowCount || 0;
+    }
+
+    // 2. Purge Delivery Reports
+    if (settings.delivery_reports && settings.delivery_reports > 0) {
+      const res = await query(
+        `DELETE FROM delivery_reports WHERE uploaded_at < NOW() - ($1 || ' days')::interval`,
+        [settings.delivery_reports]
+      );
+      purgedCounts.delivery_reports = res.rowCount || 0;
+    }
+
+    // 3. Purge Completed / Rejected Campaigns & Recipients
+    if (settings.campaign_data && settings.campaign_data > 0) {
+      const res = await query(
+        `DELETE FROM campaigns 
+         WHERE status IN ('Completed', 'Rejected') 
+           AND created_at < NOW() - ($1 || ' days')::interval`,
+        [settings.campaign_data]
+      );
+      purgedCounts.campaigns = res.rowCount || 0;
+    }
+
+    console.log(`[RETENTION PURGE] 🧹 Data retention clean-up executed: ${purgedCounts.audit_logs} audit events, ${purgedCounts.delivery_reports} delivery reports, ${purgedCounts.campaigns} campaigns removed.`);
+    return purgedCounts;
+  } catch (err) {
+    console.error('[RETENTION PURGE ERROR]:', err.message);
+    return null;
+  }
+}
+
 function initScheduler(intervalMs = 15000) {
   if (schedulerInterval) clearInterval(schedulerInterval);
+  if (purgeInterval) clearInterval(purgeInterval);
   
   // Run immediate initial check
   checkScheduledCampaigns();
+  runDataRetentionPurge();
 
   // Run on interval
   schedulerInterval = setInterval(checkScheduledCampaigns, intervalMs);
+  // Run retention purge every 24 hours
+  purgeInterval = setInterval(runDataRetentionPurge, 24 * 60 * 60 * 1000);
+
   console.log(`[SCHEDULED WORKER] 🕒 Background dispatch cron worker initialized (Polling every ${intervalMs / 1000}s).`);
 }
 
@@ -82,10 +135,15 @@ function stopScheduler() {
     clearInterval(schedulerInterval);
     schedulerInterval = null;
   }
+  if (purgeInterval) {
+    clearInterval(purgeInterval);
+    purgeInterval = null;
+  }
 }
 
 module.exports = {
   initScheduler,
   stopScheduler,
-  checkScheduledCampaigns
+  checkScheduledCampaigns,
+  runDataRetentionPurge
 };

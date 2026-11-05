@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const dns = require('dns').promises;
 const { query, getClient } = require('../db');
 const { authenticate, requireRoles } = require('../middleware/auth');
 const { logAudit } = require('../services/audit');
@@ -25,6 +26,37 @@ function cleanProfile(body, fallbackName) {
 async function resolveResellerId(user) {
   return user.role === 'reseller' ? user.id : user.reseller_id;
 }
+
+// GET /api/resellers/branding/resolve - Public branding lookup by incoming Host header or ?host=
+router.get('/branding/resolve', async (req, res) => {
+  try {
+    const rawHost = String(req.query.host || req.hostname || req.get('host') || '').toLowerCase().split(':')[0];
+    if (!rawHost || rawHost === 'localhost' || rawHost === '127.0.0.1') {
+      return res.json({ custom_branding: false });
+    }
+
+    const result = await query(`
+      SELECT rp.brand_name, rp.logo_url, rp.accent_color, rp.support_email, rp.support_phone, rp.custom_domain, rp.domain_status
+      FROM reseller_profiles rp
+      JOIN users u ON u.id = rp.reseller_id
+      WHERE LOWER(rp.custom_domain) = LOWER($1) 
+        AND rp.domain_status = 'Verified'
+        AND u.is_blocked = FALSE
+    `, [rawHost]);
+
+    if (result.rows.length === 0) {
+      return res.json({ custom_branding: false });
+    }
+
+    return res.json({
+      custom_branding: true,
+      branding: result.rows[0]
+    });
+  } catch (err) {
+    console.error('Branding resolve error:', err);
+    return res.status(500).json({ error: 'Failed to resolve branding' });
+  }
+});
 
 router.get('/me', authenticate, async (req, res) => {
   const resellerId = await resolveResellerId(req.user);
@@ -96,6 +128,18 @@ async function saveProfile(req, res, resellerId, actorId) {
   let profile;
   try { profile = cleanProfile(req.body, owner.rows[0].email.split('@')[0]); }
   catch (err) { return res.status(400).json({ error: err.message }); }
+
+  // Check custom domain uniqueness
+  if (profile.customDomain) {
+    const domainCheck = await query(
+      'SELECT reseller_id FROM reseller_profiles WHERE LOWER(custom_domain) = LOWER($1) AND reseller_id != $2',
+      [profile.customDomain, resellerId]
+    );
+    if (domainCheck.rows.length > 0) {
+      return res.status(400).json({ error: `Custom domain "${profile.customDomain}" is already claimed by another reseller.` });
+    }
+  }
+
   const client = await getClient();
   try {
     await client.query('BEGIN');
@@ -135,6 +179,40 @@ router.patch('/:id/domain-status', authenticate, requireRoles('admin'), async (r
     return res.json(result.rows[0]);
   } catch (err) { await client.query('ROLLBACK'); return res.status(500).json({ error: 'Failed to update domain status' }); }
   finally { client.release(); }
+});
+
+// POST /api/resellers/:id/verify-dns - Super Admin checks DNS resolution for reseller custom domain
+router.post('/:id/verify-dns', authenticate, requireRoles('admin'), async (req, res) => {
+  const resellerId = parseInt(req.params.id, 10);
+  try {
+    const profileRes = await query('SELECT custom_domain, domain_status FROM reseller_profiles WHERE reseller_id = $1', [resellerId]);
+    if (!profileRes.rows.length || !profileRes.rows[0].custom_domain) {
+      return res.status(400).json({ error: 'No custom domain configured for this reseller.' });
+    }
+    const domain = profileRes.rows[0].custom_domain;
+    let dnsRecords = [];
+    try {
+      dnsRecords = await dns.resolve(domain);
+    } catch (dnsErr) {
+      try {
+        dnsRecords = await dns.resolveCname(domain);
+      } catch (cnameErr) {
+        return res.status(400).json({
+          verified: false,
+          domain,
+          error: `DNS resolution failed: ${dnsErr.code || dnsErr.message}. Ensure the domain has an active A record or CNAME pointing to this host.`
+        });
+      }
+    }
+    return res.json({
+      verified: true,
+      domain,
+      resolved_to: dnsRecords,
+      message: `DNS records successfully resolved for ${domain}: ${dnsRecords.join(', ')}`
+    });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to run DNS check' });
+  }
 });
 
 module.exports = router;

@@ -99,6 +99,11 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
   const { title, text, numbers: rawNumbers, destination, channel_type, scheduled_at, cta_data, sender_header, target_user_id } = req.body;
   const files = req.files || {};
 
+  if (sender_header && (typeof sender_header !== 'string' || sender_header.trim().length > 20)) {
+    removeUploadedFiles(files);
+    return res.status(400).json({ error: 'Sender header cannot exceed 20 characters.' });
+  }
+
   // Resolve Effective Account (Self vs On-Behalf-Of Proxy Dispatch)
   let effectiveUserId = req.user.id;
   let targetUser = null;
@@ -923,6 +928,9 @@ router.patch('/:id/status', authenticate, requireRoles('admin', 'reseller'), asy
   if (!validStatuses.includes(status)) {
     return res.status(400).json({ error: 'Invalid status' });
   }
+  if (status === 'Completed' && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Permission denied: Only Super Admin can mark campaigns as Completed upon carrier dispatch' });
+  }
   if (!reason || !String(reason).trim()) {
     return res.status(400).json({ error: 'A reason is required for every manual campaign status change' });
   }
@@ -1545,35 +1553,19 @@ router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.sin
   }
 });
 
-// GET /api/campaigns/operator/queue - Get campaigns waiting for dispatch
-router.get('/operator/queue', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+// GET /api/campaigns/operator/queue - Get campaigns waiting for dispatch (Super Admin only)
+router.get('/operator/queue', authenticate, requireRoles('admin'), async (req, res) => {
   try {
-    let sql = '';
-    let params = [];
-    if (req.user.role === 'admin') {
-      sql = `
-        SELECT c.*, u.email as owner_email
-        FROM campaigns c
-        JOIN users u ON c.user_id = u.id
-        WHERE c.status IN ('Submitted', 'Approved')
-        ORDER BY 
-          CASE WHEN c.scheduled_at IS NOT NULL AND c.scheduled_at <= NOW() THEN 0 ELSE 1 END,
-          c.created_at ASC
-      `;
-    } else {
-      sql = `
-        SELECT c.*, u.email as owner_email
-        FROM campaigns c
-        JOIN users u ON c.user_id = u.id
-        WHERE c.status IN ('Submitted', 'Approved')
-          AND (c.user_id = $1 OR u.reseller_id = $1)
-        ORDER BY 
-          CASE WHEN c.scheduled_at IS NOT NULL AND c.scheduled_at <= NOW() THEN 0 ELSE 1 END,
-          c.created_at ASC
-      `;
-      params = [req.user.id];
-    }
-    const result = await query(sql, params);
+    const sql = `
+      SELECT c.*, u.email as owner_email
+      FROM campaigns c
+      JOIN users u ON c.user_id = u.id
+      WHERE c.status IN ('Submitted', 'Approved')
+      ORDER BY 
+        CASE WHEN c.scheduled_at IS NOT NULL AND c.scheduled_at <= NOW() THEN 0 ELSE 1 END,
+        c.created_at ASC
+    `;
+    const result = await query(sql);
 
     // Parse attachments for each campaign
     const campaigns = result.rows.map(c => {
@@ -1594,54 +1586,31 @@ router.get('/operator/queue', authenticate, requireRoles('admin', 'reseller'), a
   }
 });
 
-// GET /api/campaigns/operator/bulk-export - 1-Click ZIP Package containing numbers + messages + media for offline dispatch
-router.get('/operator/bulk-export', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+// GET /api/campaigns/operator/bulk-export - 1-Click ZIP Package containing numbers + messages + media for offline dispatch (Super Admin only)
+router.get('/operator/bulk-export', authenticate, requireRoles('admin'), async (req, res) => {
   try {
     let campaignsQuery = '';
     let params = [];
-    const isReseller = req.user.role === 'reseller';
 
     if (req.query.campaign_ids) {
       const ids = req.query.campaign_ids.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
       if (ids.length === 0) return res.status(400).json({ error: 'Invalid campaign IDs' });
-      if (isReseller) {
-        campaignsQuery = `
-          SELECT c.*, u.email as owner_email
-          FROM campaigns c
-          JOIN users u ON c.user_id = u.id
-          WHERE c.id = ANY($1::int[]) AND (c.user_id = $2 OR u.reseller_id = $2)
-          ORDER BY c.id ASC
-        `;
-        params = [ids, req.user.id];
-      } else {
-        campaignsQuery = `
-          SELECT c.*, u.email as owner_email
-          FROM campaigns c
-          JOIN users u ON c.user_id = u.id
-          WHERE c.id = ANY($1::int[])
-          ORDER BY c.id ASC
-        `;
-        params = [ids];
-      }
+      campaignsQuery = `
+        SELECT c.*, u.email as owner_email
+        FROM campaigns c
+        JOIN users u ON c.user_id = u.id
+        WHERE c.id = ANY($1::int[])
+        ORDER BY c.id ASC
+      `;
+      params = [ids];
     } else {
-      if (isReseller) {
-        campaignsQuery = `
-          SELECT c.*, u.email as owner_email
-          FROM campaigns c
-          JOIN users u ON c.user_id = u.id
-          WHERE c.status IN ('Submitted', 'Approved') AND (c.user_id = $1 OR u.reseller_id = $1)
-          ORDER BY c.id ASC
-        `;
-        params = [req.user.id];
-      } else {
-        campaignsQuery = `
-          SELECT c.*, u.email as owner_email
-          FROM campaigns c
-          JOIN users u ON c.user_id = u.id
-          WHERE c.status IN ('Submitted', 'Approved')
-          ORDER BY c.id ASC
-        `;
-      }
+      campaignsQuery = `
+        SELECT c.*, u.email as owner_email
+        FROM campaigns c
+        JOIN users u ON c.user_id = u.id
+        WHERE c.status IN ('Submitted', 'Approved')
+        ORDER BY c.id ASC
+      `;
     }
 
     const campResult = await query(campaignsQuery, params);
@@ -1750,8 +1719,8 @@ router.get('/operator/bulk-export', authenticate, requireRoles('admin', 'reselle
   }
 });
 
-// POST /api/campaigns/operator/bulk-status - Bulk update status for multiple campaigns
-router.post('/operator/bulk-status', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+// POST /api/campaigns/operator/bulk-status - Bulk update status for multiple campaigns (Super Admin only)
+router.post('/operator/bulk-status', authenticate, requireRoles('admin'), async (req, res) => {
   const { campaign_ids, status, reason, external_reference: externalReference } = req.body;
   if (!Array.isArray(campaign_ids) || campaign_ids.length === 0) {
     return res.status(400).json({ error: 'Campaign IDs required' });

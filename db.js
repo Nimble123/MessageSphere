@@ -358,6 +358,7 @@ async function initDB() {
     await client.query(`CREATE SEQUENCE IF NOT EXISTS invoice_number_seq START 1001;`);
     await client.query(`ALTER TABLE credit_requests ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(50);`);
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_requests_invoice_no ON credit_requests(invoice_number) WHERE invoice_number IS NOT NULL;`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_reseller_custom_domain ON reseller_profiles(LOWER(custom_domain)) WHERE custom_domain IS NOT NULL AND custom_domain != '';`);
     await client.query(`
       UPDATE credit_transactions 
       SET direction = (
@@ -421,15 +422,18 @@ async function initDB() {
   }
 }
 
-// Helper to initialize zero credits for a newly created user
+// Helper to initialize credits for a newly created user (zero for users/resellers, 10M for admin)
 async function initializeUserCredits(client, userId) {
+  const roleRes = await client.query('SELECT role FROM users WHERE id = $1', [userId]);
+  const isAdmin = roleRes.rows.length > 0 && roleRes.rows[0].role === 'admin';
+  const defaultBal = isAdmin ? 10000000 : 0;
   for (const dest of DESTINATIONS) {
     for (const type of CREDIT_TYPES) {
       await client.query(`
         INSERT INTO user_credits (user_id, credit_type, destination, balance)
-        VALUES ($1, $2, $3, 0)
+        VALUES ($1, $2, $3, $4)
         ON CONFLICT (user_id, credit_type, destination) DO NOTHING
-      `, [userId, type, dest]);
+      `, [userId, type, dest, defaultBal]);
     }
   }
 }
