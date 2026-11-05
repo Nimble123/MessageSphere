@@ -6,7 +6,10 @@ const isRemoteDb = process.env.DATABASE_URL && !process.env.DATABASE_URL.include
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || (process.env.NODE_ENV !== 'production' ? 'postgresql://localhost:5432/messagesphere' : undefined),
-  ssl: isRemoteDb ? { rejectUnauthorized: false } : false
+  ssl: isRemoteDb ? { rejectUnauthorized: false } : false,
+  max: parseInt(process.env.PG_POOL_MAX || '50', 10),
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000
 });
 
 async function query(text, params) {
@@ -97,6 +100,9 @@ async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_recipients_camp_status ON campaign_recipients(campaign_id, status);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_recipients_phone ON campaign_recipients(phone_number);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_campaigns_user ON campaigns(user_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(status);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_campaigns_created_at ON campaigns(created_at DESC);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_campaigns_channel_created ON campaigns(channel_type, created_at DESC);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_transactions_user ON credit_transactions(to_user_id, created_at DESC);`);
 
     // Schema migrations for enterprise features

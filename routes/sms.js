@@ -109,21 +109,13 @@ async function canAccessCampaign(req, campaign) {
 // Batch insert recipients (5 000 rows per INSERT — keeps pg packet size sane)
 // ---------------------------------------------------------------------------
 async function batchInsertRecipients(client, campaignId, numbers) {
-  const BATCH_SIZE = 5000;
+  const BATCH_SIZE = 10000;
   for (let i = 0; i < numbers.length; i += BATCH_SIZE) {
     const chunk = numbers.slice(i, i + BATCH_SIZE);
-    const valuePlaceholders = [];
-    const queryParams = [campaignId];
-
-    chunk.forEach((phone, idx) => {
-      valuePlaceholders.push(`($1, $${idx + 2}, 'Pending')`);
-      queryParams.push(phone);
-    });
-
     await client.query(
       `INSERT INTO campaign_recipients (campaign_id, phone_number, status)
-       VALUES ${valuePlaceholders.join(', ')}`,
-      queryParams
+       SELECT $1, unnest($2::text[]), 'Pending'`,
+      [campaignId, chunk]
     );
   }
 }

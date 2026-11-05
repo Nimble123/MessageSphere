@@ -83,22 +83,14 @@ async function canAccessCampaign(req, campaign) {
 
 // Helper to batch insert recipients
 async function batchInsertRecipients(client, campaignId, numbers) {
-  const BATCH_SIZE = 5000;
+  const BATCH_SIZE = 10000;
   for (let i = 0; i < numbers.length; i += BATCH_SIZE) {
     const chunk = numbers.slice(i, i + BATCH_SIZE);
-    const valuePlaceholders = [];
-    const queryParams = [campaignId];
-
-    chunk.forEach((phone, idx) => {
-      valuePlaceholders.push(`($1, $${idx + 2}, 'Pending')`);
-      queryParams.push(phone);
-    });
-
-    const insertSql = `
-      INSERT INTO campaign_recipients (campaign_id, phone_number, status)
-      VALUES ${valuePlaceholders.join(', ')}
-    `;
-    await client.query(insertSql, queryParams);
+    await client.query(
+      `INSERT INTO campaign_recipients (campaign_id, phone_number, status)
+       SELECT $1, unnest($2::text[]), 'Pending'`,
+      [campaignId, chunk]
+    );
   }
 }
 
