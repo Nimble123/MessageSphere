@@ -153,7 +153,7 @@ router.post('/requests', authenticate, async (req, res) => {
   }
 });
 
-// PATCH & POST /api/billing/requests/:id/approve - Admin approves request
+// PATCH & POST /api/billing/requests/:id/approve - Admin or Reseller approves request
 const approveHandler = async (req, res) => {
   const reqId = parseInt(req.params.id, 10);
   const reason = String(req.body.reason || '').trim();
@@ -162,7 +162,14 @@ const approveHandler = async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const check = await client.query(`SELECT * FROM credit_requests WHERE id = $1 FOR UPDATE`, [reqId]);
+    const check = await client.query(`
+      SELECT cr.*, u.reseller_id, u.email as user_email, u.role as user_role, u.tax_mode, u.gstin
+      FROM credit_requests cr
+      JOIN users u ON cr.user_id = u.id
+      WHERE cr.id = $1
+      FOR UPDATE OF cr
+    `, [reqId]);
+
     if (check.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Request not found' });
@@ -174,7 +181,40 @@ const approveHandler = async (req, res) => {
       return res.status(409).json({ error: 'Only pending requests can be approved' });
     }
 
-    // Add credits to user's wallet
+    // Role-based permission & quota checks:
+    // If reseller is approving, the user MUST be under this reseller
+    if (req.user.role === 'reseller') {
+      if (item.reseller_id !== req.user.id) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Permission denied: Resellers can only approve orders from their own clients' });
+      }
+
+      // Check reseller's own available balance in this credit type & destination
+      const resellerCredit = await client.query(
+        `SELECT balance FROM user_credits 
+         WHERE user_id = $1 AND credit_type = $2 AND destination = $3 
+         FOR UPDATE`,
+        [req.user.id, item.credit_type, item.destination]
+      );
+
+      const resellerBal = resellerCredit.rows.length > 0 ? parseInt(resellerCredit.rows[0].balance, 10) : 0;
+      if (resellerBal < item.credits_requested) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          error: `Insufficient reseller stock. You need ${item.credits_requested.toLocaleString()} ${item.credit_type} (${item.destination}) credits to fulfill this client order, but you only have ${resellerBal.toLocaleString()} in your balance. Please top up your reseller stock first.`
+        });
+      }
+
+      // Deduct from reseller stock
+      await client.query(
+        `UPDATE user_credits 
+         SET balance = balance - $1 
+         WHERE user_id = $2 AND credit_type = $3 AND destination = $4`,
+        [item.credits_requested, req.user.id, item.credit_type, item.destination]
+      );
+    }
+
+    // Add credits to beneficiary client's wallet
     await client.query(`
       INSERT INTO user_credits (user_id, credit_type, destination, balance)
       VALUES ($1, $2, $3, $4)
@@ -183,17 +223,43 @@ const approveHandler = async (req, res) => {
     `, [item.user_id, item.credit_type, item.destination, item.credits_requested]);
 
     // Record in ledger
+    const ledgerReason = req.user.role === 'reseller'
+      ? `Top-up Order #${item.id} approved by Reseller (UTR: ${item.utr_number || 'N/A'})`
+      : `Top-up Order #${item.id} approved by Platform Root (UTR: ${item.utr_number || 'N/A'})`;
+
     await client.query(`
-      INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason)
-      VALUES ($1, $2, $3, $4, $5, $6)
-    `, [req.user.id, item.user_id, item.credit_type, item.destination, item.credits_requested, `Top-up Order #${item.id} (UTR: ${item.utr_number})`]);
+      INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `, [
+      req.user.id,
+      item.user_id,
+      item.credit_type,
+      item.destination,
+      item.credits_requested,
+      ledgerReason,
+      item.tax_mode || 'non_gst',
+      item.base_amount || item.amount_inr || 0,
+      item.gst_amount || 0
+    ]);
 
     // Mark as approved
     await client.query(`UPDATE credit_requests SET status = 'Approved' WHERE id = $1`, [reqId]);
-    await logAudit(client, { actorId: req.user.id, entityType: 'credit_request', entityId: reqId, action: 'credit_request_approved', details: { userId: item.user_id, credits: item.credits_requested, reason: reason.slice(0, 1000) } });
+    await logAudit(client, {
+      actorId: req.user.id,
+      entityType: 'credit_request',
+      entityId: reqId,
+      action: 'credit_request_approved',
+      details: {
+        userId: item.user_id,
+        userEmail: item.user_email,
+        credits: item.credits_requested,
+        approvedByRole: req.user.role,
+        reason: reason.slice(0, 1000)
+      }
+    });
 
     await client.query('COMMIT');
-    return res.json({ message: `Request #${reqId} approved and ${item.credits_requested} credits allocated!` });
+    return res.json({ message: `Request #${reqId} approved and ${item.credits_requested.toLocaleString()} credits allocated!` });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Approve credit request error:', err);
@@ -203,10 +269,10 @@ const approveHandler = async (req, res) => {
   }
 };
 
-router.patch('/requests/:id/approve', authenticate, requireRoles('admin'), approveHandler);
-router.post('/requests/:id/approve', authenticate, requireRoles('admin'), approveHandler);
+router.patch('/requests/:id/approve', authenticate, requireRoles('admin', 'reseller'), approveHandler);
+router.post('/requests/:id/approve', authenticate, requireRoles('admin', 'reseller'), approveHandler);
 
-// PATCH & POST /api/billing/requests/:id/reject - Admin rejects request
+// PATCH & POST /api/billing/requests/:id/reject - Admin or Reseller rejects request
 const rejectHandler = async (req, res) => {
   const reqId = parseInt(req.params.id, 10);
   const reason = String(req.body.reason || '').trim();
@@ -214,15 +280,30 @@ const rejectHandler = async (req, res) => {
   const client = await getClient();
   try {
     await client.query('BEGIN');
-    const request = await client.query('SELECT * FROM credit_requests WHERE id = $1 FOR UPDATE', [reqId]);
+    const request = await client.query(`
+      SELECT cr.*, u.reseller_id 
+      FROM credit_requests cr
+      JOIN users u ON cr.user_id = u.id
+      WHERE cr.id = $1 
+      FOR UPDATE OF cr
+    `, [reqId]);
+
     if (request.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Request not found' });
     }
-    if (request.rows[0].status !== 'Pending') {
+
+    const item = request.rows[0];
+    if (item.status !== 'Pending') {
       await client.query('ROLLBACK');
       return res.status(409).json({ error: 'Only pending requests can be rejected' });
     }
+
+    if (req.user.role === 'reseller' && item.reseller_id !== req.user.id) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Permission denied: Cannot reject requests from other accounts' });
+    }
+
     await client.query(`UPDATE credit_requests SET status = 'Rejected' WHERE id = $1`, [reqId]);
     await logAudit(client, { actorId: req.user.id, entityType: 'credit_request', entityId: reqId, action: 'credit_request_rejected', details: { reason: reason.slice(0, 1000) } });
     await client.query('COMMIT');
@@ -236,8 +317,8 @@ const rejectHandler = async (req, res) => {
   }
 };
 
-router.patch('/requests/:id/reject', authenticate, requireRoles('admin'), rejectHandler);
-router.post('/requests/:id/reject', authenticate, requireRoles('admin'), rejectHandler);
+router.patch('/requests/:id/reject', authenticate, requireRoles('admin', 'reseller'), rejectHandler);
+router.post('/requests/:id/reject', authenticate, requireRoles('admin', 'reseller'), rejectHandler);
 
 // POST /api/billing/requests/:id/record-payment - Super Admin or Reseller records payment (settles full or partial Khata)
 router.post('/requests/:id/record-payment', authenticate, async (req, res) => {

@@ -11,14 +11,23 @@ router.get('/', authenticate, async (req, res) => {
 
     if (req.user.role === 'admin') {
       sql = `
-        SELECT sh.*, u.email as user_email 
+        SELECT sh.*, u.email as user_email, u.role as user_role, u.company_name as user_company
         FROM sender_headers sh 
         JOIN users u ON sh.user_id = u.id 
         ORDER BY sh.created_at DESC
       `;
+    } else if (req.user.role === 'reseller') {
+      sql = `
+        SELECT sh.*, u.email as user_email, u.role as user_role, u.company_name as user_company
+        FROM sender_headers sh 
+        JOIN users u ON sh.user_id = u.id 
+        WHERE sh.user_id = $1 OR u.reseller_id = $1
+        ORDER BY sh.created_at DESC
+      `;
+      params = [req.user.id];
     } else {
       sql = `
-        SELECT sh.*, u.email as user_email 
+        SELECT sh.*, u.email as user_email, u.role as user_role, u.company_name as user_company
         FROM sender_headers sh 
         JOIN users u ON sh.user_id = u.id 
         WHERE sh.user_id = $1 

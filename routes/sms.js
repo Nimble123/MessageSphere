@@ -506,7 +506,7 @@ router.post('/', authenticate, async (req, res) => {
     await client.query(
       `INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [req.user.id, effectiveUserId, 'gsm_sms', campaignDest, creditCost, txReason]
+      [effectiveUserId, effectiveUserId, 'gsm_sms', campaignDest, creditCost, txReason]
     );
 
     // Audit trail
@@ -867,24 +867,42 @@ router.delete('/:id', authenticate, async (req, res) => {
         ? parseInt(txResult.rows[0].amount, 10)
         : computedRefund;
 
+    const ownerRes = await client.query(
+      `SELECT id, email, role, reseller_id, refund_destination FROM users WHERE id = $1`,
+      [campaign.user_id]
+    );
+    const owner = ownerRes.rows[0];
+    let refundRecipientId = campaign.user_id;
+    let isRoutedToReseller = false;
+    if (owner && owner.refund_destination === 'reseller' && owner.reseller_id) {
+      refundRecipientId = owner.reseller_id;
+      isRoutedToReseller = true;
+    }
+
     if (refundAmount > 0) {
       await client.query(
         `UPDATE user_credits
          SET balance = balance + $1
          WHERE user_id = $2 AND credit_type = 'gsm_sms' AND destination = $3`,
-        [refundAmount, campaign.user_id, campaign.destination]
+        [refundAmount, refundRecipientId, campaign.destination]
       );
 
+      const refundReason = isRoutedToReseller
+        ? `Refund for cancelled SMS campaign #${campaignId} ("${campaign.title}") of client ${owner ? owner.email : 'client'} (${refundAmount} credits)`
+        : `Refund for cancelled SMS campaign #${campaignId} (${campaign.title})`;
+
       await client.query(
-        `INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
+        `INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, refund_client_email, refund_campaign_id)
+         VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8)`,
         [
           req.user.id,
-          campaign.user_id,
+          refundRecipientId,
           'gsm_sms',
           campaign.destination,
           refundAmount,
-          `Refund for cancelled SMS campaign #${campaignId} (${campaign.title})`,
+          refundReason,
+          owner ? owner.email : null,
+          campaignId
         ]
       );
     }

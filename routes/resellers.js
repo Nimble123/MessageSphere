@@ -65,16 +65,21 @@ router.get('/', authenticate, requireRoles('admin'), async (req, res) => {
 
     const rows = result.rows.map(r => {
       const cr = creditsMap[r.id] || {};
-      const domCredits = (cr['gsm_sms_domestic'] ?? cr['sms_domestic'] ?? 0) + (cr['whatsapp_domestic'] ?? 0);
-      const intlCredits = (cr['gsm_sms_international'] ?? cr['sms_international'] ?? 0) + (cr['whatsapp_international'] ?? 0);
+      const domWaCredits = (cr['normal_domestic'] || 0) + (cr['dp_domestic'] || 0) + (cr['cta_domestic'] || 0) + (cr['dp_cta_domestic'] || 0) + (cr['own_number_domestic'] || 0) + (cr['whatsapp_domestic'] || 0);
+      const intlWaCredits = (cr['normal_international'] || 0) + (cr['dp_international'] || 0) + (cr['cta_international'] || 0) + (cr['dp_cta_international'] || 0) + (cr['own_number_international'] || 0) + (cr['whatsapp_international'] || 0);
+      const domSmsCredits = cr['gsm_sms_domestic'] ?? cr['sms_domestic'] ?? 0;
+      const intlSmsCredits = cr['gsm_sms_international'] ?? cr['sms_international'] ?? 0;
+      const domCredits = domSmsCredits + domWaCredits;
+      const intlCredits = intlSmsCredits + intlWaCredits;
+
       return {
         ...r,
         dom_credits: domCredits,
         intl_credits: intlCredits,
-        dom_sms_credits: cr['gsm_sms_domestic'] ?? cr['sms_domestic'] ?? 0,
-        dom_wa_credits: cr['whatsapp_domestic'] ?? 0,
-        intl_sms_credits: cr['gsm_sms_international'] ?? cr['sms_international'] ?? 0,
-        intl_wa_credits: cr['whatsapp_international'] ?? 0,
+        dom_sms_credits: domSmsCredits,
+        dom_wa_credits: domWaCredits,
+        intl_sms_credits: intlSmsCredits,
+        intl_wa_credits: intlWaCredits,
       };
     });
 

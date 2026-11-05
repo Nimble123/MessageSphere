@@ -94,6 +94,7 @@ async function initDB() {
     `);
 
     await client.query(`CREATE INDEX IF NOT EXISTS idx_recipients_campaign ON campaign_recipients(campaign_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_recipients_camp_status ON campaign_recipients(campaign_id, status);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_recipients_phone ON campaign_recipients(phone_number);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_campaigns_user ON campaigns(user_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_transactions_user ON credit_transactions(to_user_id, created_at DESC);`);

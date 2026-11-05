@@ -10291,12 +10291,14 @@ function renderBillingOrdersTable() {
       `);
     }
 
-    if (isAdmin && oStatus === 'pending') {
+    const canApproveReject = (isAdmin || (isReseller && ord.reseller_id === currentUser.id)) && oStatus === 'pending';
+
+    if (canApproveReject) {
       actionBtns.push(`
-        <button class="btn-action btn-action-success" onclick="approveBillingOrder(${ord.id})" style="padding:3px 8px;font-size:0.72rem;display:inline-flex;align-items:center;gap:3px;">
+        <button class="btn-action btn-action-success" onclick="approveBillingOrder(${ord.id})" style="padding:3px 8px;font-size:0.72rem;display:inline-flex;align-items:center;gap:3px;" title="Approve order & allot credits">
           <i data-lucide="check" style="width:12px;height:12px;"></i> Approve
         </button>
-        <button class="btn-action btn-action-danger" onclick="rejectBillingOrder(${ord.id})" style="padding:3px 8px;font-size:0.72rem;display:inline-flex;align-items:center;gap:3px;">
+        <button class="btn-action btn-action-danger" onclick="rejectBillingOrder(${ord.id})" style="padding:3px 8px;font-size:0.72rem;display:inline-flex;align-items:center;gap:3px;" title="Reject request">
           <i data-lucide="x" style="width:12px;height:12px;"></i> Reject
         </button>
       `);
