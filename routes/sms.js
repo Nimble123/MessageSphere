@@ -852,7 +852,7 @@ router.delete('/:id', authenticate, async (req, res) => {
     const txResult = await client.query(
       `SELECT ABS(amount) AS amount
        FROM credit_transactions
-       WHERE to_user_id = $1 AND credit_type = 'normal' AND destination = $2
+       WHERE to_user_id = $1 AND credit_type = 'gsm_sms' AND destination = $2
          AND reason ILIKE '%campaign #' || $3 || '%'
        ORDER BY id DESC LIMIT 1`,
       [campaign.user_id, campaign.destination, String(campaignId)]

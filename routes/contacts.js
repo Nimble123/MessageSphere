@@ -737,21 +737,30 @@ router.delete('/blacklist/:target', authenticate, async (req, res) => {
     let authCondition = '';
     let params = [];
 
-    if (isSuperAdmin) {
-      authCondition = '1=1';
-      params = [target, norm];
-    } else if (isReseller) {
-      authCondition = `(user_id = $3 OR user_id IN (SELECT id FROM users WHERE reseller_id = $3))`;
-      params = [target, norm, req.user.id];
-    } else {
-      authCondition = `user_id = $3`;
-      params = [target, norm, req.user.id];
-    }
-
     if (isSmallId) {
       const idVal = parseInt(target, 10);
-      await query(`DELETE FROM blacklist WHERE (id = ${idVal} OR phone_number = $1 OR phone_number = $2) AND ${authCondition}`, params);
+      if (isSuperAdmin) {
+        authCondition = '1=1';
+        params = [idVal, target, norm];
+      } else if (isReseller) {
+        authCondition = `(user_id = $4 OR user_id IN (SELECT id FROM users WHERE reseller_id = $4))`;
+        params = [idVal, target, norm, req.user.id];
+      } else {
+        authCondition = `user_id = $4`;
+        params = [idVal, target, norm, req.user.id];
+      }
+      await query(`DELETE FROM blacklist WHERE (id = $1 OR phone_number = $2 OR phone_number = $3) AND ${authCondition}`, params);
     } else {
+      if (isSuperAdmin) {
+        authCondition = '1=1';
+        params = [target, norm];
+      } else if (isReseller) {
+        authCondition = `(user_id = $3 OR user_id IN (SELECT id FROM users WHERE reseller_id = $3))`;
+        params = [target, norm, req.user.id];
+      } else {
+        authCondition = `user_id = $3`;
+        params = [target, norm, req.user.id];
+      }
       await query(`DELETE FROM blacklist WHERE (phone_number = $1 OR phone_number = $2) AND ${authCondition}`, params);
     }
     return res.json({ message: 'Number removed from blacklist' });

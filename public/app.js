@@ -10273,7 +10273,7 @@ async function loadBillingOrders() {
 
     renderBillingOrdersTable();
   } catch (err) {
-    billingOrdersTbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:red;padding:20px;">Failed to load orders: ${err.message}</td></tr>`;
+    billingOrdersTbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:red;padding:20px;">Failed to load orders: ${escapeHtml(err.message)}</td></tr>`;
   }
 }
 

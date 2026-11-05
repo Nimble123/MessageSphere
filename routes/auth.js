@@ -2,9 +2,27 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
 const { query, getClient } = require('../db');
 const { authenticate, requireRoles, JWT_SECRET } = require('../middleware/auth');
 const { logAudit } = require('../services/audit');
+
+// Anti-brute force rate limiters
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // max 20 login attempts per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many login attempts from this IP address. Please try again after 15 minutes.' }
+});
+
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 6, // max 6 reset requests per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many password reset requests. Please try again after 15 minutes.' }
+});
 
 // Helper to fetch user credits formatted as key-value
 async function getUserCredits(userId) {
@@ -20,7 +38,7 @@ async function getUserCredits(userId) {
 }
 
 // POST /api/auth/login
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
@@ -99,7 +117,7 @@ router.get('/me', authenticate, async (req, res) => {
 });
 
 // POST /api/auth/forgot-password - manual reset queue; no email is sent by this portal.
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', forgotPasswordLimiter, async (req, res) => {
   const email = String(req.body.email || '').trim().toLowerCase();
   // Always return the same response to prevent account enumeration.
   const response = { message: 'If this account exists, a secure reset request has been sent to the account administrator.' };
