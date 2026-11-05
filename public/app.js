@@ -5212,6 +5212,26 @@ function renderUsersTable() {
   const elCountDir = document.getElementById('user-count-direct');
   if (elCountDir) elCountDir.textContent = directCount;
 
+  // Role-adaptive Segment Pills
+  const isResellerActor = currentUser && currentUser.role === 'reseller';
+  const elResellerBtn = document.getElementById('user-seg-reseller');
+  const elDirectBtn = document.getElementById('user-seg-direct');
+  const elClientsBtn = document.getElementById('user-seg-clients');
+  const elAllBtn = document.getElementById('user-seg-all');
+
+  if (isResellerActor) {
+    if (elResellerBtn) elResellerBtn.style.display = 'none';
+    if (elDirectBtn) elDirectBtn.style.display = 'none';
+    if (elClientsBtn) elClientsBtn.style.display = 'none';
+    if (elAllBtn) {
+      elAllBtn.innerHTML = `<i data-lucide="users" style="width:13px;height:13px;color:#4f46e5;"></i> My Clients (<span id="user-count-all">${totalCount}</span>)`;
+    }
+  } else {
+    if (elResellerBtn) elResellerBtn.style.display = 'inline-flex';
+    if (elDirectBtn) elDirectBtn.style.display = 'inline-flex';
+    if (elClientsBtn) elClientsBtn.style.display = 'inline-flex';
+  }
+
   const search = (userSearchInput ? userSearchInput.value : '').toLowerCase().trim();
   const resellerFilter = document.getElementById('user-reseller-filter') ? document.getElementById('user-reseller-filter').value : 'all';
   const roleFilter = document.getElementById('user-role-filter') ? document.getElementById('user-role-filter').value : 'all';
@@ -5299,7 +5319,9 @@ function renderUsersTable() {
           <i data-lucide="user" style="width:11px;height:11px;color:#3b82f6;"></i> CLIENT USER
         </span>
         <div style="font-size:0.73rem;color:#475569;margin-top:3px;">
-          Under: <span style="color:#4338ca;font-weight:700;cursor:pointer;text-decoration:underline;" onclick="window.filterByUserReseller(${u.resellerId})" title="Click to filter by ${rName}">${rName}</span>
+          ${isResellerActor 
+            ? '<span style="color:#059669;font-weight:600;"><i data-lucide="check" style="width:11px;height:11px;display:inline-block;vertical-align:-1px;"></i> Direct Managed Client</span>' 
+            : `Under: <span style="color:#4338ca;font-weight:700;cursor:pointer;text-decoration:underline;" onclick="window.filterByUserReseller(${u.resellerId})" title="Click to filter by ${rName}">${rName}</span>`}
         </div>
       `;
     } else {
@@ -6246,7 +6268,8 @@ if (btnModalSaveCredits) {
 
     try {
       const reasonInput = document.getElementById('alloc-reason');
-      const allocReason = (reasonInput && reasonInput.value.trim()) ? reasonInput.value.trim() : (mode === 'debit' ? 'Credit deduction by admin' : 'Manual credit allotment by admin');
+      const defaultReason = mode === 'debit' ? 'Credit deduction / clawback' : (currentUser?.role === 'admin' ? 'Manual credit allotment' : 'Wholesale client balance allotment');
+      const allocReason = (reasonInput && reasonInput.value.trim()) ? reasonInput.value.trim() : defaultReason;
       
       const paymentStatus = document.getElementById('alloc-payment-status')?.value || 'unpaid';
       const paidAmount = parseFloat(document.getElementById('alloc-paid-amount')?.value) || 0;

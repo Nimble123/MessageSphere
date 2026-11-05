@@ -338,6 +338,12 @@ async function initDB() {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_credit_requests_user ON credit_requests(user_id, status);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_credit_requests_payment ON credit_requests(payment_status, status);`);
+    await client.query(`
+      ALTER TABLE credit_transactions DROP CONSTRAINT IF EXISTS credit_transactions_from_user_id_fkey;
+      ALTER TABLE credit_transactions ADD CONSTRAINT credit_transactions_from_user_id_fkey FOREIGN KEY (from_user_id) REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE credit_transactions DROP CONSTRAINT IF EXISTS credit_transactions_to_user_id_fkey;
+      ALTER TABLE credit_transactions ADD CONSTRAINT credit_transactions_to_user_id_fkey FOREIGN KEY (to_user_id) REFERENCES users(id) ON DELETE CASCADE;
+    `);
 
     const adminEmail = (process.env.ADMIN_EMAIL || 'admin@messagesphere.com').trim().toLowerCase();
     const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
