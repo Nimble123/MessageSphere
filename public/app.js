@@ -523,6 +523,8 @@ if (btnSubmitForgotPassword) {
 }
 
 btnShellLogout.addEventListener('click', () => {
+  sessionStorage.removeItem('ms_impersonator_token');
+  sessionStorage.removeItem('ms_impersonator_info');
   setAuthToken(null);
   currentUser = null;
   if (pollInterval) clearInterval(pollInterval);
@@ -590,6 +592,9 @@ function handleLoginSuccess(user) {
   loadCampaigns();
   if (user.role === 'admin' || user.role === 'reseller') {
     loadUsers().then(() => refreshDashboardMetrics()).catch(() => {});
+  }
+  if (typeof window.checkImpersonationStatus === 'function') {
+    window.checkImpersonationStatus();
   }
   switchView('view-dashboard');
 
@@ -5263,6 +5268,8 @@ function renderUsersTable() {
     return true;
   });
 
+  window.currentFilteredUsers = filtered;
+
   if (filtered.length === 0) {
     tbody.innerHTML = `
       <tr>
@@ -5402,9 +5409,19 @@ function renderUsersTable() {
         <td>${taxCellHtml}</td>
         <td>${refundCellHtml}</td>
         <td>
-          <div class="credit-pill credit-pill-primary" title="${domBreakdown}" style="cursor:help;">
-            <i data-lucide="map-pin" style="width:12px;height:12px;"></i>
-            <span>${domTotal.toLocaleString()}</span>
+          <div style="display:inline-flex;align-items:center;gap:6px;">
+            <div class="credit-pill credit-pill-primary" title="${domBreakdown}" style="cursor:help;">
+              <i data-lucide="map-pin" style="width:12px;height:12px;"></i>
+              <span>${domTotal.toLocaleString()}</span>
+            </div>
+            ${domTotal <= 0 
+              ? '<span class="badge" style="background:rgba(239,68,68,0.12);color:#dc2626;border:1px solid rgba(239,68,68,0.3);font-size:10px;font-weight:700;padding:2px 6px;border-radius:9999px;white-space:nowrap;" title="Zero domestic credits balance">⚠️ Empty</span>' 
+              : (domTotal < 500 
+                  ? '<span class="badge" style="background:rgba(245,158,11,0.15);color:#d97706;border:1px solid rgba(245,158,11,0.3);font-size:10px;font-weight:700;padding:2px 6px;border-radius:9999px;white-space:nowrap;" title="Domestic balance is below 500 threshold">⚠️ Low</span>' 
+                  : '')}
+            <button type="button" class="btn-quick-topup" onclick="event.stopPropagation(); openAllotCreditsModal(${u.id}, '${escapeHtml(u.email)}')" title="Quick Allot Credits" style="width:22px;height:22px;border-radius:6px;border:1px solid #cbd5e1;background:#ffffff;color:#4f46e5;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;transition:all 0.15s;" onmouseover="this.style.background='#4f46e5';this.style.color='#ffffff';" onmouseout="this.style.background='#ffffff';this.style.color='#4f46e5';">
+              <i data-lucide="plus" style="width:12px;height:12px;"></i>
+            </button>
           </div>
         </td>
         <td>
@@ -5432,6 +5449,10 @@ function renderUsersTable() {
                 <button type="button" class="action-dropdown-item" onclick="closeAllDropdowns(); openAllotCreditsModal(${u.id}, '${escapeHtml(u.email)}')">
                   <i data-lucide="coins" style="width:14px;height:14px;color:#4f46e5;"></i> Allot Credits
                 </button>
+                ${(currentUser && (currentUser.role === 'admin' || (currentUser.role === 'reseller' && u.resellerId === currentUser.id)) && u.role !== 'admin' && u.id !== currentUser.id) ? `
+                <button type="button" class="action-dropdown-item" onclick="closeAllDropdowns(); impersonateUserAccount(${u.id}, '${escapeHtml(u.email)}')">
+                  <i data-lucide="user-check" style="width:14px;height:14px;color:#10b981;"></i> Login as User
+                </button>` : ''}
                 <button type="button" class="action-dropdown-item" onclick="closeAllDropdowns(); openResetPasswordModal(${u.id}, '${escapeHtml(u.email)}')">
                   <i data-lucide="key" style="width:14px;height:14px;color:#0891b2;"></i> Reset Password
                 </button>
@@ -5585,6 +5606,174 @@ window.deleteUserAccount = function(userId, email) {
       }
     }
   });
+};
+
+// --- EXPORT USERS REPORT (.CSV) ---
+window.exportUsersCsv = function() {
+  const usersToExport = window.currentFilteredUsers || allUsers || [];
+  if (usersToExport.length === 0) {
+    showToast('warning', 'Export CSV', 'No user accounts found matching current filters to export.');
+    return;
+  }
+
+  const headers = [
+    'User ID',
+    'Email Address',
+    'Full Name',
+    'Company Name',
+    'Phone Number',
+    'Role',
+    'Associated Reseller',
+    'Tax Invoicing Mode',
+    'Auto-Refund Routing',
+    'GSTIN',
+    'Business Address',
+    'Total Domestic Credits',
+    'GSM SMS Domestic',
+    'WA Text Domestic',
+    'WA DP Domestic',
+    'WA CTA Domestic',
+    'WA Combo Domestic',
+    'Own Number Domestic',
+    'Total International Credits',
+    'Account Status',
+    'Registered Date'
+  ];
+
+  const rows = usersToExport.map(u => {
+    const domTotal = (u.credits_gsm_sms_domestic||0) + (u.credits_normal_domestic||0) + (u.credits_dp_domestic||0) + (u.credits_cta_domestic||0) + (u.credits_dp_cta_domestic||0) + (u.credits_own_number_domestic||0);
+    const intlTotal = (u.credits_gsm_sms_international||0) + (u.credits_normal_international||0) + (u.credits_dp_international||0) + (u.credits_cta_international||0) + (u.credits_dp_cta_international||0) + (u.credits_own_number_international||0);
+
+    let resellerInfo = 'Direct Platform User';
+    if (u.role === 'admin') resellerInfo = 'Super Admin';
+    else if (u.role === 'reseller') resellerInfo = 'Reseller Partner';
+    else if (u.resellerEmail) resellerInfo = `${u.resellerFullName || u.resellerCompanyName || ''} (${u.resellerEmail})`.trim();
+
+    return [
+      u.id,
+      u.email,
+      u.fullName || '',
+      u.companyName || '',
+      u.phone || '',
+      u.role.toUpperCase(),
+      resellerInfo,
+      u.taxMode === 'with_gst' ? 'GST 18%' : 'Non-GST 0%',
+      u.refundDestination === 'reseller' ? 'To Reseller Wallet' : 'To Client Wallet',
+      u.gstin || '',
+      u.businessAddress || '',
+      domTotal,
+      u.credits_gsm_sms_domestic || 0,
+      u.credits_normal_domestic || 0,
+      u.credits_dp_domestic || 0,
+      u.credits_cta_domestic || 0,
+      u.credits_dp_cta_domestic || 0,
+      u.credits_own_number_domestic || 0,
+      intlTotal,
+      u.isBlocked ? 'Blocked' : 'Active',
+      u.createdAt ? new Date(u.createdAt).toISOString() : ''
+    ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(',');
+  });
+
+  const csvContent = '\uFEFF' + [headers.map(h => `"${h}"`).join(','), ...rows].join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `MessageSphere_Users_Report_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  showToast('success', 'Export Complete', `Successfully exported ${usersToExport.length} user accounts to CSV.`);
+};
+
+// --- ENTERPRISE USER IMPERSONATION CONTROLLER ---
+window.impersonateUserAccount = async function(targetId, targetEmail) {
+  if (!confirm(`Switch session to client: ${targetEmail}?\n\nYou will enter Impersonation Mode to view and troubleshoot the portal from their exact perspective.\n\nYou can click "Exit & Return to Admin" at the top of the screen at any time.`)) {
+    return;
+  }
+
+  try {
+    const data = await apiFetch(`/users/${targetId}/impersonate`, {
+      method: 'POST'
+    });
+
+    if (!data || !data.token) {
+      throw new Error(data?.error || 'Failed to obtain impersonation token');
+    }
+
+    // Save current admin session token & user info in sessionStorage
+    const currentToken = localStorage.getItem('token');
+    sessionStorage.setItem('ms_impersonator_token', currentToken);
+    sessionStorage.setItem('ms_impersonator_info', JSON.stringify({
+      id: currentUser.id,
+      email: currentUser.email,
+      role: currentUser.role
+    }));
+
+    // Set target user's token and user info
+    localStorage.setItem('token', data.token);
+    if (data.user) {
+      localStorage.setItem('user', JSON.stringify(data.user));
+    }
+
+    showToast('info', 'Entering Impersonation Mode', `Now viewing portal as ${targetEmail}...`);
+    setTimeout(() => {
+      window.location.reload();
+    }, 400);
+  } catch (err) {
+    showToast('error', 'Impersonation Failed', err.message);
+  }
+};
+
+window.exitImpersonation = function() {
+  const origToken = sessionStorage.getItem('ms_impersonator_token');
+  if (!origToken) {
+    showToast('warning', 'Session Not Found', 'No original admin session token found in session storage.');
+    return;
+  }
+
+  if (!confirm('Exit Impersonation Mode and return to your Admin session?')) {
+    return;
+  }
+
+  // Restore admin token
+  localStorage.setItem('token', origToken);
+  sessionStorage.removeItem('ms_impersonator_token');
+  sessionStorage.removeItem('ms_impersonator_info');
+  localStorage.removeItem('user');
+
+  showToast('info', 'Restoring Session', 'Returning to your Admin portal...');
+  setTimeout(() => {
+    window.location.reload();
+  }, 400);
+};
+
+window.checkImpersonationStatus = function() {
+  const impersonatorToken = sessionStorage.getItem('ms_impersonator_token');
+  const banner = document.getElementById('impersonation-banner');
+  if (!banner) return;
+
+  if (impersonatorToken) {
+    let impInfo = null;
+    try {
+      impInfo = JSON.parse(sessionStorage.getItem('ms_impersonator_info') || '{}');
+    } catch(e) {}
+
+    banner.style.display = 'flex';
+    const targetEmailEl = document.getElementById('impersonation-target-email');
+    if (targetEmailEl && currentUser) {
+      targetEmailEl.textContent = currentUser.email;
+    }
+    const adminSourceEl = document.getElementById('impersonation-admin-source');
+    if (adminSourceEl && impInfo && impInfo.email) {
+      adminSourceEl.textContent = `(Controlled by ${impInfo.role === 'admin' ? 'Super Admin' : 'Reseller'}: ${impInfo.email})`;
+    }
+    if (window.lucide) setTimeout(() => lucide.createIcons({ root: banner }), 50);
+  } else {
+    banner.style.display = 'none';
+  }
 };
 
 // --- RESET PASSWORD MODAL ---
@@ -11477,6 +11666,19 @@ window.openUser360Modal = async function(userId, evt) {
     const canManage = currentUser && (currentUser.role === 'admin' || (currentUser.role === 'reseller' && user.id !== currentUser.id));
     if (canManage && user.id !== currentUser.id) {
       adminActionsContainer.style.display = 'flex';
+      const btnImpersonate = document.getElementById('u360-btn-impersonate');
+      if (btnImpersonate) {
+        if (user.role !== 'admin' && user.id !== currentUser.id) {
+          btnImpersonate.style.display = 'inline-flex';
+          btnImpersonate.onclick = () => {
+            closeU360();
+            impersonateUserAccount(user.id, user.email);
+          };
+        } else {
+          btnImpersonate.style.display = 'none';
+        }
+      }
+
       const btnAllot = document.getElementById('u360-btn-allot');
       btnAllot.onclick = () => {
         closeU360();
@@ -11696,6 +11898,9 @@ window.openUser360Modal = async function(userId, evt) {
 
     window.renderU360LedgerTable('all');
 
+    // Tab 5: Custom Rate Card & Pricing
+    window.renderU360Rates(credits.rates || {});
+
     // Tab 4: Business & Security Details
     current360User = user;
     document.getElementById('u360-info-name').textContent = user.fullName || '—';
@@ -11779,6 +11984,8 @@ window.renderU360LedgerTable = function(flowFilter = 'all') {
     return true;
   });
 
+  window.currentFilteredUsers = filtered;
+
   if (filtered.length === 0) {
     ledgerTbody.innerHTML = `<tr>
       <td colspan="6" style="text-align:center;padding:32px;color:#64748b;">
@@ -11854,6 +12061,121 @@ window.renderU360LedgerTable = function(flowFilter = 'all') {
   if (window.lucide) {
     try { lucide.createIcons({ root: ledgerTbody }); } catch (e) { lucide.createIcons(); }
   }
+};
+
+// --- USER 360 CUSTOM RATE CARD & PRICING CONTROLLER ---
+const CHANNEL_RATE_DEFAULTS = [
+  { key: 'gsm_sms', name: 'GSM Bulk SMS', icon: 'radio', defaultDom: 0.1200, defaultIntl: 0.2500, desc: 'SIM Gateway SMS (Single & Multi-line)' },
+  { key: 'normal', name: 'WhatsApp Text (Normal)', icon: 'message-circle', defaultDom: 0.1500, defaultIntl: 0.3000, desc: 'Plain text & emoji WhatsApp message' },
+  { key: 'dp', name: 'WhatsApp DP (Display Picture)', icon: 'image', defaultDom: 0.1800, defaultIntl: 0.3500, desc: 'Image attachment with caption' },
+  { key: 'cta', name: 'WhatsApp CTA Button', icon: 'mouse-pointer', defaultDom: 0.2000, defaultIntl: 0.4000, desc: 'Interactive URL/Call action buttons' },
+  { key: 'dp_cta', name: 'WhatsApp Combo (DP + CTA)', icon: 'layers', defaultDom: 0.2200, defaultIntl: 0.4500, desc: 'Rich media image + interactive buttons' },
+  { key: 'own_number', name: 'Own Number Virtual Gateway', icon: 'smartphone', defaultDom: 0.0800, defaultIntl: 0.1800, desc: 'Client registered WhatsApp virtual sender' }
+];
+
+window.renderU360Rates = function(rates = {}) {
+  const ratesTbody = document.getElementById('u360-rates-tbody');
+  if (!ratesTbody) return;
+
+  ratesTbody.innerHTML = CHANNEL_RATE_DEFAULTS.map(ch => {
+    const domVal = (rates[`${ch.key}_domestic`] !== undefined && rates[`${ch.key}_domestic`] !== null) 
+      ? parseFloat(rates[`${ch.key}_domestic`]) 
+      : ch.defaultDom;
+    const intlVal = (rates[`${ch.key}_international`] !== undefined && rates[`${ch.key}_international`] !== null) 
+      ? parseFloat(rates[`${ch.key}_international`]) 
+      : ch.defaultIntl;
+
+    const isCustomDom = Math.abs(domVal - ch.defaultDom) > 0.0001;
+    const isCustomIntl = Math.abs(intlVal - ch.defaultIntl) > 0.0001;
+
+    return `
+      <tr style="border-bottom:1px solid #f1f5f9;transition:background 0.15s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+        <td style="padding:10px 14px;">
+          <div style="font-weight:700;color:var(--slate-800);display:flex;align-items:center;gap:6px;font-size:0.83rem;">
+            <i data-lucide="${ch.icon}" style="width:14px;height:14px;color:#4f46e5;"></i>
+            ${ch.name}
+          </div>
+          <div style="font-size:0.72rem;color:var(--slate-400);margin-top:2px;">${ch.desc}</div>
+        </td>
+        <td style="padding:10px 14px;color:#64748b;font-size:0.8rem;font-weight:600;">
+          ₹${ch.defaultDom.toFixed(4)} <span style="font-size:0.7rem;color:#94a3b8;">(Dom)</span><br>
+          <span style="font-size:0.75rem;color:#94a3b8;">₹${ch.defaultIntl.toFixed(4)} (Intl)</span>
+        </td>
+        <td style="padding:10px 14px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-weight:700;color:#64748b;font-size:0.8rem;">₹</span>
+            <input type="number" step="0.0001" min="0" max="99" id="u360-rate-${ch.key}-domestic" value="${domVal.toFixed(4)}" style="width:105px;padding:5px 8px;font-size:0.82rem;font-weight:700;border:1px solid ${isCustomDom ? '#818cf8' : '#cbd5e1'};border-radius:6px;background:${isCustomDom ? '#f5f3ff' : '#ffffff'};color:#1e293b;" onchange="this.style.borderColor='#4f46e5';">
+          </div>
+        </td>
+        <td style="padding:10px 14px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-weight:700;color:#64748b;font-size:0.8rem;">₹</span>
+            <input type="number" step="0.0001" min="0" max="99" id="u360-rate-${ch.key}-international" value="${intlVal.toFixed(4)}" style="width:105px;padding:5px 8px;font-size:0.82rem;font-weight:700;border:1px solid ${isCustomIntl ? '#38bdf8' : '#cbd5e1'};border-radius:6px;background:${isCustomIntl ? '#f0f9ff' : '#ffffff'};color:#1e293b;" onchange="this.style.borderColor='#0284c7';">
+          </div>
+        </td>
+        <td style="padding:10px 14px;">
+          ${(isCustomDom || isCustomIntl) 
+            ? '<span class="status-badge" style="background:#e0e7ff;color:#4338ca;border:1px solid #c7d2fe;font-size:0.7rem;font-weight:700;">Negotiated</span>' 
+            : '<span class="status-badge" style="background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;font-size:0.7rem;">Default Base</span>'}
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  if (window.lucide) {
+    try { lucide.createIcons({ root: ratesTbody }); } catch (e) { lucide.createIcons(); }
+  }
+};
+
+window.saveUser360Rates = async function() {
+  if (!current360User || !current360User.id) {
+    showToast('error', 'Error', 'No user selected.');
+    return;
+  }
+
+  const btn = document.getElementById('btn-save-u360-rates');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader" style="width:13px;height:13px;"></i> Saving...';
+  }
+
+  const rates = {};
+  CHANNEL_RATE_DEFAULTS.forEach(ch => {
+    const domInp = document.getElementById(`u360-rate-${ch.key}-domestic`);
+    const intlInp = document.getElementById(`u360-rate-${ch.key}-international`);
+    if (domInp) rates[`${ch.key}_domestic`] = parseFloat(domInp.value) || ch.defaultDom;
+    if (intlInp) rates[`${ch.key}_international`] = parseFloat(intlInp.value) || ch.defaultIntl;
+  });
+
+  try {
+    const res = await apiFetch(`/users/${current360User.id}/rates`, {
+      method: 'PATCH',
+      body: JSON.stringify({ rates })
+    });
+
+    showToast('success', 'Rate Card Saved', `Negotiated rates updated successfully for ${current360User.email}.`);
+    if (res && res.rates) {
+      window.renderU360Rates(res.rates);
+    }
+  } catch (err) {
+    showToast('error', 'Failed to Save Rates', err.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i data-lucide="check" style="width:13px;height:13px;"></i> Save Rate Card';
+      if (window.lucide) lucide.createIcons({ root: btn });
+    }
+  }
+};
+
+window.triggerImpersonationFrom360 = function() {
+  if (!current360User || !current360User.id) {
+    showToast('warning', 'Impersonation', 'No user account currently loaded.');
+    return;
+  }
+  const modal = document.getElementById('modal-user-360');
+  if (modal) modal.style.display = 'none';
+  window.impersonateUserAccount(current360User.id, current360User.email);
 };
 
 let current360User = null;

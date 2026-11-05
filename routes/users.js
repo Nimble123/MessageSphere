@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const { query, getClient, initializeUserCredits, CREDIT_TYPES, DESTINATIONS } = require('../db');
-const { authenticate, requireRoles } = require('../middleware/auth');
+const { authenticate, requireRoles, JWT_SECRET } = require('../middleware/auth');
 const { logAudit } = require('../services/audit');
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -890,6 +891,179 @@ router.delete('/:id', authenticate, requireRoles('admin', 'reseller'), async (re
   } catch (err) {
     console.error('Delete user error:', err);
     return res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// POST /api/users/:id/impersonate - Super Admin or Reseller logs into client account
+router.post('/:id/impersonate', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  const targetId = parseInt(req.params.id, 10);
+  if (isNaN(targetId)) return res.status(400).json({ error: 'Invalid user ID' });
+
+  if (targetId === req.user.id) {
+    return res.status(400).json({ error: 'Cannot impersonate your own account' });
+  }
+
+  try {
+    const userCheck = await query(
+      `SELECT id, email, role, is_blocked, reseller_id, full_name, company_name FROM users WHERE id = $1`,
+      [targetId]
+    );
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const targetUser = userCheck.rows[0];
+
+    // Security Rules:
+    // Admin can impersonate any non-admin
+    // Reseller can only impersonate their own client
+    if (targetUser.role === 'admin') {
+      return res.status(403).json({ error: 'Super Admin accounts cannot be impersonated' });
+    }
+
+    if (req.user.role === 'reseller') {
+      if (targetUser.reseller_id !== req.user.id) {
+        return res.status(403).json({ error: 'Permission denied: You can only impersonate accounts under your reseller network' });
+      }
+    }
+
+    if (targetUser.is_blocked) {
+      return res.status(400).json({ error: 'Cannot impersonate a blocked/suspended account' });
+    }
+
+    // Sign JWT token for the target user, encoding impersonator metadata
+    const token = jwt.sign(
+      {
+        userId: targetUser.id,
+        email: targetUser.email,
+        role: targetUser.role,
+        impersonatedBy: {
+          id: req.user.id,
+          email: req.user.email,
+          role: req.user.role
+        }
+      },
+      JWT_SECRET,
+      { expiresIn: '2d' }
+    );
+
+    // Audit log
+    await logAudit(null, {
+      actorId: req.user.id,
+      entityType: 'user',
+      entityId: targetId,
+      action: 'user_impersonated',
+      details: {
+        targetEmail: targetUser.email,
+        impersonatorEmail: req.user.email,
+        impersonatorRole: req.user.role
+      }
+    });
+
+    return res.json({
+      message: `Impersonation session created for ${targetUser.email}`,
+      token,
+      user: {
+        id: targetUser.id,
+        email: targetUser.email,
+        role: targetUser.role,
+        fullName: targetUser.full_name,
+        companyName: targetUser.company_name,
+        resellerId: targetUser.reseller_id
+      },
+      impersonator: {
+        id: req.user.id,
+        email: req.user.email,
+        role: req.user.role
+      }
+    });
+  } catch (err) {
+    console.error('Impersonate user error:', err);
+    return res.status(500).json({ error: 'Failed to initiate impersonation session' });
+  }
+});
+
+// PATCH /api/users/:id/rates - Update per-user custom rate card
+router.patch('/:id/rates', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  const targetId = parseInt(req.params.id, 10);
+  if (isNaN(targetId)) return res.status(400).json({ error: 'Invalid user ID' });
+
+  try {
+    const userCheck = await query('SELECT id, email, role, reseller_id FROM users WHERE id = $1', [targetId]);
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const targetUser = userCheck.rows[0];
+    if (req.user.role === 'reseller' && targetUser.reseller_id !== req.user.id) {
+      return res.status(403).json({ error: 'Permission denied: Cannot edit rates for users outside your network' });
+    }
+
+    const { rates } = req.body;
+    if (!rates || typeof rates !== 'object') {
+      return res.status(400).json({ error: 'Invalid rates payload' });
+    }
+
+    const client = await getClient();
+    const updatedRates = {};
+
+    try {
+      await client.query('BEGIN');
+
+      for (const [key, rawRate] of Object.entries(rates)) {
+        let destination = '';
+        let creditType = '';
+
+        if (key.endsWith('_domestic') || key.endsWith('-domestic')) {
+          destination = 'domestic';
+          creditType = key.replace(/[-_]domestic$/, '');
+        } else if (key.endsWith('_international') || key.endsWith('-international')) {
+          destination = 'international';
+          creditType = key.replace(/[-_]international$/, '');
+        } else {
+          continue;
+        }
+
+        if (!CREDIT_TYPES.includes(creditType) || !DESTINATIONS.includes(destination)) {
+          continue;
+        }
+
+        const rateNum = parseFloat(rawRate);
+        if (isNaN(rateNum) || rateNum < 0) continue;
+
+        await client.query(`
+          INSERT INTO user_credits (user_id, credit_type, destination, balance, rate_inr)
+          VALUES ($1, $2, $3, 0, $4)
+          ON CONFLICT (user_id, credit_type, destination)
+          DO UPDATE SET rate_inr = EXCLUDED.rate_inr
+        `, [targetId, creditType, destination, rateNum]);
+
+        updatedRates[`${creditType}_${destination}`] = rateNum;
+      }
+
+      await logAudit(client, {
+        actorId: req.user.id,
+        entityType: 'user',
+        entityId: targetId,
+        action: 'user_rates_updated',
+        details: { updatedRates }
+      });
+
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+
+    return res.json({
+      message: `Rate card for ${targetUser.email} updated successfully.`,
+      rates: updatedRates
+    });
+  } catch (err) {
+    console.error('Update rates error:', err);
+    return res.status(500).json({ error: 'Failed to update rates' });
   }
 });
 
