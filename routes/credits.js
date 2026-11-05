@@ -198,16 +198,26 @@ async function buildLedgerQuery(req, isExport = false) {
     paramIdx++;
   }
 
+  const isPlatformWide = (req.user.role === 'admin' && (!userId || isNaN(parseInt(userId, 10))));
+
   // Filter by direction BEFORE pagination
   if (direction && direction !== 'all') {
     if (direction === 'credit' || direction === 'allotment') {
-      whereClauses.push(`(ct.direction = 'credit' OR (ct.direction IS NULL AND ct.to_user_id = $${paramIdx}))`);
-      params.push(viewerUserId);
-      paramIdx++;
+      if (isPlatformWide) {
+        whereClauses.push(`(ct.direction = 'credit' OR ct.direction IS NULL)`);
+      } else {
+        whereClauses.push(`((ct.direction = 'credit' AND ct.to_user_id = $${paramIdx}) OR (ct.direction IS NULL AND ct.to_user_id = $${paramIdx}))`);
+        params.push(viewerUserId);
+        paramIdx++;
+      }
     } else if (direction === 'debit' || direction === 'deduction' || direction === 'campaign_deduction') {
-      whereClauses.push(`(ct.direction = 'debit' OR (ct.direction IS NULL AND ct.from_user_id = $${paramIdx}))`);
-      params.push(viewerUserId);
-      paramIdx++;
+      if (isPlatformWide) {
+        whereClauses.push(`ct.direction = 'debit'`);
+      } else {
+        whereClauses.push(`(ct.direction = 'debit' OR (ct.direction = 'credit' AND ct.from_user_id = $${paramIdx} AND ct.to_user_id != $${paramIdx}) OR (ct.direction IS NULL AND ct.from_user_id = $${paramIdx}))`);
+        params.push(viewerUserId);
+        paramIdx++;
+      }
     } else if (direction === 'refund') {
       whereClauses.push(`(ct.direction = 'refund' OR (ct.direction IS NULL AND ct.refund_campaign_id IS NOT NULL))`);
     }
@@ -258,17 +268,33 @@ async function buildLedgerQuery(req, isExport = false) {
   `;
 
   // SQL-level aggregate summary across entire dataset (independent of pagination limit)
-  const summarySql = `
-    SELECT
-      COALESCE(SUM(CASE WHEN ct.direction = 'refund' OR (ct.direction IS NULL AND ct.refund_campaign_id IS NOT NULL) THEN ct.amount ELSE 0 END), 0) as total_refunds,
-      COALESCE(SUM(CASE WHEN ct.direction = 'credit' OR (ct.direction IS NULL AND ct.to_user_id = $${paramIdx}) THEN ct.amount ELSE 0 END), 0) as total_inflow,
-      COALESCE(SUM(CASE WHEN ct.direction = 'debit' OR (ct.direction IS NULL AND ct.from_user_id = $${paramIdx}) THEN ct.amount ELSE 0 END), 0) as total_outflow
-    FROM credit_transactions ct
-    LEFT JOIN users u_from ON ct.from_user_id = u_from.id
-    LEFT JOIN users u_to ON ct.to_user_id = u_to.id
-    ${whereSql}
-  `;
-  const summaryParams = [...params, viewerUserId];
+  let summarySql;
+  let summaryParams;
+  if (isPlatformWide) {
+    summarySql = `
+      SELECT
+        COALESCE(SUM(CASE WHEN ct.direction = 'refund' OR (ct.direction IS NULL AND ct.refund_campaign_id IS NOT NULL) THEN ct.amount ELSE 0 END), 0) as total_refunds,
+        COALESCE(SUM(CASE WHEN ct.direction = 'credit' OR (ct.direction IS NULL AND ct.to_user_id IS NOT NULL) THEN ct.amount ELSE 0 END), 0) as total_inflow,
+        COALESCE(SUM(CASE WHEN ct.direction = 'debit' OR (ct.direction IS NULL AND ct.from_user_id IS NOT NULL) THEN ct.amount ELSE 0 END), 0) as total_outflow
+      FROM credit_transactions ct
+      LEFT JOIN users u_from ON ct.from_user_id = u_from.id
+      LEFT JOIN users u_to ON ct.to_user_id = u_to.id
+      ${whereSql}
+    `;
+    summaryParams = [...params];
+  } else {
+    summarySql = `
+      SELECT
+        COALESCE(SUM(CASE WHEN ct.direction = 'refund' OR (ct.direction IS NULL AND ct.refund_campaign_id IS NOT NULL) THEN ct.amount ELSE 0 END), 0) as total_refunds,
+        COALESCE(SUM(CASE WHEN (ct.direction = 'credit' AND ct.to_user_id = $${paramIdx}) OR (ct.direction IS NULL AND ct.to_user_id = $${paramIdx}) THEN ct.amount ELSE 0 END), 0) as total_inflow,
+        COALESCE(SUM(CASE WHEN ct.direction = 'debit' OR (ct.direction = 'credit' AND ct.from_user_id = $${paramIdx} AND ct.to_user_id != $${paramIdx}) OR (ct.direction IS NULL AND ct.from_user_id = $${paramIdx}) THEN ct.amount ELSE 0 END), 0) as total_outflow
+      FROM credit_transactions ct
+      LEFT JOIN users u_from ON ct.from_user_id = u_from.id
+      LEFT JOIN users u_to ON ct.to_user_id = u_to.id
+      ${whereSql}
+    `;
+    summaryParams = [...params, viewerUserId];
+  }
 
   const sql = `
     SELECT ct.*, 

@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { query } = require('../db');
 const { authenticate } = require('../middleware/auth');
-const { calculateSmsMetrics } = require('../services/telecom');
+const { calculateSmsMetrics, sanitizeCsvCell } = require('../services/telecom');
 
 // Multer storage for message template media attachments (Image, PDF, Video)
 const uploadDir = path.join(__dirname, '../uploads');
@@ -223,12 +223,12 @@ router.get('/export/csv', authenticate, async (req, res) => {
     for (const r of result.rows) {
       const isSms = r.channel === 'sms';
       const encoding = isSms ? (r.is_unicode ? 'Unicode' : 'GSM-7') : 'WhatsApp (1 Credit)';
-      const safeTitle = (r.title || '').replace(/"/g, '""');
-      const safeContent = (r.content || '').replace(/"/g, '""');
-      const safeOwner = (r.owner_email || '').replace(/"/g, '""');
+      let ownerDisplay = r.owner_email || '';
+      if (req.user.role === 'user' && r.owner_email !== req.user.email) {
+        ownerDisplay = 'Direct Telecom Platform';
+      }
       const safeCreated = r.created_at ? new Date(r.created_at).toISOString() : '';
       const safeFormat = (r.template_type || 'standard').toUpperCase();
-      const safeAttachment = (r.attachment_url || '').replace(/"/g, '""');
       let ctaLink = '';
       let ctaCall = '';
       if (r.cta_data) {
@@ -237,7 +237,22 @@ router.get('/export/csv', authenticate, async (req, res) => {
         if (cta.call_number) ctaCall = `${cta.call_text || 'Call'}: ${cta.call_number}`;
       }
 
-      csv += `"${r.id}","${safeTitle}","${r.channel}","${safeFormat}","${r.category || 'MARKETING'}","${encoding}","${r.character_count || 0}","${r.parts_count || 1}","${safeAttachment}","${ctaLink.replace(/"/g, '""')}","${ctaCall.replace(/"/g, '""')}","${safeOwner}","${safeCreated}","${safeContent}"\n`;
+      csv += [
+        sanitizeCsvCell(r.id),
+        sanitizeCsvCell(r.title || ''),
+        sanitizeCsvCell(r.channel),
+        sanitizeCsvCell(safeFormat),
+        sanitizeCsvCell(r.category || 'MARKETING'),
+        sanitizeCsvCell(encoding),
+        sanitizeCsvCell(r.character_count || 0),
+        sanitizeCsvCell(r.parts_count || 1),
+        sanitizeCsvCell(r.attachment_url || ''),
+        sanitizeCsvCell(ctaLink),
+        sanitizeCsvCell(ctaCall),
+        sanitizeCsvCell(ownerDisplay),
+        sanitizeCsvCell(safeCreated),
+        sanitizeCsvCell(r.content || '')
+      ].join(',') + '\n';
     }
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');

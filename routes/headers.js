@@ -15,6 +15,15 @@ router.get('/', authenticate, async (req, res) => {
         JOIN users u ON sh.user_id = u.id
         ORDER BY sh.created_at DESC
       `;
+    } else if (req.user.role === 'reseller') {
+      sql = `
+        SELECT sh.*, u.email as user_email, u.company_name
+        FROM sender_headers sh
+        JOIN users u ON sh.user_id = u.id
+        WHERE sh.user_id = $1 OR u.reseller_id = $1
+        ORDER BY sh.created_at DESC
+      `;
+      params = [req.user.id];
     } else {
       sql = `
         SELECT sh.*, u.email as user_email, u.company_name
@@ -126,8 +135,16 @@ router.delete('/:id', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Sender header not found' });
     }
 
-    if (req.user.role !== 'admin' && check.rows[0].user_id !== req.user.id) {
-      return res.status(403).json({ error: 'Permission denied: Cannot delete headers belonging to another account' });
+    if (req.user.role !== 'admin') {
+      if (req.user.role === 'reseller') {
+        const ownerCheck = await query('SELECT reseller_id FROM users WHERE id = $1', [check.rows[0].user_id]);
+        const isClient = ownerCheck.rows.length > 0 && ownerCheck.rows[0].reseller_id === req.user.id;
+        if (check.rows[0].user_id !== req.user.id && !isClient) {
+          return res.status(403).json({ error: 'Permission denied: Cannot delete headers belonging to another account' });
+        }
+      } else if (check.rows[0].user_id !== req.user.id) {
+        return res.status(403).json({ error: 'Permission denied: Cannot delete headers belonging to another account' });
+      }
     }
 
     await query('DELETE FROM sender_headers WHERE id = $1', [headerId]);

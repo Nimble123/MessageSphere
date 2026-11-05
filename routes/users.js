@@ -199,7 +199,7 @@ router.get('/:id/360', authenticate, async (req, res) => {
     // 5. Recent Credit Transactions (up to 50)
     const transactionsResult = await query(`
       SELECT ct.id, ct.from_user_id, ct.to_user_id, ct.credit_type, ct.destination, ct.amount, ct.reason, ct.created_at,
-             ct.refund_campaign_id, ct.refund_client_email,
+             ct.direction, ct.refund_campaign_id, ct.refund_client_email,
              fu.email AS from_email, tu.email AS to_email,
              fu.full_name AS from_name, tu.full_name AS to_name
       FROM credit_transactions ct
@@ -236,10 +236,11 @@ router.get('/:id/360', authenticate, async (req, res) => {
         }
       }
 
+      const dir = t.direction ? String(t.direction).toLowerCase() : null;
       const reasonLower = String(t.reason || '').toLowerCase();
-      const isRefund = Boolean(t.refund_campaign_id) || reasonLower.includes('refund') || reasonLower.includes('auto-refund');
-      const isDeduction = reasonLower.includes('deduction') || reasonLower.includes('debit') || reasonLower.includes('burn') || reasonLower.includes('cost');
       const isTransferredOut = Number(t.from_user_id) === Number(targetId) && Number(t.to_user_id) !== Number(targetId);
+      const isRefund = dir === 'refund' || (!dir && (Boolean(t.refund_campaign_id) || reasonLower.includes('refund') || reasonLower.includes('auto-refund')));
+      const isDeduction = dir === 'debit' || (!dir && (reasonLower.includes('deduction') || reasonLower.includes('debit') || reasonLower.includes('burn')));
       const amt = Math.abs(Number(t.amount) || 0);
 
       let category = 'allotment';
@@ -269,7 +270,7 @@ router.get('/:id/360', authenticate, async (req, res) => {
       } else if (isDeduction) {
         category = 'campaign_deduction';
         signedAmount = -amt;
-        badgeText = 'Campaign Debit (-)';
+        badgeText = 'Debit (-)';
         badgeColor = '#b91c1c';
         badgeBg = '#fef2f2';
         badgeBorder = '#fecaca';
@@ -778,13 +779,13 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
           paymentStatus = 'Unpaid';
         }
 
-        const invNumber = `INV-${Date.now().toString().slice(-6)}`;
         const notes = String(reason || `Direct Telecom Allocation`).trim();
+        const utrVal = paymentStatus === 'Paid' ? 'DIRECT-ALLOTMENT' : null;
 
         await client.query(`
           INSERT INTO credit_requests 
-            (user_id, package_name, credits_requested, credit_type, destination, amount_inr, rate_per_credit, paid_amount, payment_status, utr_number, status, billing_type, payment_notes, channel_rates, tax_mode, base_amount, gst_amount, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Approved', 'postpaid_credit', $11, $12::jsonb, $13, $14, $15, CURRENT_TIMESTAMP)
+            (user_id, package_name, credits_requested, credit_type, destination, amount_inr, rate_per_credit, paid_amount, payment_status, utr_number, status, billing_type, payment_notes, channel_rates, tax_mode, base_amount, gst_amount, invoice_number, created_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Approved', 'postpaid_credit', $11, $12::jsonb, $13, $14, $15, 'INV-' || TO_CHAR(CURRENT_DATE, 'YYYY') || '-' || LPAD(nextval('invoice_number_seq')::text, 6, '0'), CURRENT_TIMESTAMP)
         `, [
           targetId,
           `Credit Allotment (${req.user.role === 'admin' ? 'Super Admin' : 'Reseller'})`,
@@ -795,7 +796,7 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
           avgRate,
           paidAmount,
           paymentStatus,
-          invNumber,
+          utrVal,
           notes,
           JSON.stringify(channelRatesBreakdown),
           effectiveTaxMode,

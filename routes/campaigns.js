@@ -567,9 +567,9 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
       : `Deduction for campaign #${campaignId} (${campaignTitle})`;
 
     await client.query(`
-      INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, direction)
-      VALUES ($1, $2, $3, $4, $5, $6, 'debit')
-    `, [effectiveUserId, effectiveUserId, campaignType, campaignDest, messageCount, txReason]);
+      INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, direction, refund_campaign_id)
+      VALUES ($1, $2, $3, $4, $5, $6, 'debit', $7)
+    `, [effectiveUserId, effectiveUserId, campaignType, campaignDest, messageCount, txReason, campaignId]);
 
     await logAudit(client, {
       actorId: req.user.id,
