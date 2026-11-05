@@ -12,8 +12,6 @@ async function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     token = authHeader.split(' ')[1];
-  } else if (req.query && req.query.token) {
-    token = req.query.token;
   }
 
   if (!token) {
@@ -22,7 +20,7 @@ async function authenticate(req, res, next) {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     const result = await query(
-      'SELECT id, email, role, reseller_id, is_blocked FROM users WHERE id = $1',
+      'SELECT id, email, role, reseller_id, is_blocked, token_version FROM users WHERE id = $1',
       [decoded.userId]
     );
 
@@ -33,6 +31,10 @@ async function authenticate(req, res, next) {
     const user = result.rows[0];
     if (user.is_blocked) {
       return res.status(403).json({ error: 'Account blocked. Please contact support.' });
+    }
+
+    if (decoded.tokenVersion !== undefined && decoded.tokenVersion !== user.token_version) {
+      return res.status(401).json({ error: 'Session invalidated. Please sign in again.' });
     }
 
     req.user = user;

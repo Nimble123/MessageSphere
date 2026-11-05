@@ -20,9 +20,33 @@ const storage = multer.diskStorage({
   }
 });
 
+const ALLOWED_ATTACHMENT_EXTS = new Set(['.jpg', '.jpeg', '.png', '.pdf', '.mp4', '.mov', '.webm']);
+
+function removeUploadedFiles(files) {
+  if (!files) return;
+  try {
+    const fileList = Array.isArray(files) ? files : (typeof files === 'object' ? Object.values(files).flat() : []);
+    for (const f of fileList) {
+      if (f && f.path && fs.existsSync(f.path)) {
+        try { fs.unlinkSync(f.path); } catch (e) {}
+      }
+    }
+  } catch (err) {
+    console.error('Error cleaning up uploaded files:', err.message);
+  }
+}
+
 const upload = multer({
   storage,
-  limits: { fileSize: 25 * 1024 * 1024 } // 25 MB max limit
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25 MB max limit
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    if (ALLOWED_ATTACHMENT_EXTS.has(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Unsupported file type '${ext}'. Permitted formats: .jpg, .jpeg, .png, .pdf, .mp4, .mov, .webm`));
+    }
+  }
 });
 
 // GSM-7 Basic & Extended Character Set (Standard Latin Telecom Specification 3GPP TS 23.038)

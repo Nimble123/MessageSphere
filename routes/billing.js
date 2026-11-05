@@ -125,23 +125,33 @@ router.post('/requests', authenticate, async (req, res) => {
   if (!CREDIT_TYPES.includes(cType) || !DESTINATIONS.includes(cDest)) {
     return res.status(400).json({ error: 'Invalid credit type or destination' });
   }
-  const suppliedRate = req.body.rate_per_credit !== undefined && req.body.rate_per_credit !== '' ? Number(req.body.rate_per_credit) : 0.1500;
-  const suppliedAmount = req.body.amount_inr === undefined || req.body.amount_inr === '' ? null : Number(req.body.amount_inr);
-  if (suppliedAmount !== null && (!Number.isFinite(suppliedAmount) || suppliedAmount < 0)) {
-    return res.status(400).json({ error: 'Invalid payment amount' });
+
+  // Security: Ignore client-supplied rate, amount, and payment status
+  let userRate = 0.1500;
+  try {
+    const rateCheck = await query(
+      `SELECT rate_inr FROM user_credits WHERE user_id = $1 AND credit_type = $2 AND destination = $3`,
+      [req.user.id, cType, cDest]
+    );
+    if (rateCheck.rows.length > 0 && Number(rateCheck.rows[0].rate_inr) > 0) {
+      userRate = Number(rateCheck.rows[0].rate_inr);
+    }
+  } catch (err) {
+    console.error('Failed to lookup rate_inr, using default rate:', err.message);
   }
-  const calculatedAmount = suppliedAmount === null ? (requestedQty * suppliedRate) : suppliedAmount;
+
+  const calculatedAmount = Number((requestedQty * userRate).toFixed(4));
   const receiptUrl = (req.body.receipt_url || '').trim() || null;
-  const paymentStatus = req.body.payment_status || 'Unpaid';
-  const paidAmount = parseFloat(req.body.paid_amount) || 0.00;
+  const paymentStatus = 'Unpaid';
+  const paidAmount = 0.00;
 
   try {
     const result = await query(`
       INSERT INTO credit_requests 
-        (user_id, package_name, credits_requested, credit_type, destination, amount_inr, rate_per_credit, paid_amount, payment_status, utr_number, receipt_url, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'Pending')
+        (user_id, package_name, credits_requested, credit_type, destination, amount_inr, rate_per_credit, paid_amount, payment_status, utr_number, receipt_url, status, invoice_number)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'Pending', 'INV-' || TO_CHAR(CURRENT_DATE, 'YYYY') || '-' || LPAD(nextval('invoice_number_seq')::text, 6, '0'))
       RETURNING *
-    `, [req.user.id, package_name, requestedQty, cType, cDest, calculatedAmount, suppliedRate, paidAmount, paymentStatus, utr.trim(), receiptUrl]);
+    `, [req.user.id, package_name, requestedQty, cType, cDest, calculatedAmount, userRate, paidAmount, paymentStatus, utr.trim(), receiptUrl]);
 
     return res.status(201).json({
       message: 'Top-up request submitted successfully. Credits will be allocated upon verification.',
@@ -228,8 +238,8 @@ const approveHandler = async (req, res) => {
       : `Top-up Order #${item.id} approved by Platform Root (UTR: ${item.utr_number || 'N/A'})`;
 
     await client.query(`
-      INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, direction)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'credit')
     `, [
       req.user.id,
       item.user_id,
@@ -321,7 +331,7 @@ router.patch('/requests/:id/reject', authenticate, requireRoles('admin', 'resell
 router.post('/requests/:id/reject', authenticate, requireRoles('admin', 'reseller'), rejectHandler);
 
 // POST /api/billing/requests/:id/record-payment - Super Admin or Reseller records payment (settles full or partial Khata)
-router.post('/requests/:id/record-payment', authenticate, async (req, res) => {
+router.post('/requests/:id/record-payment', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
   const reqId = parseInt(req.params.id, 10);
   const paymentAmount = parseFloat(req.body.amount);
   const paymentMode = String(req.body.payment_mode || 'UPI').trim();
@@ -353,12 +363,12 @@ router.post('/requests/:id/record-payment', authenticate, async (req, res) => {
 
     const order = orderRes.rows[0];
 
-    // Permission check: Admin can record payment for all; Reseller can record for their own clients or their own order
+    // Permission check: Admin can record payment for all; Reseller can ONLY record for their downstream clients
     if (req.user.role !== 'admin') {
       const isMyClient = order.reseller_id === req.user.id;
-      if (!isMyClient && order.user_id !== req.user.id) {
+      if (!isMyClient) {
         await client.query('ROLLBACK');
-        return res.status(403).json({ error: 'Permission denied to record payment on this invoice' });
+        return res.status(403).json({ error: 'Permission denied: Resellers can only record payments for their own assigned clients' });
       }
     }
 

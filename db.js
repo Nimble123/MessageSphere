@@ -352,6 +352,24 @@ async function initDB() {
       ALTER TABLE credit_transactions ADD CONSTRAINT credit_transactions_to_user_id_fkey FOREIGN KEY (to_user_id) REFERENCES users(id) ON DELETE CASCADE;
     `);
 
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 1;`);
+    await client.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS direction VARCHAR(10) DEFAULT 'credit';`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_transactions_direction ON credit_transactions(direction);`);
+    await client.query(`CREATE SEQUENCE IF NOT EXISTS invoice_number_seq START 1001;`);
+    await client.query(`ALTER TABLE credit_requests ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(50);`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_requests_invoice_no ON credit_requests(invoice_number) WHERE invoice_number IS NOT NULL;`);
+    await client.query(`
+      UPDATE credit_transactions 
+      SET direction = (
+        CASE 
+          WHEN refund_campaign_id IS NOT NULL OR reason ILIKE '%refund%' THEN 'refund'
+          WHEN reason ILIKE '%deduction%' OR reason ILIKE '%debit%' OR reason ILIKE '%campaign #%' OR reason ILIKE '%transferred out%' THEN 'debit'
+          ELSE 'credit'
+        END
+      )
+      WHERE direction IS NULL OR direction = 'credit';
+    `);
+
     const adminEmail = (process.env.ADMIN_EMAIL || 'admin@messagesphere.com').trim().toLowerCase();
     const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
     const adminCheck = await client.query(`SELECT id, password_hash FROM users WHERE email = $1`, [adminEmail]);
@@ -360,8 +378,8 @@ async function initDB() {
       console.log(`[AUTH] Seeding initial admin account: ${adminEmail}`);
       const hash = await bcrypt.hash(adminPassword, 10);
       const insertUser = await client.query(`
-        INSERT INTO users (email, password_hash, role)
-        VALUES ($1, $2, 'admin')
+        INSERT INTO users (email, password_hash, role, token_version)
+        VALUES ($1, $2, 'admin', 1)
         RETURNING id
       `, [adminEmail, hash]);
 
@@ -376,30 +394,21 @@ async function initDB() {
         }
       }
       console.log(`[AUTH] Admin successfully provisioned: ${adminEmail}`);
-    } else {
-      const currentHash = adminCheck.rows[0].password_hash;
-      const isMatch = await bcrypt.compare(adminPassword, currentHash);
-      if (!isMatch && (process.env.RESET_ADMIN === 'true' || adminPassword === 'admin123')) {
-        const newHash = await bcrypt.hash(adminPassword, 10);
-        await client.query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [newHash, adminCheck.rows[0].id]);
-        console.log(`[AUTH] Admin password synchronized to: ${adminPassword}`);
-      }
+    } else if (process.env.RESET_ADMIN === 'true') {
+      const newHash = await bcrypt.hash(adminPassword, 10);
+      await client.query(`UPDATE users SET password_hash = $1, token_version = token_version + 1 WHERE id = $2`, [newHash, adminCheck.rows[0].id]);
+      console.log(`[AUTH] Admin password reset requested via RESET_ADMIN=true`);
     }
 
-    // Ensure all existing users have user_credits rows for all CREDIT_TYPES (including gsm_sms)
-    const allUsersRes = await client.query(`SELECT id, role FROM users`);
-    for (const u of allUsersRes.rows) {
-      for (const dest of DESTINATIONS) {
-        for (const type of CREDIT_TYPES) {
-          const defaultBal = (u.role === 'admin') ? 10000000 : 0;
-          await client.query(`
-            INSERT INTO user_credits (user_id, credit_type, destination, balance)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (user_id, credit_type, destination) DO NOTHING
-          `, [u.id, type, dest, defaultBal]);
-        }
-      }
-    }
+    // Ensure all existing users have user_credits rows for all CREDIT_TYPES (Single atomic query)
+    await client.query(`
+      INSERT INTO user_credits (user_id, credit_type, destination, balance)
+      SELECT u.id, c.credit_type, d.destination, (CASE WHEN u.role = 'admin' THEN 10000000 ELSE 0 END)
+      FROM users u
+      CROSS JOIN (SELECT unnest(ARRAY['gsm_sms', 'normal', 'dp', 'cta', 'dp_cta', 'own_number']) AS credit_type) c
+      CROSS JOIN (SELECT unnest(ARRAY['domestic', 'international']) AS destination) d
+      ON CONFLICT (user_id, credit_type, destination) DO NOTHING;
+    `);
 
     await client.query('COMMIT');
     console.log('PostgreSQL tables initialized successfully.');

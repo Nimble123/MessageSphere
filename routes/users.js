@@ -460,7 +460,7 @@ router.patch('/:id/block', authenticate, requireRoles('admin', 'reseller'), asyn
     }
 
     const newBlockedState = !targetUser.is_blocked;
-    await query('UPDATE users SET is_blocked = $1 WHERE id = $2', [newBlockedState, targetId]);
+    await query('UPDATE users SET is_blocked = $1, token_version = token_version + 1 WHERE id = $2', [newBlockedState, targetId]);
 
     return res.json({ message: `User ${newBlockedState ? 'blocked' : 'unblocked'} successfully`, isBlocked: newBlockedState });
   } catch (err) {
@@ -630,8 +630,8 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
 
         // Record debit transaction in passbook
         await client.query(`
-          INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason)
-          VALUES ($1, $2, $3, $4, $5, $6)
+          INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, direction)
+          VALUES ($1, $2, $3, $4, $5, $6, 'debit')
         `, [req.user.id, targetId, creditType, destination, amount, `Balance Adjustment / Debit: ${String(reason || 'Manual Adjustment').trim().slice(0, 180)}`]);
 
         await logAudit(client, { actorId: req.user.id, entityType: 'user', entityId: targetId, action: 'credits_deducted', details: { creditType, destination, amount, reason: String(reason || '').trim().slice(0, 1000) } });
@@ -667,10 +667,10 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
           DO UPDATE SET balance = user_credits.balance + EXCLUDED.balance
         `, [targetId, creditType, destination, amount]);
 
-        // Record audit log
+        // Record credit transaction in passbook
         await client.query(`
-          INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, direction)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'credit')
         `, [req.user.id, targetId, creditType, destination, amount, `Allotted via Telecom Gateway: ${String(reason || 'Top-up allocation').trim().slice(0, 180)}`, effectiveTaxMode, 0.00, 0.00]);
 
         await logAudit(client, { actorId: req.user.id, entityType: 'user', entityId: targetId, action: 'credits_allocated', details: { creditType, destination, amount, reason: String(reason || '').trim().slice(0, 1000) } });
@@ -844,7 +844,7 @@ router.patch('/:id/reset-password', authenticate, requireRoles('admin', 'reselle
     const client = await getClient();
     try {
       await client.query('BEGIN');
-      await client.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, targetId]);
+      await client.query('UPDATE users SET password_hash = $1, token_version = token_version + 1 WHERE id = $2', [hash, targetId]);
       if (reset_request_id && req.user.role === 'admin') {
         await client.query(`UPDATE password_reset_requests SET status = 'Resolved', resolved_at = NOW(), resolved_by = $1, resolution_note = 'Password reset completed by administrator' WHERE id = $2 AND user_id = $3 AND status = 'Pending'`, [req.user.id, parseInt(reset_request_id, 10), targetId]);
       }
@@ -943,7 +943,7 @@ router.post('/:id/impersonate', authenticate, requireRoles('admin', 'reseller'),
 
   try {
     const userCheck = await query(
-      `SELECT id, email, role, is_blocked, reseller_id, full_name, company_name FROM users WHERE id = $1`,
+      `SELECT id, email, role, is_blocked, reseller_id, full_name, company_name, token_version FROM users WHERE id = $1`,
       [targetId]
     );
     if (userCheck.rows.length === 0) {
@@ -975,6 +975,7 @@ router.post('/:id/impersonate', authenticate, requireRoles('admin', 'reseller'),
         userId: targetUser.id,
         email: targetUser.email,
         role: targetUser.role,
+        tokenVersion: targetUser.token_version || 1,
         impersonatedBy: {
           id: req.user.id,
           email: req.user.email,
@@ -1067,16 +1068,17 @@ router.patch('/:id/rates', authenticate, requireRoles('admin', 'reseller'), asyn
         }
 
         const rateNum = parseFloat(rawRate);
-        if (isNaN(rateNum) || rateNum < 0) continue;
+        if (isNaN(rateNum) || rateNum <= 0 || rateNum > 100 || !isFinite(rateNum)) continue;
+        const validRate = Math.round(rateNum * 10000) / 10000;
 
         await client.query(`
           INSERT INTO user_credits (user_id, credit_type, destination, balance, rate_inr)
           VALUES ($1, $2, $3, 0, $4)
           ON CONFLICT (user_id, credit_type, destination)
           DO UPDATE SET rate_inr = EXCLUDED.rate_inr
-        `, [targetId, creditType, destination, rateNum]);
+        `, [targetId, creditType, destination, validRate]);
 
-        updatedRates[`${creditType}_${destination}`] = rateNum;
+        updatedRates[`${creditType}_${destination}`] = validRate;
       }
 
       await logAudit(client, {

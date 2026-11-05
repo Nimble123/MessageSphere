@@ -10,10 +10,11 @@ const { authenticate } = require('../middleware/auth');
  * @returns {{ direction: 'credit'|'debit', signed_amount: number, is_credit: boolean }}
  */
 function resolveTransactionDirection(tx, viewerUserId, viewerRole) {
-  const reasonLower = String(tx.reason || '').toLowerCase();
-  const isRefund = Boolean(tx.refund_campaign_id) || reasonLower.includes('refund') || reasonLower.includes('auto-refund');
-  const isDeduction = reasonLower.includes('deduction') || reasonLower.includes('debit') || reasonLower.includes('burn') || reasonLower.includes('cost');
   const amt = Math.abs(Number(tx.amount) || 0);
+  const structuredDir = tx.direction ? String(tx.direction).toLowerCase() : null;
+  const reasonLower = String(tx.reason || '').toLowerCase();
+  const isRefund = structuredDir === 'refund' || Boolean(tx.refund_campaign_id) || reasonLower.includes('refund');
+  const isDeduction = structuredDir === 'debit' || reasonLower.includes('deduction') || reasonLower.includes('debit') || reasonLower.includes('clawback');
 
   // 1. REFUND / REVERSAL FLOW
   // Any refund or auto-refund restores credits to the user/reseller. It is ALWAYS positive (+).
@@ -166,6 +167,17 @@ async function buildLedgerQuery(req, isExport = false) {
     whereClauses.push(`ct.destination = $${paramIdx}`);
     params.push(destination);
     paramIdx++;
+  }
+
+  // Filter by structured direction column
+  if (direction && direction !== 'all') {
+    if (direction === 'credit' || direction === 'allotment') {
+      whereClauses.push(`ct.direction = 'credit'`);
+    } else if (direction === 'debit' || direction === 'deduction' || direction === 'campaign_deduction') {
+      whereClauses.push(`ct.direction = 'debit'`);
+    } else if (direction === 'refund') {
+      whereClauses.push(`ct.direction = 'refund'`);
+    }
   }
 
   // Date range filters (from_date, to_date)

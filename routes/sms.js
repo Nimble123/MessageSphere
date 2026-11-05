@@ -496,8 +496,8 @@ router.post('/', authenticate, async (req, res) => {
         : `Deduction for SMS campaign #${campaignId} (${campaignTitle})`;
 
     await client.query(
-      `INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+      `INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, direction)
+       VALUES ($1, $2, $3, $4, $5, $6, 'debit')`,
       [effectiveUserId, effectiveUserId, 'gsm_sms', campaignDest, creditCost, txReason]
     );
 
@@ -885,8 +885,8 @@ router.delete('/:id', authenticate, async (req, res) => {
         : `Refund for cancelled SMS campaign #${campaignId} (${campaign.title})`;
 
       await client.query(
-        `INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, refund_client_email, refund_campaign_id)
-         VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8)`,
+        `INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, refund_client_email, refund_campaign_id, direction)
+         VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8, 'refund')`,
         [
           req.user.id,
           refundRecipientId,

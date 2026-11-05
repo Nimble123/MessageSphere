@@ -122,6 +122,62 @@ async function downloadApiFile(endpoint, filename) {
   URL.revokeObjectURL(url);
 }
 
+// Global XSS-safe event delegation for data-action elements (replaces vulnerable inline JS string interpolation)
+document.addEventListener('click', (e) => {
+  const target = e.target.closest('[data-action]');
+  if (!target) return;
+  const action = target.getAttribute('data-action');
+  const d = target.dataset;
+
+  if (action === 'quick-allot') {
+    if (typeof window.quickAllotToClient === 'function') {
+      window.quickAllotToClient(Number(d.userId), d.email, d.mode);
+    }
+  } else if (action === 'open-allot-credits') {
+    if (typeof window.closeAllDropdowns === 'function') window.closeAllDropdowns();
+    if (typeof window.openAllotCreditsModal === 'function') {
+      window.openAllotCreditsModal(Number(d.userId), d.email);
+    }
+  } else if (action === 'impersonate-user') {
+    if (typeof window.closeAllDropdowns === 'function') window.closeAllDropdowns();
+    if (typeof window.impersonateUserAccount === 'function') {
+      window.impersonateUserAccount(Number(d.userId), d.email);
+    }
+  } else if (action === 'open-reset-password') {
+    if (typeof window.closeAllDropdowns === 'function') window.closeAllDropdowns();
+    if (typeof window.openResetPasswordModal === 'function') {
+      window.openResetPasswordModal(Number(d.userId), d.email);
+    }
+  } else if (action === 'toggle-tax-mode') {
+    if (typeof window.closeAllDropdowns === 'function') window.closeAllDropdowns();
+    if (typeof window.quickToggleTaxModeForUser === 'function') {
+      window.quickToggleTaxModeForUser(Number(d.userId), d.taxMode || 'non_gst', d.email);
+    }
+  } else if (action === 'toggle-user-refund') {
+    if (typeof window.closeAllDropdowns === 'function') window.closeAllDropdowns();
+    if (typeof window.toggleUserRefundRouting === 'function') {
+      window.toggleUserRefundRouting(Number(d.userId), d.email, d.dest || 'user');
+    }
+  } else if (action === 'delete-user') {
+    if (typeof window.closeAllDropdowns === 'function') window.closeAllDropdowns();
+    if (typeof window.deleteUserAccount === 'function') {
+      window.deleteUserAccount(Number(d.userId), d.email);
+    }
+  } else if (action === 'open-group-contacts') {
+    if (typeof window.openGroupContactsDrawer === 'function') {
+      window.openGroupContactsDrawer(Number(d.groupId), d.groupName);
+    }
+  } else if (action === 'export-group-csv') {
+    if (typeof window.exportGroupCsvDirect === 'function') {
+      window.exportGroupCsvDirect(Number(d.groupId), d.groupName);
+    }
+  } else if (action === 'remove-blacklist') {
+    if (typeof window.confirmRemoveBlacklist === 'function') {
+      window.confirmRemoveBlacklist(d.phone);
+    }
+  }
+});
+
 // --- STATE MANAGEMENT ---
 let currentUser = null;
 let allCampaigns = [];
@@ -1056,10 +1112,10 @@ window.renderResellerClientsTable = function(clients) {
         <td style="padding: 9px 10px; text-align: right; font-family: monospace; font-weight: 800; color: #0f172a;">${total.toLocaleString()}</td>
         <td style="padding: 9px 12px; text-align: center;">
           <div style="display: inline-flex; gap: 4px;">
-            <button type="button" class="btn-action btn-action-primary" onclick="quickAllotToClient(${c.id}, '${escapeHtml(c.email)}', 'credit')" style="padding: 3px 8px; font-size: 0.72rem; border-radius: 5px;">
+            <button type="button" class="btn-action btn-action-primary" data-action="quick-allot" data-user-id="${c.id}" data-email="${escapeHtml(c.email)}" data-mode="credit" style="padding: 3px 8px; font-size: 0.72rem; border-radius: 5px;">
               + Allot
             </button>
-            <button type="button" class="btn-action btn-action-secondary" onclick="quickAllotToClient(${c.id}, '${escapeHtml(c.email)}', 'debit')" style="padding: 3px 8px; font-size: 0.72rem; border-radius: 5px; color: #b91c1c;">
+            <button type="button" class="btn-action btn-action-secondary" data-action="quick-allot" data-user-id="${c.id}" data-email="${escapeHtml(c.email)}" data-mode="debit" style="padding: 3px 8px; font-size: 0.72rem; border-radius: 5px; color: #b91c1c;">
               - Deduct
             </button>
           </div>
@@ -5341,11 +5397,11 @@ function renderUsersTable() {
     // Col 3: Dedicated Tax Invoicing Mode
     const isWithGst = u.taxMode === 'with_gst';
     const taxCellHtml = isWithGst
-      ? `<button type="button" class="btn-action" onclick="quickToggleTaxModeForUser(${u.id}, 'with_gst', '${escapeHtml(u.email)}')" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:3px 8px;border-radius:6px;font-size:0.74rem;font-weight:700;display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Click to switch tax mode: Currently B2B GST 18%">
+      ? `<button type="button" class="btn-action" data-action="toggle-tax-mode" data-user-id="${u.id}" data-tax-mode="with_gst" data-email="${escapeHtml(u.email)}" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:3px 8px;border-radius:6px;font-size:0.74rem;font-weight:700;display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Click to switch tax mode: Currently B2B GST 18%">
           <i data-lucide="receipt" style="width:11px;height:11px;"></i> GST 18%
          </button>
          <div style="font-size:0.68rem;color:#1d4ed8;margin-top:2px;font-weight:500;">B2B Tax Invoice</div>`
-      : `<button type="button" class="btn-action" onclick="quickToggleTaxModeForUser(${u.id}, 'non_gst', '${escapeHtml(u.email)}')" style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;padding:3px 8px;border-radius:6px;font-size:0.74rem;font-weight:600;display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Click to switch tax mode: Currently Non-GST 0%">
+      : `<button type="button" class="btn-action" data-action="toggle-tax-mode" data-user-id="${u.id}" data-tax-mode="non_gst" data-email="${escapeHtml(u.email)}" style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;padding:3px 8px;border-radius:6px;font-size:0.74rem;font-weight:600;display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Click to switch tax mode: Currently Non-GST 0%">
           <i data-lucide="tag" style="width:11px;height:11px;"></i> Non-GST (0%)
          </button>
          <div style="font-size:0.68rem;color:#15803d;margin-top:2px;font-weight:500;">Bill of Supply</div>`;
@@ -5355,14 +5411,14 @@ function renderUsersTable() {
     if (u.role === 'user' && u.resellerEmail) {
       if (u.refundDestination === 'reseller') {
         refundCellHtml = `
-          <button type="button" class="btn-action" onclick="toggleUserRefundRouting(${u.id}, '${escapeHtml(u.email)}', 'reseller')" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;padding:3px 8px;border-radius:6px;font-size:0.74rem;font-weight:700;display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Failed campaign credits refund back to managing Reseller wallet. Click to switch to Client.">
+          <button type="button" class="btn-action" data-action="toggle-user-refund" data-user-id="${u.id}" data-email="${escapeHtml(u.email)}" data-dest="reseller" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;padding:3px 8px;border-radius:6px;font-size:0.74rem;font-weight:700;display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Failed campaign credits refund back to managing Reseller wallet. Click to switch to Client.">
             <i data-lucide="refresh-cw" style="width:11px;height:11px;color:#d97706;"></i> To Reseller
           </button>
           <div style="font-size:0.68rem;color:#b45309;margin-top:2px;font-weight:600;">Credited to Reseller</div>
         `;
       } else {
         refundCellHtml = `
-          <button type="button" class="btn-action" onclick="toggleUserRefundRouting(${u.id}, '${escapeHtml(u.email)}', 'user')" style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;padding:3px 8px;border-radius:6px;font-size:0.74rem;font-weight:700;display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Failed campaign credits refund to this Client wallet. Click to switch to Reseller.">
+          <button type="button" class="btn-action" data-action="toggle-user-refund" data-user-id="${u.id}" data-email="${escapeHtml(u.email)}" data-dest="user" style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;padding:3px 8px;border-radius:6px;font-size:0.74rem;font-weight:700;display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Failed campaign credits refund to this Client wallet. Click to switch to Reseller.">
             <i data-lucide="user-check" style="width:11px;height:11px;color:#16a34a;"></i> To Client
           </button>
           <div style="font-size:0.68rem;color:#166534;margin-top:2px;font-weight:600;">Direct Client Refund</div>
@@ -5417,7 +5473,7 @@ function renderUsersTable() {
               : (domTotal < 500 
                   ? '<span class="badge" style="background:rgba(245,158,11,0.15);color:#d97706;border:1px solid rgba(245,158,11,0.3);font-size:10px;font-weight:700;padding:2px 6px;border-radius:9999px;white-space:nowrap;" title="Domestic balance is below 500 threshold">⚠️ Low</span>' 
                   : '')}
-            <button type="button" class="btn-quick-topup" onclick="event.stopPropagation(); openAllotCreditsModal(${u.id}, '${escapeHtml(u.email)}')" title="Quick Allot Credits" style="width:22px;height:22px;border-radius:6px;border:1px solid #cbd5e1;background:#ffffff;color:#4f46e5;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;transition:all 0.15s;" onmouseover="this.style.background='#4f46e5';this.style.color='#ffffff';" onmouseout="this.style.background='#ffffff';this.style.color='#4f46e5';">
+            <button type="button" class="btn-quick-topup" data-action="open-allot-credits" data-user-id="${u.id}" data-email="${escapeHtml(u.email)}" title="Quick Allot Credits" style="width:22px;height:22px;border-radius:6px;border:1px solid #cbd5e1;background:#ffffff;color:#4f46e5;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;transition:all 0.15s;" onmouseover="this.style.background='#4f46e5';this.style.color='#ffffff';" onmouseout="this.style.background='#ffffff';this.style.color='#4f46e5';">
               <i data-lucide="plus" style="width:12px;height:12px;"></i>
             </button>
           </div>
@@ -5444,28 +5500,28 @@ function renderUsersTable() {
                 <i data-lucide="more-horizontal" style="width:15px;height:15px;"></i>
               </button>
               <div id="user-dropdown-${u.id}" class="action-dropdown-menu">
-                <button type="button" class="action-dropdown-item" onclick="closeAllDropdowns(); openAllotCreditsModal(${u.id}, '${escapeHtml(u.email)}')">
+                <button type="button" class="action-dropdown-item" data-action="open-allot-credits" data-user-id="${u.id}" data-email="${escapeHtml(u.email)}">
                   <i data-lucide="coins" style="width:14px;height:14px;color:#4f46e5;"></i> Allot Credits
                 </button>
                 ${(currentUser && (currentUser.role === 'admin' || (currentUser.role === 'reseller' && u.resellerId === currentUser.id)) && u.role !== 'admin' && u.id !== currentUser.id) ? `
-                <button type="button" class="action-dropdown-item" onclick="closeAllDropdowns(); impersonateUserAccount(${u.id}, '${escapeHtml(u.email)}')">
+                <button type="button" class="action-dropdown-item" data-action="impersonate-user" data-user-id="${u.id}" data-email="${escapeHtml(u.email)}">
                   <i data-lucide="user-check" style="width:14px;height:14px;color:#10b981;"></i> Login as User
                 </button>` : ''}
-                <button type="button" class="action-dropdown-item" onclick="closeAllDropdowns(); openResetPasswordModal(${u.id}, '${escapeHtml(u.email)}')">
+                <button type="button" class="action-dropdown-item" data-action="open-reset-password" data-user-id="${u.id}" data-email="${escapeHtml(u.email)}">
                   <i data-lucide="key" style="width:14px;height:14px;color:#0891b2;"></i> Reset Password
                 </button>
-                <button type="button" class="action-dropdown-item" onclick="closeAllDropdowns(); quickToggleTaxModeForUser(${u.id}, '${u.taxMode || 'non_gst'}', '${escapeHtml(u.email)}')">
+                <button type="button" class="action-dropdown-item" data-action="toggle-tax-mode" data-user-id="${u.id}" data-tax-mode="${u.taxMode || 'non_gst'}" data-email="${escapeHtml(u.email)}">
                   <i data-lucide="receipt" style="width:14px;height:14px;color:#2563eb;"></i> Toggle Tax Mode (${isWithGst ? 'GST 18%' : 'Non-GST'})
                 </button>
                 ${u.role === 'user' && u.resellerEmail ? `
-                <button type="button" class="action-dropdown-item" onclick="closeAllDropdowns(); toggleUserRefundRouting(${u.id}, '${escapeHtml(u.email)}', '${u.refundDestination || 'user'}')">
+                <button type="button" class="action-dropdown-item" data-action="toggle-user-refund" data-user-id="${u.id}" data-email="${escapeHtml(u.email)}" data-dest="${u.refundDestination || 'user'}">
                   <i data-lucide="rotate-ccw" style="width:14px;height:14px;color:#d97706;"></i> ${u.refundDestination === 'reseller' ? 'Route Refund to Client' : 'Route Refund to Reseller'}
                 </button>` : ''}
                 <button type="button" class="action-dropdown-item" onclick="closeAllDropdowns(); toggleBlockUser(${u.id})">
                   <i data-lucide="${u.isBlocked ? 'unlock' : 'lock'}" style="width:14px;height:14px;color:${u.isBlocked ? '#10b981' : '#f59e0b'};"></i> ${u.isBlocked ? 'Unblock Account' : 'Block Account'}
                 </button>
                 <div style="height:1px;background:#e2e8f0;margin:3px 0;"></div>
-                <button type="button" class="action-dropdown-item danger" onclick="closeAllDropdowns(); deleteUserAccount(${u.id}, '${escapeHtml(u.email)}')">
+                <button type="button" class="action-dropdown-item danger" data-action="delete-user" data-user-id="${u.id}" data-email="${escapeHtml(u.email)}">
                   <i data-lucide="trash-2" style="width:14px;height:14px;"></i> Delete User
                 </button>
               </div>
@@ -5702,7 +5758,7 @@ window.impersonateUserAccount = async function(targetId, targetEmail) {
     }
 
     // Save current admin session token & user info in sessionStorage
-    const currentToken = localStorage.getItem('token');
+    const currentToken = getToken();
     sessionStorage.setItem('ms_impersonator_token', currentToken);
     sessionStorage.setItem('ms_impersonator_info', JSON.stringify({
       id: currentUser.id,
@@ -5711,7 +5767,7 @@ window.impersonateUserAccount = async function(targetId, targetEmail) {
     }));
 
     // Set target user's token and user info
-    localStorage.setItem('token', data.token);
+    setToken(data.token);
     if (data.user) {
       localStorage.setItem('user', JSON.stringify(data.user));
     }
@@ -5737,7 +5793,7 @@ window.exitImpersonation = function() {
   }
 
   // Restore admin token
-  localStorage.setItem('token', origToken);
+  setToken(origToken);
   sessionStorage.removeItem('ms_impersonator_token');
   sessionStorage.removeItem('ms_impersonator_info');
   localStorage.removeItem('user');
@@ -6889,7 +6945,7 @@ window.downloadSampleContactCsv = function() {
   a.download = "sample_contacts_template.csv";
   a.click();
   URL.revokeObjectURL(url);
-};
+}
 
 // Group Creation Modal Wiring
 if (btnCreateGroupModal) {
@@ -7193,7 +7249,7 @@ function renderContactGroupsTable() {
               <i data-lucide="folder" style="width:18px;height:18px;"></i>
             </div>
             <div>
-              <a href="javascript:void(0)" onclick="openGroupContactsDrawer(${g.id}, '${escapeHtml(g.name)}')" style="font-weight:700;color:var(--slate-800);text-decoration:none;font-size:0.9rem;">
+              <a href="javascript:void(0)" data-action="open-group-contacts" data-group-id="${g.id}" data-group-name="${escapeHtml(g.name)}" style="font-weight:700;color:var(--slate-800);text-decoration:none;font-size:0.9rem;">
                 ${escapeHtml(g.name)}
               </a>
               <div style="font-size:0.75rem;color:var(--slate-500);margin-top:2px;">
@@ -7222,10 +7278,10 @@ function renderContactGroupsTable() {
             <button type="button" class="btn-action btn-action-secondary" onclick="openEditGroupModal(${g.id})" style="display:inline-flex;align-items:center;gap:4px;padding:5px 8px;font-size:0.8rem;" title="Edit Group Name">
               <i data-lucide="edit-2" style="width:13px;height:13px;"></i> Edit
             </button>
-            <button type="button" class="btn-action btn-action-primary" onclick="openGroupContactsDrawer(${g.id}, '${escapeHtml(g.name)}')" style="display:inline-flex;align-items:center;gap:4px;padding:5px 9px;font-size:0.8rem;">
+            <button type="button" class="btn-action btn-action-primary" data-action="open-group-contacts" data-group-id="${g.id}" data-group-name="${escapeHtml(g.name)}" style="display:inline-flex;align-items:center;gap:4px;padding:5px 9px;font-size:0.8rem;">
               <i data-lucide="eye" style="width:13px;height:13px;"></i> Contacts
             </button>
-            <button type="button" class="btn-action btn-action-secondary" onclick="exportGroupCsvDirect(${g.id}, '${escapeHtml(g.name)}')" style="display:inline-flex;align-items:center;gap:4px;padding:5px 8px;font-size:0.8rem;" title="Download CSV of contacts in this group">
+            <button type="button" class="btn-action btn-action-secondary" data-action="export-group-csv" data-group-id="${g.id}" data-group-name="${escapeHtml(g.name)}" style="display:inline-flex;align-items:center;gap:4px;padding:5px 8px;font-size:0.8rem;" title="Download CSV of contacts in this group">
               <i data-lucide="download" style="width:12px;height:12px;"></i>
             </button>
             <button type="button" class="btn-action btn-action-danger" onclick="deleteContactGroup(${g.id})" style="display:inline-flex;align-items:center;gap:4px;padding:5px 8px;font-size:0.8rem;" title="Delete contact group">
@@ -7904,7 +7960,7 @@ function renderBlacklistTable() {
         </td>
         <td>
           <div style="display:flex;justify-content:flex-end;">
-            <button type="button" class="btn-action btn-action-secondary" onclick="confirmRemoveBlacklist('${escapeHtml(item.phone_number)}')" style="display:inline-flex;align-items:center;gap:4px;padding:4px 9px;font-size:0.78rem;">
+            <button type="button" class="btn-action btn-action-secondary" data-action="remove-blacklist" data-phone="${escapeHtml(item.phone_number)}" style="display:inline-flex;align-items:center;gap:4px;padding:4px 9px;font-size:0.78rem;">
               <i data-lucide="unlock" style="width:12px;height:12px;"></i> Unblock
             </button>
           </div>
@@ -8763,7 +8819,7 @@ if (btnModalSaveTemplate) {
       const res = await fetch('/api/templates', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${getToken()}`
         },
         body: formData
       });
@@ -8882,7 +8938,7 @@ if (btnModalUpdateTemplate) {
       const res = await fetch(`/api/templates/${id}`, {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${getToken()}`
         },
         body: formData
       });
@@ -9137,7 +9193,7 @@ window.exportTemplatesCsv = async function() {
   try {
     const res = await fetch('/api/templates/export/csv', {
       headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Authorization': `Bearer ${getToken()}`
       }
     });
     if (!res.ok) throw new Error('Failed to export templates');
@@ -10608,7 +10664,7 @@ window.renderResellerNetworkTable = function() {
                 INTL: ${intlCredits.toLocaleString()}
               </span>
             </div>
-            <button type="button" class="btn-action" onclick="openAllotCreditsModal(${item.id}, '${escapeHtml(item.email)}')" style="margin-top:4px;background:#f8fafc;color:#475569;border:1px solid #cbd5e1;padding:2px 7px;border-radius:5px;font-size:0.7rem;display:inline-flex;align-items:center;gap:3px;font-weight:600;">
+            <button type="button" class="btn-action" data-action="open-allot-credits" data-user-id="${item.id}" data-email="${escapeHtml(item.email)}" style="margin-top:4px;background:#f8fafc;color:#475569;border:1px solid #cbd5e1;padding:2px 7px;border-radius:5px;font-size:0.7rem;display:inline-flex;align-items:center;gap:3px;font-weight:600;">
               <i data-lucide="plus" style="width:11px;height:11px;"></i> Allot Credits
             </button>
           </div>

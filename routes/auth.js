@@ -61,7 +61,7 @@ router.post('/login', loginLimiter, async (req, res) => {
     }
 
     const token = jwt.sign(
-      { userId: user.id, email: user.email, role: user.role },
+      { userId: user.id, email: user.email, role: user.role, tokenVersion: user.token_version || 1 },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -218,7 +218,7 @@ router.patch('/change-password', authenticate, async (req, res) => {
     }
 
     const newHash = await bcrypt.hash(newPassword, 10);
-    await query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, req.user.id]);
+    await query('UPDATE users SET password_hash = $1, token_version = token_version + 1 WHERE id = $2', [newHash, req.user.id]);
 
     return res.json({ message: 'Password changed successfully' });
   } catch (err) {

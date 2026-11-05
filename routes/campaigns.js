@@ -443,14 +443,17 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
   }
   const hasAttachment = attachments.length > 0;
   
-  if (req.body.campaign_type && validCampaignTypes.includes(req.body.campaign_type)) {
-    campaignType = req.body.campaign_type;
-  } else if (campaignChannel === 'own_number') {
+  // Server-side derive campaign_type strictly from features & channel (prevents rate bypass)
+  if (campaignChannel === 'own_number') {
     campaignType = 'own_number';
+  } else if (hasAttachment && hasCta) {
+    campaignType = 'dp_cta';
+  } else if (hasAttachment) {
+    campaignType = 'dp';
+  } else if (hasCta) {
+    campaignType = 'cta';
   } else {
-    if (hasAttachment && hasCta) campaignType = 'dp_cta';
-    else if (hasAttachment) campaignType = 'dp';
-    else if (hasCta) campaignType = 'cta';
+    campaignType = 'normal';
   }
 
   const attachmentUrl = attachments.length > 0 ? attachments[0].url : (templateAttachmentUrl || null);
@@ -538,8 +541,8 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
       : `Deduction for campaign #${campaignId} (${campaignTitle})`;
 
     await client.query(`
-      INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, direction)
+      VALUES ($1, $2, $3, $4, $5, $6, 'debit')
     `, [effectiveUserId, effectiveUserId, campaignType, campaignDest, messageCount, txReason]);
 
     await logAudit(client, {
@@ -994,8 +997,8 @@ router.patch('/:id/status', authenticate, requireRoles('admin', 'reseller'), asy
           : `Automatic refund for rejected campaign #${campaignId} (${totalRefundCredits} credits)`;
 
         await client.query(`
-          INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, refund_client_email, refund_campaign_id)
-          VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8)
+          INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, refund_client_email, refund_campaign_id, direction)
+          VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8, 'refund')
         `, [req.user.id, refundRecipientId, campaign.campaign_type, campaign.destination, totalRefundCredits, rejectReason, owner ? owner.email : null, campaignId]);
       }
       await client.query(`UPDATE campaigns SET failed_refunded = TRUE WHERE id = $1`, [campaignId]);
@@ -1081,8 +1084,8 @@ router.post('/:id/cancel', authenticate, async (req, res) => {
       : `User self-cancellation for campaign #${campaignId} (${campaign.title})`;
 
     await client.query(`
-      INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, refund_client_email, refund_campaign_id)
-      VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8)
+      INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, refund_client_email, refund_campaign_id, direction)
+      VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8, 'refund')
     `, [req.user.id, refundRecipientId, campaign.campaign_type, campaign.destination, refundCredits, cancelReason, owner ? owner.email : null, campaignId]);
 
     await client.query(`UPDATE campaigns SET status = 'Rejected', failed_refunded = TRUE WHERE id = $1`, [campaignId]);
@@ -1447,8 +1450,8 @@ router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.sin
           : `Auto-refund for ${actualFailed} failed deliveries in campaign #${campaignId} (${refundCredits} credits)`;
 
         await client.query(`
-          INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, refund_client_email, refund_campaign_id)
-          VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8)
+          INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, refund_client_email, refund_campaign_id, direction)
+          VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8, 'refund')
         `, [req.user.id, refundRecipientId, campaign.campaign_type, campaign.destination, refundCredits, refundReason, owner ? owner.email : null, campaignId]);
 
         await client.query(`UPDATE campaigns SET failed_refunded = TRUE WHERE id = $1`, [campaignId]);
@@ -1473,8 +1476,8 @@ router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.sin
           : `DLR Revision (+): Additional refund for ${deltaFailedCount} failed deliveries in campaign #${campaignId} (+${deltaCredits} credits)`;
 
         await client.query(`
-          INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, refund_client_email, refund_campaign_id)
-          VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8)
+          INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, refund_client_email, refund_campaign_id, direction)
+          VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8, 'refund')
         `, [req.user.id, refundRecipientId, campaign.campaign_type, campaign.destination, deltaCredits, refundReason, owner ? owner.email : null, campaignId]);
       } else if (deltaCredits < 0) {
         // Fewer failed than previously: Deduct over-refunded credits
@@ -1490,8 +1493,8 @@ router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.sin
           : `DLR Revision (-): Reversal adjustment for ${Math.abs(deltaFailedCount)} recovered deliveries in campaign #${campaignId} (-${deductionAmt} credits)`;
 
         await client.query(`
-          INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, refund_client_email, refund_campaign_id)
-          VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8)
+          INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, refund_client_email, refund_campaign_id, direction)
+          VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8, 'debit')
         `, [req.user.id, refundRecipientId, campaign.campaign_type, campaign.destination, deductionAmt, adjustReason, owner ? owner.email : null, campaignId]);
       }
     }
