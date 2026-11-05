@@ -50,7 +50,6 @@ The schema is automatically initialized in `db.js` on startup:
 * `contact_groups` & `contacts`: Audience segmentation and address book.
 * `blacklist`: DND phone numbers with suppression scope and justification notes.
 * `templates`: Standardized marketing and transactional message templates.
-* `sender_headers`: Registered sender identities and WhatsApp business profiles.
 * `billing_orders`: Top-up credit orders, payment proof verification, and fulfillment logs.
 * `audit_logs`: Immutable security tracking for all administrative actions.
 

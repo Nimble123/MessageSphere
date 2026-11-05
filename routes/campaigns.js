@@ -96,13 +96,8 @@ async function batchInsertRecipients(client, campaignId, numbers) {
 
 // POST /api/campaigns - Create a new campaign with atomic credit deduction
 router.post('/', authenticate, uploadFields, async (req, res) => {
-  const { title, text, numbers: rawNumbers, destination, channel_type, scheduled_at, cta_data, sender_header, target_user_id } = req.body;
+  const { title, text, numbers: rawNumbers, destination, channel_type, scheduled_at, cta_data, target_user_id } = req.body;
   const files = req.files || {};
-
-  if (sender_header && (typeof sender_header !== 'string' || sender_header.trim().length > 20)) {
-    removeUploadedFiles(files);
-    return res.status(400).json({ error: 'Sender header cannot exceed 20 characters.' });
-  }
 
   // Resolve Effective Account (Self vs On-Behalf-Of Proxy Dispatch)
   let effectiveUserId = req.user.id;
@@ -573,8 +568,8 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
     // 3. Create campaign record with user_id = effectiveUserId
     const insertCampaign = await client.query(`
       INSERT INTO campaigns 
-        (user_id, title, channel_type, scheduled_at, campaign_type, destination, message_text, total_numbers, status, attachment_url, attachments, cta_data, sender_header)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        (user_id, title, channel_type, scheduled_at, campaign_type, destination, message_text, total_numbers, status, attachment_url, attachments, cta_data)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING id, created_at, status
     `, [
       effectiveUserId, 
@@ -588,8 +583,7 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
       initialStatus, 
       attachmentUrl, 
       JSON.stringify(attachments),
-      parsedCta ? JSON.stringify(parsedCta) : null, 
-      sender_header ? sender_header.trim() : null
+      parsedCta ? JSON.stringify(parsedCta) : null
     ]);
 
     const campaignId = insertCampaign.rows[0].id;
@@ -953,7 +947,7 @@ router.get('/:id/export', authenticate, async (req, res) => {
           exportStatus = 'Queued';
         }
       }
-      csvContent += `${r.phone_number},${exportStatus},${new Date(r.updated_at).toISOString()}\n`;
+      csvContent += `${sanitizeCsvCell(r.phone_number)},${sanitizeCsvCell(exportStatus)},${sanitizeCsvCell(new Date(r.updated_at).toISOString())}\n`;
     });
 
     return res.send(csvContent);
@@ -1007,7 +1001,7 @@ router.get('/:id/export-numbers', authenticate, async (req, res) => {
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', `attachment; filename="campaign_${campaignId}_numbers.csv"`);
       let csvContent = 'Mobile Number\n';
-      recipients.rows.forEach(r => { csvContent += `${r.phone_number}\n`; });
+      recipients.rows.forEach(r => { csvContent += `${sanitizeCsvCell(r.phone_number)}\n`; });
       return res.send(csvContent);
     } else {
       res.setHeader('Content-Type', 'text/plain');
@@ -1790,7 +1784,7 @@ router.get('/operator/bulk-export', authenticate, requireRoles('admin'), async (
     archive.pipe(res);
 
     // 1. Create DISPATCH_MANIFEST.csv
-    let manifestCsv = 'Campaign ID,Title,User Email,Status,Total Numbers,Channel Type,Campaign Type,Destination,Scheduled At,Sender Header,Created At\n';
+    let manifestCsv = 'Campaign ID,Title,User Email,Status,Total Numbers,Channel Type,Campaign Type,Destination,Scheduled At,Created At\n';
 
     for (const c of campaigns) {
       const safeId = sanitizeCsvCell(c.id);
@@ -1802,9 +1796,8 @@ router.get('/operator/bulk-export', authenticate, requireRoles('admin'), async (
       const safeType = sanitizeCsvCell(c.campaign_type);
       const safeDest = sanitizeCsvCell(c.destination);
       const safeSched = sanitizeCsvCell(c.scheduled_at || 'Immediate');
-      const safeHeader = sanitizeCsvCell(c.sender_header || 'None');
       const safeDate = sanitizeCsvCell(c.created_at);
-      manifestCsv += `${safeId},${safeTitle},${safeEmail},${safeStatus},${safeTotal},${safeChannel},${safeType},${safeDest},${safeSched},${safeHeader},${safeDate}\n`;
+      manifestCsv += `${safeId},${safeTitle},${safeEmail},${safeStatus},${safeTotal},${safeChannel},${safeType},${safeDest},${safeSched},${safeDate}\n`;
 
       const safeFolder = `Campaign_${c.id}_${(c.title || 'Untitled').replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 
@@ -1826,7 +1819,6 @@ router.get('/operator/bulk-export', authenticate, requireRoles('admin'), async (
       messagePayload += `Status: ${c.status}\n`;
       messagePayload += `Route: ${c.campaign_type} (${c.destination})\n`;
       messagePayload += `Total Recipients: ${c.total_numbers}\n`;
-      if (c.sender_header) messagePayload += `Sender Header: ${c.sender_header}\n`;
       if (c.scheduled_at) messagePayload += `Scheduled For: ${c.scheduled_at}\n`;
       messagePayload += `=======================================================\n\n`;
       messagePayload += `--- MESSAGE TEXT / CAPTION ---\n`;

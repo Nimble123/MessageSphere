@@ -2583,7 +2583,6 @@ async function setupComposerTargetSelector() {
       const targetId = parseInt(select.value, 10);
       window.composerTargetUser = nonAdmins.find(u => u.id === targetId) || null;
       updateCostCalculator();
-      if (typeof refreshTargetSenderHeaders === 'function') refreshTargetSenderHeaders(window.composerTargetUser || currentUser);
       if (typeof populateComposerSelectors === 'function') populateComposerSelectors();
     };
   } else if (currentUser.role === 'reseller') {
@@ -2615,7 +2614,6 @@ async function setupComposerTargetSelector() {
         window.composerTargetUser = myClients.find(u => u.id === targetId) || currentUser;
       }
       updateCostCalculator();
-      if (typeof refreshTargetSenderHeaders === 'function') refreshTargetSenderHeaders(window.composerTargetUser || currentUser);
       if (typeof populateComposerSelectors === 'function') populateComposerSelectors();
     };
   } else {
@@ -3497,7 +3495,7 @@ function renderRecentDashboardCampaigns(campaigns) {
 
   const isManagement = currentUser && (currentUser.role === 'admin' || currentUser.role === 'reseller');
   if (thOwner) {
-    thOwner.textContent = isManagement ? 'Account / Client' : 'Sender / Identity';
+    thOwner.textContent = isManagement ? 'Account / Client' : 'Route / Channel';
   }
 
   const list = (campaigns && Array.isArray(campaigns) && campaigns.length > 0) ? campaigns : (allCampaigns || []);
@@ -3532,11 +3530,11 @@ function renderRecentDashboardCampaigns(campaigns) {
     if (isManagement) {
       ownerDisplay = `
         <div style="font-weight:600;color:var(--slate-800);font-size:0.83rem;">${escapeHtml(c.owner_email || '—')}</div>
-        <div style="font-size:0.73rem;color:var(--slate-500);">${escapeHtml(c.sender_header || 'Default')}</div>
+        <div style="font-size:0.73rem;color:var(--slate-500);">${escapeHtml(c.channel_type === 'sms' ? 'Direct SMS' : 'Direct WhatsApp')}</div>
       `;
     } else {
       ownerDisplay = `
-        <div style="font-weight:600;color:var(--slate-800);font-size:0.83rem;">${escapeHtml(c.sender_header || 'Default Verified')}</div>
+        <div style="font-weight:600;color:var(--slate-800);font-size:0.83rem;">${escapeHtml(c.channel_type === 'sms' ? 'Direct GSM SMS' : 'Direct WhatsApp Gateway')}</div>
         <div style="font-size:0.73rem;color:var(--slate-500);">Ref: #${c.id}</div>
       `;
     }
@@ -4132,8 +4130,7 @@ function renderCampaignsTable() {
       const matchOwner = (c.owner_email || '').toLowerCase().includes(search);
       const matchTitle = (c.title || '').toLowerCase().includes(search);
       const matchText = (c.message_text || '').toLowerCase().includes(search);
-      const matchHeader = (c.sender_header || '').toLowerCase().includes(search);
-      if (!matchId && !matchOwner && !matchTitle && !matchText && !matchHeader) return false;
+      if (!matchId && !matchOwner && !matchTitle && !matchText) return false;
     }
     return true;
   });
@@ -4356,7 +4353,6 @@ function renderCampaignsTable() {
         </td>
         <td>
           <div style="font-weight:600;color:var(--slate-800);font-size:0.82rem;">${escapeHtml(c.owner_email || '—')}</div>
-          ${c.sender_header ? `<div style="font-size:0.72rem;color:var(--slate-500);">${escapeHtml(c.sender_header)}</div>` : ''}
         </td>
         <td>
           <div><span class="status-badge" style="background:#f1f5f9;color:#334155;font-size:0.72rem;font-weight:700;">${c.destination === 'international' ? 'INTL' : 'DOM'}</span></div>
@@ -4437,7 +4433,7 @@ window.exportFilteredCampaignsCsv = function() {
     return;
   }
 
-  let csv = 'Campaign ID,Title,User / Client Email,Route,Destination,Total Numbers,Delivered,Failed,Delivery %,Status,Sender Header,Scheduled Time,Created Date\n';
+  let csv = 'Campaign ID,Title,User / Client Email,Route,Destination,Total Numbers,Delivered,Failed,Delivery %,Status,Scheduled Time,Created Date\n';
   rows.forEach(c => {
     const id = c.id;
     const title = `"${(c.title || 'Untitled').replace(/"/g, '""')}"`;
@@ -4449,11 +4445,10 @@ window.exportFilteredCampaignsCsv = function() {
     const failed = c.failed_count || 0;
     const rate = total > 0 ? `${Math.round((delivered / total) * 100)}%` : '0%';
     const status = c.status || '';
-    const header = `"${(c.sender_header || 'None').replace(/"/g, '""')}"`;
     const sched = c.scheduled_at ? `"${new Date(c.scheduled_at).toLocaleString('en-IN')}"` : 'Immediate';
     const created = c.created_at ? `"${new Date(c.created_at).toLocaleString('en-IN')}"` : '';
 
-    csv += `${id},${title},${email},${route},${dest},${total},${delivered},${failed},${rate},${status},${header},${sched},${created}\n`;
+    csv += `${id},${title},${email},${route},${dest},${total},${delivered},${failed},${rate},${status},${sched},${created}\n`;
   });
 
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -4792,8 +4787,7 @@ window.openCampaignDetailModal = async function(campaignId) {
     if (routePillEl) {
       const channelLabel = c.channel_type === 'own_number' ? 'Own SIM' : (c.campaign_type || 'normal').toUpperCase();
       const destLabel = c.destination === 'international' ? 'International' : 'Domestic';
-      const headerPart = c.sender_header ? ` • [${c.sender_header}]` : '';
-      routePillEl.textContent = `${channelLabel} • ${destLabel}${headerPart}`;
+      routePillEl.textContent = `${channelLabel} • ${destLabel}`;
     }
 
     if (detailCampaignNoteInput) detailCampaignNoteInput.value = '';
@@ -11268,7 +11262,7 @@ function renderOperatorQueueRows() {
         <td style="font-weight:600;color:var(--slate-800);">${escapeHtml(c.title || 'Untitled')}</td>
         <td>
           <div style="font-size:0.82rem;font-weight:600;color:var(--slate-800);">${escapeHtml(c.owner_email || 'User')}</div>
-          <div style="font-size:0.75rem;color:var(--slate-400);">${escapeHtml(c.sender_header || 'Standard Route')}</div>
+          <div style="font-size:0.75rem;color:var(--slate-400);">${escapeHtml(c.destination === 'international' ? 'International Route' : 'Domestic Direct Route')}</div>
         </td>
         <td><span class="route-badge">${escapeHtml(c.channel_type || 'normal')}</span></td>
         <td style="font-weight:700;color:#0f172a;">${audience}</td>

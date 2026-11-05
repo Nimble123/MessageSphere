@@ -110,7 +110,6 @@ async function initDB() {
     await client.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS channel_type VARCHAR(50) DEFAULT 'shared_gateway';`);
     await client.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMP WITH TIME ZONE;`);
     await client.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS failed_refunded BOOLEAN DEFAULT FALSE;`);
-    await client.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS sender_header VARCHAR(20);`);
     await client.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS attachments JSONB DEFAULT '[]'::jsonb;`);
     await client.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS scheduled_triggered BOOLEAN DEFAULT FALSE;`);
     await client.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS report_processed_at TIMESTAMP WITH TIME ZONE;`);
@@ -245,7 +244,6 @@ async function initDB() {
         is_unicode BOOLEAN DEFAULT FALSE,
         character_count INTEGER DEFAULT 0,
         parts_count INTEGER DEFAULT 1,
-        dlt_template_id VARCHAR(100),
         is_approved BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
@@ -265,18 +263,6 @@ async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_templates_user_channel ON templates(user_id, channel);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_templates_channel_created ON templates(channel, created_at DESC);`);
 
-
-    // 10. Sender Headers
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS sender_headers (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        header_name VARCHAR(10) NOT NULL,
-        entity_id VARCHAR(100),
-        status VARCHAR(50) DEFAULT 'Pending' CHECK (status IN ('Pending', 'Approved', 'Rejected')),
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
 
     // 12. Scheduled Campaign Admin Reminders & Notifications
     await client.query(`

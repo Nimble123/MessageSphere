@@ -45,7 +45,7 @@ router.post('/login', loginLimiter, async (req, res) => {
   }
 
   const cleanEmail = email.trim().toLowerCase();
-  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
 
   try {
     const result = await query('SELECT * FROM users WHERE email = $1', [cleanEmail]);

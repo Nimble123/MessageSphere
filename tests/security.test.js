@@ -63,4 +63,14 @@ test('Security & Telecom Unit Verification Suite', async (t) => {
     const unicodeMetrics = calculateSmsMetrics(unicodeMsg);
     assert.equal(unicodeMetrics.is_unicode, true);
   });
+
+  await t.test('CSV reports format properly sanitizes phone numbers and statuses', () => {
+    const rawPhone = '+919876543210';
+    const status = '=HYPERLINK("http://evil.com","Click")';
+    const cleanPhone = sanitizeCsvCell(rawPhone);
+    const cleanStatus = sanitizeCsvCell(status);
+
+    assert.equal(cleanPhone, `"'+919876543210"`);
+    assert.equal(cleanStatus, `"\'=HYPERLINK(\"\"http://evil.com\"\",\"\"Click\"\")"`);
+  });
 });

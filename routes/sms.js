@@ -210,14 +210,7 @@ router.post('/', authenticate, async (req, res) => {
     destination,
     scheduled_at,
     target_user_id,
-    sender_header,
   } = req.body;
-
-  const cleanSenderHeader = (sender_header && typeof sender_header === 'string') ? sender_header.trim().slice(0, 20) : null;
-  if (sender_header && (typeof sender_header !== 'string' || sender_header.trim().length > 20)) {
-    if (uploadedFile) fs.unlink(uploadedFile.path, () => {});
-    return res.status(400).json({ error: 'Sender header cannot exceed 20 characters.' });
-  }
 
   const messageText = String(message || text || '').trim();
 
@@ -448,10 +441,10 @@ router.post('/', authenticate, async (req, res) => {
     // Insert campaign record
     const insertCampaign = await client.query(
       `INSERT INTO campaigns
-         (user_id, title, channel_type, campaign_type, destination, message_text, total_numbers, status, scheduled_at, attachments, sender_header)
-       VALUES ($1, $2, 'sms', 'gsm_sms', $3, $4, $5, 'Submitted', $6, '[]'::jsonb, $7)
+         (user_id, title, channel_type, campaign_type, destination, message_text, total_numbers, status, scheduled_at, attachments)
+       VALUES ($1, $2, 'sms', 'gsm_sms', $3, $4, $5, 'Submitted', $6, '[]'::jsonb)
        RETURNING id, created_at, status`,
-      [effectiveUserId, campaignTitle, campaignDest, messageText, messageCount, scheduledDate, cleanSenderHeader]
+      [effectiveUserId, campaignTitle, campaignDest, messageText, messageCount, scheduledDate]
     );
 
     const campaignId = insertCampaign.rows[0].id;

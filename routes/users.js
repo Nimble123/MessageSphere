@@ -849,6 +849,8 @@ router.patch('/:id/reset-password', authenticate, requireRoles('admin', 'reselle
       await client.query('UPDATE users SET password_hash = $1, token_version = token_version + 1 WHERE id = $2', [hash, targetId]);
       if (reset_request_id && (req.user.role === 'admin' || req.user.role === 'reseller')) {
         await client.query(`UPDATE password_reset_requests SET status = 'Resolved', resolved_at = NOW(), resolved_by = $1, resolution_note = $4 WHERE id = $2 AND user_id = $3 AND status = 'Pending'`, [req.user.id, parseInt(reset_request_id, 10), targetId, `Password reset completed by ${req.user.role}`]);
+      } else {
+        await client.query(`UPDATE password_reset_requests SET status = 'Resolved', resolved_at = NOW(), resolved_by = $1, resolution_note = $3 WHERE user_id = $2 AND status = 'Pending'`, [req.user.id, targetId, `Password reset completed by ${req.user.role}`]);
       }
       await logAudit(client, { actorId: req.user.id, entityType: 'user', entityId: targetId, action: 'password_reset_completed', details: { resetRequestId: reset_request_id || null } });
       await client.query('COMMIT');
