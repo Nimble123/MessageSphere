@@ -433,8 +433,7 @@ window.switchView = function(viewId) {
       'view-branding': { title: 'White-label Brand', breadcrumb: 'MessageSphere / Reseller / Brand' },
       'view-settings': { title: 'Account Settings', breadcrumb: 'MessageSphere / Settings / Profile' },
       'view-sms-new': { title: 'Create GSM Bulk SMS Campaign', breadcrumb: 'MessageSphere / GSM SMS / New Broadcast' },
-      'view-sms': { title: 'GSM Bulk SMS Broadcasts', breadcrumb: 'MessageSphere / GSM SMS / Broadcasts' },
-      'view-headers': { title: 'Sender Headers & DLT Registry', breadcrumb: 'MessageSphere / Audience / Sender Headers' }
+      'view-sms': { title: 'GSM Bulk SMS Broadcasts', breadcrumb: 'MessageSphere / GSM SMS / Broadcasts' }
     };
 
     if (titles[viewId]) {
@@ -469,7 +468,6 @@ window.switchView = function(viewId) {
   if (viewId === 'view-settings') updateSettingsView();
   if (viewId === 'view-contacts') { loadContactGroups(); loadBlacklist(); }
   if (viewId === 'view-templates') loadTemplates();
-  if (viewId === 'view-headers') loadSenderHeaders();
   if (viewId === 'view-billing') loadBillingOrders();
   if (viewId === 'view-operations') loadOperationsAudit();
   if (viewId === 'view-resellers') loadResellerNetwork();
@@ -2739,11 +2737,6 @@ btnSubmitCampaignSaas.addEventListener('click', async () => {
     formData.append('cta_data', JSON.stringify(ctaData));
   }
 
-  const headerSelect = document.getElementById('composer-header-select');
-  if (headerSelect && headerSelect.value) {
-    formData.append('sender_header', headerSelect.value);
-  }
-
   try {
     const res = await apiFetch('/campaigns', {
       method: 'POST',
@@ -4649,28 +4642,6 @@ window.duplicateCampaign = async function(c) {
   if (composerText) {
     composerText.value = c.message_text || '';
     composerText.dispatchEvent(new Event('input'));
-  }
-
-  // 5. Set Sender Header
-  if (c.sender_header) {
-    const headerSelect = document.getElementById('composer-header-select');
-    if (headerSelect) {
-      let found = false;
-      for (let i = 0; i < headerSelect.options.length; i++) {
-        if (headerSelect.options[i].value === c.sender_header) {
-          headerSelect.selectedIndex = i;
-          found = true;
-          break;
-        }
-      }
-      if (!found) {
-        const opt = document.createElement('option');
-        opt.value = c.sender_header;
-        opt.textContent = `${c.sender_header} (From Cloned Campaign)`;
-        opt.selected = true;
-        headerSelect.appendChild(opt);
-      }
-    }
   }
 
   // 6. Set CTA Interactive Buttons
@@ -11044,264 +11015,10 @@ async function populateComposerSelectors() {
         smsTemplates.map(t => `<option value="${encodeURIComponent(t.content || t.body)}" data-title="${escapeHtml(t.title)}">[SMS] ${escapeHtml(t.title)} (${t.parts_count || 1} Part${(t.parts_count || 1) > 1 ? 's' : ''})</option>`).join('');
       if (prevTplVal) smsTemplateSelect.value = prevTplVal;
     }
-
-    // 6. Populate Sender Headers in Composers
-    await populateSenderHeaderDropdowns();
   } catch (e) {
     console.error('Error populating composer selectors:', e);
   }
 }
-
-// ===========================================================================
-// SENDER HEADERS & DLT MANAGEMENT MODULE
-// ===========================================================================
-window.allSenderHeaders = [];
-let currentHeadersFilter = 'all';
-
-async function populateSenderHeaderDropdowns() {
-  const compHeaderSelect = document.getElementById('composer-header-select');
-  const smsHeaderSelect = document.getElementById('sms-sender-header');
-  if (!compHeaderSelect && !smsHeaderSelect) return;
-
-  try {
-    const headers = await apiFetch('/headers').catch(() => []);
-    const approvedHeaders = headers.filter(h => h.status === 'Approved');
-
-    if (compHeaderSelect) {
-      const prev = compHeaderSelect.value;
-      compHeaderSelect.innerHTML = '<option value="">— Direct Telecom Gateway Default —</option>' +
-        approvedHeaders.map(h => `<option value="${escapeHtml(h.header_name)}">${escapeHtml(h.header_name)}${h.entity_id ? ' (' + escapeHtml(h.entity_id) + ')' : ''}</option>`).join('');
-      if (prev && approvedHeaders.some(h => h.header_name === prev)) compHeaderSelect.value = prev;
-    }
-
-    if (smsHeaderSelect) {
-      const prev = smsHeaderSelect.value;
-      smsHeaderSelect.innerHTML = '<option value="">— Direct Telecom Carrier Default (Auto-Masked) —</option>' +
-        approvedHeaders.map(h => `<option value="${escapeHtml(h.header_name)}">${escapeHtml(h.header_name)}${h.entity_id ? ' (' + escapeHtml(h.entity_id) + ')' : ''}</option>`).join('');
-      if (prev && approvedHeaders.some(h => h.header_name === prev)) smsHeaderSelect.value = prev;
-    }
-  } catch (err) {
-    console.error('Failed to populate sender header dropdowns:', err);
-  }
-}
-
-window.loadSenderHeaders = async function() {
-  const tbody = document.getElementById('headers-tbody');
-  if (!tbody) return;
-
-  try {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--slate-400);"><i data-lucide="loader-2" style="width:20px;height:20px;animation:spin 1s linear infinite;"></i> Loading sender headers...</td></tr>';
-    if (window.lucide) lucide.createIcons({ root: tbody });
-
-    const headers = await apiFetch('/headers');
-    window.allSenderHeaders = Array.isArray(headers) ? headers : [];
-
-    // Update KPI Counters
-    const total = window.allSenderHeaders.length;
-    const approved = window.allSenderHeaders.filter(h => h.status === 'Approved').length;
-    const pending = window.allSenderHeaders.filter(h => h.status === 'Pending').length;
-    const rejected = window.allSenderHeaders.filter(h => h.status === 'Rejected').length;
-
-    const elTotal = document.getElementById('kpi-total-headers');
-    const elAppr = document.getElementById('kpi-approved-headers');
-    const elPend = document.getElementById('kpi-pending-headers');
-    const elRej = document.getElementById('kpi-rejected-headers');
-
-    if (elTotal) elTotal.textContent = total.toLocaleString();
-    if (elAppr) elAppr.textContent = approved.toLocaleString();
-    if (elPend) elPend.textContent = pending.toLocaleString();
-    if (elRej) elRej.textContent = rejected.toLocaleString();
-
-    renderSenderHeadersTable();
-    populateSenderHeaderDropdowns();
-  } catch (err) {
-    console.error('Load sender headers error:', err);
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:#ef4444;">Failed to load headers: ${escapeHtml(err.message || 'Unknown error')}</td></tr>`;
-  }
-};
-
-window.renderSenderHeadersTable = function() {
-  const tbody = document.getElementById('headers-tbody');
-  if (!tbody) return;
-
-  const searchInput = document.getElementById('headers-search-input');
-  const search = searchInput ? searchInput.value.trim().toLowerCase() : '';
-
-  let list = window.allSenderHeaders || [];
-
-  if (currentHeadersFilter !== 'all') {
-    list = list.filter(h => h.status === currentHeadersFilter);
-  }
-
-  if (search) {
-    list = list.filter(h => 
-      (h.header_name && h.header_name.toLowerCase().includes(search)) ||
-      (h.entity_id && h.entity_id.toLowerCase().includes(search)) ||
-      (h.user_email && h.user_email.toLowerCase().includes(search)) ||
-      (h.company_name && h.company_name.toLowerCase().includes(search))
-    );
-  }
-
-  if (list.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:36px;color:var(--slate-400);font-weight:500;">No sender headers found matching your filter criteria.</td></tr>';
-    return;
-  }
-
-  const activeUser = currentUser || window.currentUser;
-  const isAdmin = activeUser && activeUser.role === 'admin';
-
-  tbody.innerHTML = list.map(h => {
-    let statusBadge = '';
-    if (h.status === 'Approved') {
-      statusBadge = '<span style="background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;padding:3px 10px;border-radius:12px;font-size:0.75rem;font-weight:700;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="check" style="width:12px;height:12px;"></i> Approved</span>';
-    } else if (h.status === 'Rejected') {
-      statusBadge = '<span style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;padding:3px 10px;border-radius:12px;font-size:0.75rem;font-weight:700;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="x" style="width:12px;height:12px;"></i> Rejected</span>';
-    } else {
-      statusBadge = '<span style="background:#fffbeb;color:#d97706;border:1px solid #fde68a;padding:3px 10px;border-radius:12px;font-size:0.75rem;font-weight:700;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="clock" style="width:12px;height:12px;"></i> Pending Review</span>';
-    }
-
-    const regDate = h.created_at ? new Date(h.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
-    const ownerDisplay = h.user_email ? `${escapeHtml(h.user_email)}${h.company_name ? ' (' + escapeHtml(h.company_name) + ')' : ''}` : 'System Account';
-
-    // Actions
-    let actionButtons = '';
-    if (isAdmin) {
-      if (h.status !== 'Approved') {
-        actionButtons += `<button type="button" class="btn-action" onclick="updateHeaderStatus(${h.id}, 'Approved')" style="background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;padding:4px 8px;font-size:0.74rem;font-weight:700;border-radius:6px;cursor:pointer;margin-right:6px;" title="Approve Header"><i data-lucide="check-circle" style="width:13px;height:13px;"></i> Approve</button>`;
-      }
-      if (h.status !== 'Rejected') {
-        actionButtons += `<button type="button" class="btn-action" onclick="updateHeaderStatus(${h.id}, 'Rejected')" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;padding:4px 8px;font-size:0.74rem;font-weight:700;border-radius:6px;cursor:pointer;margin-right:6px;" title="Reject Header"><i data-lucide="x-circle" style="width:13px;height:13px;"></i> Reject</button>`;
-      }
-    }
-
-    actionButtons += `<button type="button" class="btn-action" onclick="deleteSenderHeader(${h.id})" style="background:#f8fafc;color:#64748b;border:1px solid #e2e8f0;padding:4px 8px;font-size:0.74rem;border-radius:6px;cursor:pointer;" title="Delete Header"><i data-lucide="trash-2" style="width:13px;height:13px;color:#ef4444;"></i></button>`;
-
-    return `
-      <tr>
-        <td style="font-weight:700;font-family:monospace;font-size:0.92rem;color:var(--slate-800);">
-          <span style="background:#f1f5f9;color:#0f172a;padding:3px 8px;border-radius:6px;border:1px solid #cbd5e1;letter-spacing:1px;">
-            ${escapeHtml(h.header_name)}
-          </span>
-        </td>
-        <td style="font-size:0.83rem;color:var(--slate-600);font-family:monospace;">${escapeHtml(h.entity_id || '—')}</td>
-        <td style="font-size:0.82rem;color:var(--slate-700);">${ownerDisplay}</td>
-        <td>${statusBadge}</td>
-        <td style="font-size:0.8rem;color:var(--slate-500);">${regDate}</td>
-        <td style="text-align:right;white-space:nowrap;">${actionButtons}</td>
-      </tr>
-    `;
-  }).join('');
-
-  if (window.lucide) lucide.createIcons({ root: tbody });
-};
-
-window.filterHeadersByStatus = function(status, btn) {
-  currentHeadersFilter = status;
-  const pills = document.querySelectorAll('#headers-filter-pills .tab-pill');
-  pills.forEach(p => p.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-  renderSenderHeadersTable();
-};
-
-window.onHeadersSearchInput = function() {
-  renderSenderHeadersTable();
-};
-
-window.openRegisterHeaderModal = function() {
-  const modal = document.getElementById('modal-register-header');
-  const err = document.getElementById('register-header-error');
-  const form = document.getElementById('form-register-header');
-  if (err) err.style.display = 'none';
-  if (form) form.reset();
-  if (modal) modal.style.display = 'flex';
-  if (window.lucide) lucide.createIcons({ root: modal });
-};
-
-window.closeRegisterHeaderModal = function() {
-  const modal = document.getElementById('modal-register-header');
-  if (modal) modal.style.display = 'none';
-};
-
-window.submitRegisterHeader = async function(e) {
-  e.preventDefault();
-  const err = document.getElementById('register-header-error');
-  const btn = document.getElementById('btn-submit-header');
-  const nameInput = document.getElementById('header-name-input');
-  const entityInput = document.getElementById('header-entity-id-input');
-
-  const headerName = nameInput ? nameInput.value.trim().toUpperCase() : '';
-  const entityId = entityInput ? entityInput.value.trim() : '';
-
-  if (!headerName || headerName.length < 3 || headerName.length > 20) {
-    if (err) { err.textContent = 'Header name must be between 3 and 20 characters.'; err.style.display = 'block'; }
-    return;
-  }
-
-  if (!/^[A-Z0-9_-]+$/.test(headerName)) {
-    if (err) { err.textContent = 'Header name can only contain uppercase letters, numbers, hyphens and underscores.'; err.style.display = 'block'; }
-    return;
-  }
-
-  if (btn) { btn.disabled = true; btn.textContent = 'Submitting...'; }
-
-  try {
-    const res = await apiFetch('/headers', {
-      method: 'POST',
-      body: JSON.stringify({
-        header_name: headerName,
-        entity_id: entityId
-      })
-    });
-
-    showToast('success', 'Header Registered', `Sender header "${headerName}" submitted successfully. It is now pending approval.`);
-    closeRegisterHeaderModal();
-    loadSenderHeaders();
-  } catch (err) {
-    if (err) {
-      const errBox = document.getElementById('register-header-error');
-      if (errBox) {
-        errBox.textContent = err.message || 'Failed to register sender header';
-        errBox.style.display = 'block';
-      }
-    }
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Submit for Approval'; }
-  }
-};
-
-window.updateHeaderStatus = async function(headerId, status) {
-  try {
-    await apiFetch(`/headers/${headerId}/status`, {
-      method: 'PATCH',
-      body: JSON.stringify({ status })
-    });
-    showToast('success', 'Status Updated', `Sender header marked as ${status}.`);
-    loadSenderHeaders();
-  } catch (err) {
-    showToast('error', 'Update Failed', err.message || 'Failed to update status');
-  }
-};
-
-window.deleteSenderHeader = async function(headerId) {
-  window.openActionDialog({
-    title: 'Delete Sender Header',
-    message: 'Are you sure you want to delete this sender header? It will no longer be available for WhatsApp and SMS campaigns.',
-    icon: 'trash-2',
-    iconColor: '#dc2626',
-    iconBg: '#fee2e2',
-    confirmText: 'Delete Header',
-    confirmClass: 'btn-action-danger',
-    onConfirm: async () => {
-      try {
-        await apiFetch(`/headers/${headerId}`, { method: 'DELETE' });
-        showToast('info', 'Deleted', 'Sender header removed.');
-        loadSenderHeaders();
-      } catch (err) {
-        showToast('error', 'Delete Failed', err.message || 'Failed to delete header');
-      }
-    }
-  });
-};
 
 // ----------------------------------------------------
 // CONTACT GROUP DIRECT INSERTION
@@ -12845,10 +12562,6 @@ window.submitSmsCampaign = async function(e) {
     };
     if (scheduledAt) payload.scheduled_at = scheduledAt;
     if (targetUserId) payload.target_user_id = targetUserId;
-    const smsHeaderEl = document.getElementById('sms-sender-header');
-    if (smsHeaderEl && smsHeaderEl.value) {
-      payload.sender_header = smsHeaderEl.value;
-    }
 
     const data = await apiFetch('/sms', {
       method: 'POST',

@@ -67,7 +67,6 @@ app.use('/api/audit', require('./routes/audit'));
 app.use('/api/resellers', require('./routes/resellers'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/sms', require('./routes/sms'));
-app.use('/api/headers', require('./routes/headers'));
 
 // Global error handler - Never leak raw stack traces or internal errors to clients in production
 app.use((err, req, res, next) => {
