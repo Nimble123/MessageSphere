@@ -155,10 +155,12 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
   }
 
   if (!text || !text.trim()) {
+    removeUploadedFiles(files);
     return res.status(400).json({ error: 'Campaign message text is required' });
   }
 
   if (!rawNumbers || !rawNumbers.trim()) {
+    removeUploadedFiles(files);
     return res.status(400).json({ error: 'Mobile numbers are required' });
   }
 
@@ -181,9 +183,11 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
     const ext = path.extname(dp.originalname).toLowerCase();
     const validMimes = ['image/jpeg', 'image/jpg', 'image/png'];
     if (!validMimes.includes(dp.mimetype) && !['.jpg', '.jpeg', '.png'].includes(ext)) {
+      removeUploadedFiles(files);
       return res.status(400).json({ error: 'DP file must be strictly a JPEG or PNG image.' });
     }
     if (dp.size > 3 * 1024 * 1024) {
+      removeUploadedFiles(files);
       return res.status(400).json({ error: 'DP file exceeds maximum size of 3 MB.' });
     }
     addAttachment(dp, 'dp', 'Profile Picture (DP)');
@@ -197,9 +201,11 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
       const ext = path.extname(img.originalname).toLowerCase();
       const validMimes = ['image/jpeg', 'image/jpg', 'image/png'];
       if (!validMimes.includes(img.mimetype) && !['.jpg', '.jpeg', '.png'].includes(ext)) {
+        removeUploadedFiles(files);
         return res.status(400).json({ error: `Image ${i} must be strictly a JPEG or PNG image.` });
       }
       if (img.size > 3 * 1024 * 1024) {
+        removeUploadedFiles(files);
         return res.status(400).json({ error: `Image ${i} exceeds maximum size of 3 MB.` });
       }
       addAttachment(img, 'image', `Gallery Image ${i}`);
@@ -212,9 +218,11 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
     const ext = path.extname(vid.originalname).toLowerCase();
     const isVideo = vid.mimetype.startsWith('video/') || ['.mp4', '.mov', '.mkv', '.webm', '.avi'].includes(ext);
     if (!isVideo) {
+      removeUploadedFiles(files);
       return res.status(400).json({ error: 'Video file must be a valid video file (e.g. MP4).' });
     }
     if (vid.size > 20 * 1024 * 1024) {
+      removeUploadedFiles(files);
       return res.status(400).json({ error: 'Video file exceeds maximum size of 20 MB.' });
     }
     addAttachment(vid, 'video', 'Campaign Video');
@@ -225,9 +233,11 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
     const pdf = files['pdf_file'][0];
     const ext = path.extname(pdf.originalname).toLowerCase();
     if (pdf.mimetype !== 'application/pdf' && ext !== '.pdf') {
+      removeUploadedFiles(files);
       return res.status(400).json({ error: 'Document must be a valid PDF file.' });
     }
     if (pdf.size > 10 * 1024 * 1024) {
+      removeUploadedFiles(files);
       return res.status(400).json({ error: 'PDF file exceeds maximum size of 10 MB.' });
     }
     addAttachment(pdf, 'pdf', 'PDF Document');
@@ -243,22 +253,27 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
     if (mime === 'application/pdf' || ext === '.pdf') {
       ctaMediaType = 'pdf';
       if (ctaFile.size > 10 * 1024 * 1024) {
+        removeUploadedFiles(files);
         return res.status(400).json({ error: 'CTA PDF attachment exceeds maximum size of 10 MB.' });
       }
     } else if (mime.startsWith('video/') || ['.mp4', '.mov', '.mkv', '.webm'].includes(ext)) {
       ctaMediaType = 'video';
       if (ctaFile.size > 20 * 1024 * 1024) {
+        removeUploadedFiles(files);
         return res.status(400).json({ error: 'CTA Video attachment exceeds maximum size of 20 MB.' });
       }
     } else if (mime.startsWith('image/') || ['.jpg', '.jpeg', '.png'].includes(ext)) {
       ctaMediaType = 'image';
       if (!['image/jpeg', 'image/jpg', 'image/png'].includes(mime) && !['.jpg', '.jpeg', '.png'].includes(ext)) {
+        removeUploadedFiles(files);
         return res.status(400).json({ error: 'CTA Image attachment must be strictly JPEG or PNG.' });
       }
       if (ctaFile.size > 3 * 1024 * 1024) {
+        removeUploadedFiles(files);
         return res.status(400).json({ error: 'CTA Image attachment exceeds maximum size of 3 MB.' });
       }
     } else {
+      removeUploadedFiles(files);
       return res.status(400).json({ error: 'Invalid CTA attachment format. Allowed: Image (JPEG/PNG max 3MB), PDF (max 10MB), or Video (max 20MB).' });
     }
 
@@ -320,6 +335,7 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
   const uniqueNumbers = validNumbers;
   const messageCount = uniqueNumbers.length;
   if (messageCount === 0) {
+    removeUploadedFiles(files);
     return res.status(400).json({ 
       error: skippedBlacklisted > 0 
         ? `All submitted numbers (${skippedBlacklisted}) are in your DND Blacklist.` 

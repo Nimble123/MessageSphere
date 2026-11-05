@@ -878,12 +878,50 @@ router.delete('/:id', authenticate, requireRoles('admin', 'reseller'), async (re
     }
 
     const targetUser = userCheck.rows[0];
-    const targetRole = await query('SELECT role FROM users WHERE id = $1', [targetId]);
-    if (targetRole.rows[0] && targetRole.rows[0].role === 'admin') {
+    const targetRoleRes = await query('SELECT role FROM users WHERE id = $1', [targetId]);
+    const targetRole = targetRoleRes.rows[0] ? targetRoleRes.rows[0].role : 'user';
+
+    if (targetRole === 'admin') {
       return res.status(403).json({ error: 'Administrator accounts cannot be deleted' });
     }
     if (req.user.role === 'reseller' && targetUser.reseller_id !== req.user.id) {
       return res.status(403).json({ error: 'Permission denied: Cannot delete users from other accounts' });
+    }
+
+    // Safety Rule 1: Cannot delete a reseller with active managed sub-accounts
+    if (targetRole === 'reseller') {
+      const clientCountRes = await query('SELECT COUNT(*)::int as count FROM users WHERE reseller_id = $1', [targetId]);
+      const subClientCount = clientCountRes.rows[0].count;
+      if (subClientCount > 0) {
+        return res.status(400).json({
+          error: `Cannot delete reseller account: There are ${subClientCount} active client accounts managed under this reseller. Please re-assign or delete those client accounts first.`
+        });
+      }
+    }
+
+    // Safety Rule 2: Cannot delete an account with campaigns in dispatch progress
+    const activeCampRes = await query(
+      `SELECT COUNT(*)::int as count FROM campaigns WHERE user_id = $1 AND status IN ('Submitted', 'Approved')`,
+      [targetId]
+    );
+    if (activeCampRes.rows[0].count > 0) {
+      return res.status(400).json({
+        error: `Cannot delete account: This user has ${activeCampRes.rows[0].count} campaign(s) currently pending or in the operator dispatch queue. Please cancel or process them first.`
+      });
+    }
+
+    // Safety Rule 3: For resellers, prevent accidental loss of unspent client credit stock
+    if (req.user.role === 'reseller') {
+      const balRes = await query(
+        `SELECT COALESCE(SUM(balance), 0)::bigint as total_bal FROM user_credits WHERE user_id = $1`,
+        [targetId]
+      );
+      const totalBal = parseInt(balRes.rows[0].total_bal, 10) || 0;
+      if (totalBal > 0) {
+        return res.status(400).json({
+          error: `Cannot delete account: Client still has ${totalBal.toLocaleString()} unspent credits in their wallet. Please claw back/deduct these credits back to your reseller stock before deleting the account.`
+        });
+      }
     }
 
     await query('DELETE FROM users WHERE id = $1', [targetId]);
