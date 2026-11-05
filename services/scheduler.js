@@ -3,8 +3,11 @@ const { getClient } = require('../db');
 const { logAudit } = require('./audit');
 
 let schedulerInterval = null;
+let isSchedulerRunning = false;
 
 async function checkScheduledCampaigns() {
+  if (isSchedulerRunning) return;
+  isSchedulerRunning = true;
   try {
     // Find all scheduled campaigns that have reached or passed their dispatch time
     const result = await query(`
@@ -58,6 +61,8 @@ async function checkScheduledCampaigns() {
     }
   } catch (err) {
     console.error('[SCHEDULED WORKER ERROR]:', err);
+  } finally {
+    isSchedulerRunning = false;
   }
 }
 

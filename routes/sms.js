@@ -873,9 +873,10 @@ router.delete('/:id', authenticate, async (req, res) => {
 
     if (refundAmount > 0) {
       await client.query(
-        `UPDATE user_credits
-         SET balance = balance + $1
-         WHERE user_id = $2 AND credit_type = 'gsm_sms' AND destination = $3`,
+        `INSERT INTO user_credits (user_id, credit_type, destination, balance)
+         VALUES ($2, 'gsm_sms', $3, $1)
+         ON CONFLICT (user_id, credit_type, destination)
+         DO UPDATE SET balance = user_credits.balance + EXCLUDED.balance`,
         [refundAmount, refundRecipientId, campaign.destination]
       );
 

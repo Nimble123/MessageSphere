@@ -967,9 +967,10 @@ router.patch('/:id/status', authenticate, requireRoles('admin', 'reseller'), asy
 
         // Auto-refund remaining credits to the beneficiary wallet (reseller or user)
         await client.query(`
-          UPDATE user_credits 
-          SET balance = balance + $1 
-          WHERE user_id = $2 AND credit_type = $3 AND destination = $4
+          INSERT INTO user_credits (user_id, credit_type, destination, balance)
+          VALUES ($2, $3, $4, $1)
+          ON CONFLICT (user_id, credit_type, destination)
+          DO UPDATE SET balance = user_credits.balance + EXCLUDED.balance
         `, [totalRefundCredits, refundRecipientId, campaign.campaign_type, campaign.destination]);
 
         const rejectReason = isRoutedToReseller
@@ -1031,7 +1032,7 @@ router.post('/:id/cancel', authenticate, async (req, res) => {
       return res.status(400).json({ error: `Cannot cancel campaign. Current status is '${campaign.status}'. Only 'Submitted' campaigns can be cancelled.` });
     }
 
-    // 100% Refund credits to user (accounting for multi-part SMS if channel is SMS)
+    // 100% Refund credits (accounting for multi-part SMS if channel is SMS)
     let refundMultiplier = 1;
     if (campaign.channel_type === 'sms' && typeof calculateSmsMetrics === 'function') {
       const smsMetrics = calculateSmsMetrics(campaign.message_text);
@@ -1039,16 +1040,34 @@ router.post('/:id/cancel', authenticate, async (req, res) => {
     }
     const refundCredits = (parseInt(campaign.total_numbers, 10) || 0) * refundMultiplier;
 
-    await client.query(`
-      UPDATE user_credits 
-      SET balance = balance + $1 
-      WHERE user_id = $2 AND credit_type = $3 AND destination = $4
-    `, [refundCredits, campaign.user_id, campaign.campaign_type, campaign.destination]);
+    // Check campaign owner's refund destination setting
+    const ownerRes = await client.query(
+      `SELECT id, email, role, reseller_id, refund_destination FROM users WHERE id = $1`,
+      [campaign.user_id]
+    );
+    const owner = ownerRes.rows[0];
+    let refundRecipientId = campaign.user_id;
+    let isRoutedToReseller = false;
+    if (owner && owner.refund_destination === 'reseller' && owner.reseller_id) {
+      refundRecipientId = owner.reseller_id;
+      isRoutedToReseller = true;
+    }
 
     await client.query(`
-      INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason)
-      VALUES ($1, $2, $3, $4, $5, $6)
-    `, [req.user.id, campaign.user_id, campaign.campaign_type, campaign.destination, refundCredits, `User self-cancellation for campaign #${campaignId} (${campaign.title})`]);
+      INSERT INTO user_credits (user_id, credit_type, destination, balance)
+      VALUES ($2, $3, $4, $1)
+      ON CONFLICT (user_id, credit_type, destination)
+      DO UPDATE SET balance = user_credits.balance + EXCLUDED.balance
+    `, [refundCredits, refundRecipientId, campaign.campaign_type, campaign.destination]);
+
+    const cancelReason = isRoutedToReseller
+      ? `Refund for cancelled campaign #${campaignId} ("${campaign.title}") of client ${owner ? owner.email : 'client'} (${refundCredits} credits)`
+      : `User self-cancellation for campaign #${campaignId} (${campaign.title})`;
+
+    await client.query(`
+      INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, tax_mode, base_amount, gst_amount, refund_client_email, refund_campaign_id)
+      VALUES ($1, $2, $3, $4, $5, $6, 'non_gst', 0.00, 0.00, $7, $8)
+    `, [req.user.id, refundRecipientId, campaign.campaign_type, campaign.destination, refundCredits, cancelReason, owner ? owner.email : null, campaignId]);
 
     await client.query(`UPDATE campaigns SET status = 'Rejected', failed_refunded = TRUE WHERE id = $1`, [campaignId]);
 
@@ -1401,9 +1420,10 @@ router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.sin
 
         // Add credits to beneficiary wallet
         await client.query(`
-          UPDATE user_credits 
-          SET balance = balance + $1 
-          WHERE user_id = $2 AND credit_type = $3 AND destination = $4
+          INSERT INTO user_credits (user_id, credit_type, destination, balance)
+          VALUES ($2, $3, $4, $1)
+          ON CONFLICT (user_id, credit_type, destination)
+          DO UPDATE SET balance = user_credits.balance + EXCLUDED.balance
         `, [refundCredits, refundRecipientId, campaign.campaign_type, campaign.destination]);
 
         const refundReason = isRoutedToReseller
@@ -1426,9 +1446,10 @@ router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.sin
       if (deltaCredits > 0) {
         // More failed than previously: Grant additional refund
         await client.query(`
-          UPDATE user_credits 
-          SET balance = balance + $1 
-          WHERE user_id = $2 AND credit_type = $3 AND destination = $4
+          INSERT INTO user_credits (user_id, credit_type, destination, balance)
+          VALUES ($2, $3, $4, $1)
+          ON CONFLICT (user_id, credit_type, destination)
+          DO UPDATE SET balance = user_credits.balance + EXCLUDED.balance
         `, [deltaCredits, refundRecipientId, campaign.campaign_type, campaign.destination]);
 
         const refundReason = isRoutedToReseller
@@ -1740,7 +1761,7 @@ router.post('/operator/bulk-status', authenticate, requireRoles('admin', 'resell
         `SELECT c.id FROM campaigns c
          JOIN users u ON c.user_id = u.id
          WHERE c.id = ANY($1::int[]) AND c.status = $2 AND (c.user_id = $3 OR u.reseller_id = $3)
-         FOR UPDATE`,
+         FOR UPDATE OF c`,
         [ids, expectedCurrentStatus, req.user.id]
       );
     } else {

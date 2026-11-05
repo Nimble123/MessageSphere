@@ -343,7 +343,7 @@ router.post('/requests/:id/record-payment', authenticate, async (req, res) => {
       FROM credit_requests cr
       JOIN users u ON cr.user_id = u.id
       WHERE cr.id = $1
-      FOR UPDATE
+      FOR UPDATE OF cr
     `, [reqId]);
 
     if (orderRes.rows.length === 0) {
