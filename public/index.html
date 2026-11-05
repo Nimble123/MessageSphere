@@ -2003,6 +2003,7 @@
     <div class="auth-banner">
       <div class="auth-brand">
         <div class="brand-badge"><i data-lucide="zap" style="width:22px;height:22px;"></i></div>
+        <img class="brand-logo" alt="Brand Logo" style="display:none;max-height:40px;max-width:140px;object-fit:contain;" />
         <span>MessageSphere</span>
       </div>
       <div class="auth-hero">
@@ -2049,6 +2050,7 @@
     <aside class="app-sidebar">
       <div class="sidebar-header">
         <div class="brand-badge"><i data-lucide="zap" style="width:20px;height:20px;"></i></div>
+        <img class="brand-logo" alt="Brand Logo" style="display:none;max-height:36px;max-width:120px;object-fit:contain;" />
         <span class="brand-title">MessageSphere</span>
       </div>
       
@@ -3913,6 +3915,36 @@
           <div class="card">
             <div class="card-header"><div><div class="card-title">Immutable Audit Log</div><div class="card-desc">Latest 100 Super Admin operational events.</div></div><button id="btn-refresh-audit" class="btn-action btn-action-secondary">Refresh</button></div>
             <div class="card-body" style="padding:0;"><div class="table-container"><table><thead><tr><th>Time</th><th>Admin</th><th>Action</th><th>Entity</th><th>Reason / Details</th></tr></thead><tbody id="audit-events-tbody"><tr><td colspan="5" style="text-align:center;padding:24px;">Open Operations Audit to load events.</td></tr></tbody></table></div></div>
+          </div>
+          <div class="card" style="margin-top:20px;">
+            <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+              <div>
+                <div class="card-title">Data Retention Policies & Purge Worker</div>
+                <div class="card-desc">Automatic 24-hour cleanup cycle. Configure retention lifespan or run immediate purge.</div>
+              </div>
+              <button id="btn-purge-retention-now" class="btn-action btn-action-danger" style="display:inline-flex;align-items:center;gap:6px;">
+                <i data-lucide="trash-2" style="width:14px;height:14px;"></i> Purge Expired Data Now
+              </button>
+            </div>
+            <div class="card-body">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:16px;">
+                <div class="form-group" style="margin-bottom:0;">
+                  <label for="retention-audit-logs">Audit Log Retention (Days)</label>
+                  <input type="number" id="retention-audit-logs" class="form-input" min="30" max="3650" value="90">
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label for="retention-delivery-reports">Delivery Reports Retention (Days)</label>
+                  <input type="number" id="retention-delivery-reports" class="form-input" min="30" max="3650" value="60">
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label for="retention-campaign-data">Completed Campaigns Retention (Days)</label>
+                  <input type="number" id="retention-campaign-data" class="form-input" min="30" max="3650" value="180">
+                </div>
+              </div>
+              <div style="margin-top:16px;display:flex;justify-content:flex-end;">
+                <button id="btn-save-retention-settings" class="btn-primary" style="padding:8px 18px;font-size:0.88rem;">Save Retention Policies</button>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -7599,10 +7631,10 @@
     </div>
   </div>
 
-  <!-- ENTERPRISE LIBRARIES: SHEETJS, LUCIDE ICONS & CHART.JS -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- ENTERPRISE LIBRARIES: SHEETJS, PINNED LUCIDE ICONS & CHART.JS (WITH SRI HASHES) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js" integrity="sha384-tTkFttkBclaU1cloKwOi9xk3pbao3VZxTjLNBt8iFABWDBQibbAbWpVmO28zMuxq" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
   <script src="app.js?v=1793830000000"></script>

@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const { initDB } = require('./db');
 const { initScheduler } = require('./services/scheduler');
 require('dotenv').config();
@@ -52,8 +53,37 @@ app.use((req, res, next) => {
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
-// Uploads deliberately have no public static route. Campaign assets are served only
-// through the authenticated, campaign-authorized API route.
+
+// Safe inline delivery for uploaded template media assets
+app.get('/uploads/:filename', (req, res) => {
+  const filename = path.basename(req.params.filename);
+  if (!filename || filename !== req.params.filename) {
+    return res.status(400).json({ error: 'Invalid file name' });
+  }
+  const filePath = path.join(__dirname, 'uploads', filename);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+
+  const ext = path.extname(filename).toLowerCase();
+  const mimeTypes = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.svg': 'image/svg+xml',
+    '.mp4': 'video/mp4',
+    '.mov': 'video/quicktime',
+    '.webm': 'video/webm',
+    '.pdf': 'application/pdf'
+  };
+
+  const contentType = mimeTypes[ext] || 'application/octet-stream';
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Content-Disposition', 'inline');
+  return res.sendFile(filePath);
+});
 
 // API Routes
 app.use('/api/auth', require('./routes/auth'));

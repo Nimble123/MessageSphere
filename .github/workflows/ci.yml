@@ -1,0 +1,29 @@
+name: MessageSphere Production CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Lint & Security Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20.x
+
+    - name: Install Dependencies
+      run: npm ci
+
+    - name: Run Syntax Verification
+      run: node -c server.js db.js middleware/*.js routes/*.js services/*.js public/app.js
+
+    - name: Run Automated Security Test Suite
+      run: npm test

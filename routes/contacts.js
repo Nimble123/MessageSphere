@@ -180,6 +180,12 @@ router.post('/groups/merge', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Source or target group not found or unauthorized' });
     }
 
+    // Cross-tenant data isolation: cannot merge groups belonging to two different client accounts
+    if (srcCheck.user_id !== tgtCheck.user_id) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Permission denied: Cannot merge contact groups belonging to different client accounts.' });
+    }
+
     const tgtUserId = tgtCheck.user_id;
 
     const srcContacts = await client.query('SELECT phone_number, name FROM contacts WHERE group_id = $1', [srcId]);
@@ -211,6 +217,7 @@ router.post('/groups/merge', authenticate, async (req, res) => {
       await client.query(`
         INSERT INTO contacts (group_id, user_id, phone_number, name)
         VALUES ${placeholders.join(', ')}
+        ON CONFLICT (group_id, phone_number) DO NOTHING
       `, params);
     }
 
@@ -308,6 +315,16 @@ router.get('/groups/:id/contacts', authenticate, async (req, res) => {
     }
 
     const searchQuery = (req.query.search || '').trim().toLowerCase();
+    const countSql = `SELECT COUNT(*) as count FROM contacts WHERE group_id = $1 ${searchQuery ? 'AND (LOWER(phone_number) LIKE $2 OR LOWER(name) LIKE $2)' : ''}`;
+    const countParams = [groupId];
+    if (searchQuery) countParams.push(`%${searchQuery}%`);
+    const countRes = await query(countSql, countParams);
+    const totalCount = parseInt(countRes.rows[0]?.count || 0, 10);
+
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = req.query.all === 'true' ? 100000 : Math.min(parseInt(req.query.limit, 10) || 5000, 50000);
+    const offset = (page - 1) * limit;
+
     let sql = 'SELECT * FROM contacts WHERE group_id = $1';
     const params = [groupId];
 
@@ -315,9 +332,21 @@ router.get('/groups/:id/contacts', authenticate, async (req, res) => {
       sql += ' AND (LOWER(phone_number) LIKE $2 OR LOWER(name) LIKE $2)';
       params.push(`%${searchQuery}%`);
     }
-    sql += ' ORDER BY id ASC LIMIT 5000';
+    sql += ` ORDER BY id ASC LIMIT ${limit} OFFSET ${offset}`;
 
     const result = await query(sql, params);
+    res.setHeader('X-Total-Count', totalCount);
+    res.setHeader('Access-Control-Expose-Headers', 'X-Total-Count');
+
+    if (req.query.paginate === 'true') {
+      return res.json({
+        contacts: result.rows,
+        total: totalCount,
+        page,
+        limit,
+        totalPages: Math.ceil(totalCount / limit)
+      });
+    }
     return res.json(result.rows);
   } catch (err) {
     console.error('List contacts error:', err);
@@ -476,6 +505,7 @@ router.post('/groups/:id/bulk-numbers', authenticate, async (req, res) => {
       await client.query(`
         INSERT INTO contacts (group_id, user_id, phone_number, name)
         VALUES ${placeholders.join(', ')}
+        ON CONFLICT (group_id, phone_number) DO NOTHING
       `, params);
     }
 
@@ -496,91 +526,7 @@ router.post('/groups/:id/bulk-numbers', authenticate, async (req, res) => {
   }
 });
 
-// POST /api/contacts/groups/:id/import - Bulk import contacts from file or array
-router.post('/groups/:id/import', authenticate, async (req, res) => {
-  const groupId = parseInt(req.params.id, 10);
-  const { contacts: rawList } = req.body;
 
-  if (!Array.isArray(rawList) || rawList.length === 0) {
-    return res.status(400).json({ error: 'No contacts provided' });
-  }
-  if (rawList.length > 100000) {
-    return res.status(400).json({ error: 'A contact import may contain at most 100,000 contacts' });
-  }
-
-  const client = await getClient();
-  try {
-    await client.query('BEGIN');
-
-    const groupCheck = await checkGroupAccess(groupId, req.user, client);
-    if (!groupCheck) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Contact group not found or unauthorized' });
-    }
-
-    const existingRows = await client.query('SELECT phone_number FROM contacts WHERE group_id = $1', [groupId]);
-    const existingSet = new Set(existingRows.rows.map(r => r.phone_number));
-
-    const seenInBatch = new Set();
-    const validList = [];
-    let duplicatesSkipped = 0;
-    let invalidSkipped = 0;
-
-    for (const item of rawList) {
-      const rawPhone = (typeof item === 'object' && item !== null) ? (item.phone || item.phone_number) : item;
-      const rawName = (typeof item === 'object' && item !== null) ? (item.name || '') : '';
-      const phone = normalizePhone(rawPhone);
-
-      if (!phone || phone.length < 10 || phone.length > 15) {
-        invalidSkipped++;
-        continue;
-      }
-      if (existingSet.has(phone) || seenInBatch.has(phone)) {
-        duplicatesSkipped++;
-        continue;
-      }
-      seenInBatch.add(phone);
-      validList.push({
-        phone,
-        name: String(rawName || '').trim().slice(0, 255),
-        custom_fields: (item && item.custom_fields) || {}
-      });
-    }
-
-    const BATCH_SIZE = 1000;
-    for (let i = 0; i < validList.length; i += BATCH_SIZE) {
-      const chunk = validList.slice(i, i + BATCH_SIZE);
-      const placeholders = [];
-      const params = [groupId, groupCheck.user_id];
-
-      chunk.forEach((item, idx) => {
-        const base = idx * 3 + 3;
-        placeholders.push(`($1, $2, $${base}, $${base + 1}, $${base + 2})`);
-        params.push(item.phone, item.name, JSON.stringify(item.custom_fields));
-      });
-
-      const insertSql = `
-        INSERT INTO contacts (group_id, user_id, phone_number, name, custom_fields)
-        VALUES ${placeholders.join(', ')}
-      `;
-      await client.query(insertSql, params);
-    }
-
-    await client.query('COMMIT');
-    return res.json({
-      message: `Successfully imported ${validList.length} contacts!`,
-      addedCount: validList.length,
-      duplicatesSkipped,
-      invalidSkipped
-    });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('Import contacts error:', err);
-    return res.status(500).json({ error: 'Failed to import contacts' });
-  } finally {
-    client.release();
-  }
-});
 
 // GET /api/contacts/blacklist - List blacklisted numbers (Role-aware)
 router.get('/blacklist', authenticate, async (req, res) => {

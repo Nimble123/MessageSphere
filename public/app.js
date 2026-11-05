@@ -5754,7 +5754,10 @@ window.impersonateUserAccount = async function(targetId, targetEmail) {
     }
 
     // Save current admin session token & user info in sessionStorage
-    const currentToken = getToken();
+    const currentToken = getAuthToken();
+    if (!currentToken) {
+      throw new Error('No active session token found to save.');
+    }
     sessionStorage.setItem('ms_impersonator_token', currentToken);
     sessionStorage.setItem('ms_impersonator_info', JSON.stringify({
       id: currentUser.id,
@@ -5763,7 +5766,7 @@ window.impersonateUserAccount = async function(targetId, targetEmail) {
     }));
 
     // Set target user's token and user info
-    setToken(data.token);
+    setAuthToken(data.token);
     if (data.user) {
       localStorage.setItem('user', JSON.stringify(data.user));
     }
@@ -5779,8 +5782,10 @@ window.impersonateUserAccount = async function(targetId, targetEmail) {
 
 window.exitImpersonation = function() {
   const origToken = sessionStorage.getItem('ms_impersonator_token');
-  if (!origToken) {
-    showToast('warning', 'Session Not Found', 'No original admin session token found in session storage.');
+  if (!origToken || origToken === 'null' || origToken === 'undefined' || origToken.trim() === '') {
+    sessionStorage.removeItem('ms_impersonator_token');
+    sessionStorage.removeItem('ms_impersonator_info');
+    showToast('warning', 'Session Not Found', 'No valid original admin session token found in session storage.');
     return;
   }
 
@@ -5789,7 +5794,7 @@ window.exitImpersonation = function() {
   }
 
   // Restore admin token
-  setToken(origToken);
+  setAuthToken(origToken);
   sessionStorage.removeItem('ms_impersonator_token');
   sessionStorage.removeItem('ms_impersonator_info');
   localStorage.removeItem('user');
@@ -8815,7 +8820,7 @@ if (btnModalSaveTemplate) {
       const res = await fetch('/api/templates', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${getToken()}`
+          'Authorization': `Bearer ${getAuthToken()}`
         },
         body: formData
       });
@@ -8934,7 +8939,7 @@ if (btnModalUpdateTemplate) {
       const res = await fetch(`/api/templates/${id}`, {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${getToken()}`
+          'Authorization': `Bearer ${getAuthToken()}`
         },
         body: formData
       });
@@ -9189,7 +9194,7 @@ window.exportTemplatesCsv = async function() {
   try {
     const res = await fetch('/api/templates/export/csv', {
       headers: {
-        'Authorization': `Bearer ${getToken()}`
+        'Authorization': `Bearer ${getAuthToken()}`
       }
     });
     if (!res.ok) throw new Error('Failed to export templates');
@@ -10479,6 +10484,64 @@ async function loadOperationsAudit() {
   } catch (err) {
     if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:24px;color:#dc2626;">${escapeHtml(err.message)}</td></tr>`;
   }
+  loadRetentionSettings();
+}
+
+async function loadRetentionSettings() {
+  if (!currentUser || currentUser.role !== 'admin') return;
+  try {
+    const list = await apiFetch('/audit/retention');
+    if (!Array.isArray(list)) return;
+    list.forEach(item => {
+      if (item.setting_key === 'audit_logs') {
+        const el = document.getElementById('retention-audit-logs');
+        if (el) el.value = item.retention_days;
+      } else if (item.setting_key === 'delivery_reports') {
+        const el = document.getElementById('retention-delivery-reports');
+        if (el) el.value = item.retention_days;
+      } else if (item.setting_key === 'campaign_data') {
+        const el = document.getElementById('retention-campaign-data');
+        if (el) el.value = item.retention_days;
+      }
+    });
+  } catch (_) {}
+}
+
+const btnSaveRetention = document.getElementById('btn-save-retention-settings');
+if (btnSaveRetention) {
+  btnSaveRetention.addEventListener('click', async () => {
+    try {
+      const auditDays = parseInt(document.getElementById('retention-audit-logs')?.value, 10);
+      const reportDays = parseInt(document.getElementById('retention-delivery-reports')?.value, 10);
+      const campDays = parseInt(document.getElementById('retention-campaign-data')?.value, 10);
+
+      await Promise.all([
+        apiFetch('/audit/retention/audit_logs', { method: 'PATCH', body: JSON.stringify({ retention_days: auditDays }) }),
+        apiFetch('/audit/retention/delivery_reports', { method: 'PATCH', body: JSON.stringify({ retention_days: reportDays }) }),
+        apiFetch('/audit/retention/campaign_data', { method: 'PATCH', body: JSON.stringify({ retention_days: campDays }) })
+      ]);
+      showToast('success', 'Retention Policies Saved', 'Data retention schedules updated successfully.');
+    } catch (err) {
+      showToast('error', 'Save Failed', err.message);
+    }
+  });
+}
+
+const btnPurgeRetention = document.getElementById('btn-purge-retention-now');
+if (btnPurgeRetention) {
+  btnPurgeRetention.addEventListener('click', async () => {
+    if (!confirm('Run data retention purge now?\n\nThis will permanently delete audit logs, delivery reports, and completed/rejected campaigns older than your configured retention policy.')) {
+      return;
+    }
+    try {
+      const res = await apiFetch('/audit/retention/purge-now', { method: 'POST' });
+      const p = res.purged || {};
+      showToast('success', 'Purge Complete', `Cleaned: ${p.audit_logs || 0} audit events, ${p.delivery_reports || 0} reports, ${p.campaigns || 0} campaigns.`);
+      loadOperationsAudit();
+    } catch (err) {
+      showToast('error', 'Purge Failed', err.message);
+    }
+  });
 }
 
 const btnRefreshAudit = document.getElementById('btn-refresh-audit');
@@ -10490,14 +10553,27 @@ if (btnRefreshAudit) btnRefreshAudit.addEventListener('click', loadOperationsAud
 function applyBrandProfile(profile) {
   if (!profile) return;
   document.documentElement.style.setProperty('--primary', profile.accent_color || '#4f46e5');
-  document.title = `${profile.brand_name} | Campaign Operations`;
-  document.querySelectorAll('.brand-title').forEach(el => { el.textContent = profile.brand_name; });
+  document.title = `${profile.brand_name || 'MessageSphere'} | Campaign Operations`;
+  document.querySelectorAll('.brand-title').forEach(el => { el.textContent = profile.brand_name || 'MessageSphere'; });
   const loginBrand = document.querySelector('#auth-screen .auth-brand span');
-  if (loginBrand) loginBrand.textContent = profile.brand_name;
+  if (loginBrand) loginBrand.textContent = profile.brand_name || 'MessageSphere';
   if (profile.logo_url) {
-    document.querySelectorAll('.brand-logo, #auth-screen .auth-brand img').forEach(img => {
-      img.src = profile.logo_url;
-      img.style.display = 'inline-block';
+    const safeLogo = sanitizeUrl(profile.logo_url);
+    if (safeLogo !== '#') {
+      document.querySelectorAll('.brand-logo').forEach(img => {
+        img.src = safeLogo;
+        img.style.display = 'inline-block';
+      });
+      document.querySelectorAll('.brand-badge').forEach(badge => {
+        badge.style.display = 'none';
+      });
+    }
+  } else {
+    document.querySelectorAll('.brand-logo').forEach(img => {
+      img.style.display = 'none';
+    });
+    document.querySelectorAll('.brand-badge').forEach(badge => {
+      badge.style.display = 'flex';
     });
   }
 }

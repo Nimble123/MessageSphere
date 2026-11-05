@@ -731,25 +731,6 @@ router.post('/:id/duplicate', authenticate, async (req, res) => {
   }
 });
 
-// PATCH /api/templates/:id/status - Toggle template active / approved status (Admin & Reseller for clients)
-router.patch('/:id/status', authenticate, async (req, res) => {
-  const templateId = parseInt(req.params.id, 10);
-  const isApproved = req.body.is_approved === true || req.body.status === 'Approved';
-
-  try {
-    const existing = await checkTemplateAccess(templateId, req.user);
-    if (!existing) return res.status(404).json({ error: 'Template not found or unauthorized' });
-
-    const result = await query(`
-      UPDATE templates SET is_approved = $1 WHERE id = $2 RETURNING *
-    `, [isApproved, templateId]);
-
-    return res.json({ message: `Template ${isApproved ? 'activated' : 'deactivated'} successfully`, template: result.rows[0] });
-  } catch (err) {
-    console.error('Update template status error:', err);
-    return res.status(500).json({ error: 'Failed to update template status' });
-  }
-});
 
 // DELETE /api/templates/:id - Delete template
 router.delete('/:id', authenticate, async (req, res) => {

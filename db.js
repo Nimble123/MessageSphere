@@ -145,7 +145,12 @@ async function initDB() {
       );
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_contacts_group ON contacts(group_id);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_contacts_group_phone ON contacts(group_id, phone_number);`);
+    await client.query(`
+      DELETE FROM contacts a USING contacts b 
+      WHERE a.id < b.id AND a.group_id = b.group_id AND a.phone_number = b.phone_number;
+    `);
+    await client.query(`DROP INDEX IF EXISTS idx_contacts_group_phone;`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_group_phone ON contacts(group_id, phone_number);`);
 
     // Immutable operational log for the intentionally manual dispatch workflow.
     await client.query(`
@@ -299,8 +304,12 @@ async function initDB() {
         amount_inr NUMERIC(10, 2) DEFAULT 0,
         utr_number VARCHAR(100),
         status VARCHAR(20) DEFAULT 'Pending',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
+    `);
+    await client.query(`
+      ALTER TABLE credit_requests 
+        ALTER COLUMN created_at TYPE TIMESTAMP WITH TIME ZONE;
     `);
     await client.query(`
       ALTER TABLE credit_requests 
