@@ -369,7 +369,6 @@ window.switchView = function(viewId) {
       'view-campaigns': { title: 'WhatsApp Campaigns & Reports', breadcrumb: 'MessageSphere / WhatsApp / Campaigns' },
       'view-contacts': { title: 'Phonebook & DND Blacklist', breadcrumb: 'MessageSphere / Audience / Phonebook' },
       'view-templates': { title: 'Message Templates', breadcrumb: 'MessageSphere / Content / Templates' },
-      'view-headers': { title: 'Sender Headers (Alpha IDs)', breadcrumb: 'MessageSphere / Gateways / Headers' },
       'view-wallet': { title: 'Credit Wallets & Ledger Statement', breadcrumb: 'MessageSphere / Billing / Passbook' },
       'view-billing': { title: 'Top-up Requests & Orders', breadcrumb: 'MessageSphere / Billing / Orders' },
       'view-users': { title: 'User & Reseller Management', breadcrumb: 'MessageSphere / Administration / Users' },
@@ -413,7 +412,6 @@ window.switchView = function(viewId) {
   if (viewId === 'view-settings') updateSettingsView();
   if (viewId === 'view-contacts') { loadContactGroups(); loadBlacklist(); }
   if (viewId === 'view-templates') loadTemplates();
-  if (viewId === 'view-headers') loadHeaders();
   if (viewId === 'view-billing') loadBillingOrders();
   if (viewId === 'view-operations') loadOperationsAudit();
   if (viewId === 'view-resellers') loadResellerNetwork();
@@ -9747,128 +9745,6 @@ window.deleteTemplate = function(id) {
 };
 
 // ==========================================
-// ENTERPRISE MODULE 3: SENDER HEADERS (ALPHA IDS)
-// ==========================================
-const headersTbody = document.getElementById('headers-tbody');
-const modalRequestHeader = document.getElementById('modal-request-header');
-const btnRequestHeaderModal = document.getElementById('btn-request-header-modal');
-const btnModalSaveHeader = document.getElementById('btn-modal-save-header');
-const modalHeaderName = document.getElementById('modal-header-name');
-const modalHeaderEntity = document.getElementById('modal-header-entity');
-const modalHeaderType = document.getElementById('modal-header-type');
-
-if (btnRequestHeaderModal) {
-  btnRequestHeaderModal.addEventListener('click', () => {
-    modalHeaderName.value = '';
-    modalHeaderEntity.value = '';
-    modalRequestHeader.style.display = 'flex';
-  });
-}
-
-if (btnModalSaveHeader) {
-  btnModalSaveHeader.addEventListener('click', async () => {
-    const sender_id = modalHeaderName.value.trim().toUpperCase();
-    const entity_name = modalHeaderEntity.value.trim();
-    const header_type = modalHeaderType.value;
-    if (sender_id.length !== 6) {
-      showToast('warning', 'Header Length', 'Sender ID must be exactly 6 characters (e.g. MSGSPH).');
-      return;
-    }
-    if (!entity_name) {
-      showToast('warning', 'Entity Required', 'Please enter your registered brand or company name.');
-      return;
-    }
-    try {
-      await apiFetch('/headers', {
-        method: 'POST',
-        body: JSON.stringify({ sender_id, entity_name, header_type })
-      });
-      showToast('success', 'Header Submitted', `Header "${sender_id}" submitted for approval.`);
-      modalRequestHeader.style.display = 'none';
-      loadHeaders();
-    } catch (err) {
-      showToast('error', 'Error', err.message);
-    }
-  });
-}
-
-async function loadHeaders() {
-  if (!headersTbody) return;
-  try {
-    userHeaders = await apiFetch('/headers');
-    if (userHeaders.length === 0) {
-      headersTbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--slate-400);">No sender headers requested yet.</td></tr>`;
-      return;
-    }
-    const isAdmin = currentUser && currentUser.role === 'admin';
-    headersTbody.innerHTML = userHeaders.map(h => {
-      const hStatus = (h.status || 'Pending').toLowerCase();
-      let badgeClass = 'badge-submitted';
-      if (hStatus === 'approved') badgeClass = 'badge-updated';
-      if (hStatus === 'rejected') badgeClass = 'badge-rejected';
-
-      let adminBtns = '-';
-      if (isAdmin) {
-        if (hStatus === 'pending') {
-          adminBtns = `
-            <button class="btn-action btn-action-success" onclick="reviewHeader(${h.id}, 'Approved')" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;font-size:0.75rem;"><i data-lucide="check" style="width:12px;height:12px;"></i> Approve</button>
-            <button class="btn-action btn-action-danger" onclick="reviewHeader(${h.id}, 'Rejected')" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;font-size:0.75rem;"><i data-lucide="x" style="width:12px;height:12px;"></i> Reject</button>
-          `;
-        } else if (hStatus === 'approved') {
-          adminBtns = `
-            <button class="btn-action btn-action-secondary" onclick="reviewHeader(${h.id}, 'Rejected')" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;font-size:0.75rem;"><i data-lucide="x" style="width:12px;height:12px;"></i> Revoke</button>
-          `;
-        } else if (hStatus === 'rejected') {
-          adminBtns = `
-            <button class="btn-action btn-action-success" onclick="reviewHeader(${h.id}, 'Approved')" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;font-size:0.75rem;"><i data-lucide="check" style="width:12px;height:12px;"></i> Re-Approve</button>
-          `;
-        }
-      }
-      return `
-        <tr>
-          <td><strong style="letter-spacing:1px;font-family:monospace;font-size:1rem;">${escapeHtml(h.header_name || h.sender_id)}</strong></td>
-          <td>${escapeHtml(h.entity_id || h.entity_name || '-')}</td>
-          <td><span class="status-badge badge-submitted">${escapeHtml(h.header_type || 'promotional')}</span></td>
-          <td><span class="status-badge ${badgeClass}">${(h.status || 'Pending').toUpperCase()}</span></td>
-          <td><span style="font-size:0.8rem;color:var(--slate-500);">${new Date(h.created_at).toLocaleDateString()}</span></td>
-          <td>${adminBtns}</td>
-        </tr>
-      `;
-    }).join('');
-    if (window.lucide) lucide.createIcons({ root: headersTbody });
-  } catch (err) {
-    headersTbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:red;padding:20px;">Failed to load headers: ${err.message}</td></tr>`;
-  }
-}
-
-window.reviewHeader = function(id, status) {
-  const isApprove = status === 'Approved';
-  window.openActionDialog({
-    title: `${isApprove ? 'Approve' : 'Reject'} Sender Header #${id}`,
-    message: isApprove
-      ? 'Approve this 6-character Alpha Sender Header for promotional and transactional messaging routes.'
-      : 'Reject or revoke this sender header.',
-    icon: isApprove ? 'check-circle' : 'x-circle',
-    iconColor: isApprove ? '#059669' : '#dc2626',
-    iconBg: isApprove ? '#dcfce7' : '#fee2e2',
-    confirmText: isApprove ? 'Approve Header' : 'Reject / Revoke',
-    confirmClass: isApprove ? 'btn-action-success' : 'btn-action-danger',
-    onConfirm: async () => {
-      try {
-        await apiFetch(`/headers/${id}/status`, {
-          method: 'PATCH',
-          body: JSON.stringify({ status })
-        });
-        showToast('success', 'Header Updated', `Sender ID marked as ${status}.`);
-        loadHeaders();
-      } catch (err) {
-        showToast('error', 'Update Failed', err.message);
-      }
-    }
-  });
-};
-
-// ==========================================
 // ENTERPRISE MODULE 4: BILLING ORDERS & TOP-UPS
 // ==========================================
 const billingOrdersTbody = document.getElementById('billing-orders-tbody');
@@ -10979,28 +10855,8 @@ if (brandForm) brandForm.addEventListener('submit', async event => {
 // ==========================================
 // COMPOSER SELECTORS INTEGRATION
 // ==========================================
-window.refreshTargetSenderHeaders = async function(targetUser) {
-  const headerSelect = document.getElementById('composer-header-select');
-  if (!headerSelect || !currentUser) return;
-  try {
-    const headers = await apiFetch('/headers').catch(() => []);
-    const approved = headers.filter(h => (h.status || '').toLowerCase() === 'approved');
-    const targetId = targetUser ? targetUser.id : currentUser.id;
-    const filtered = approved.filter(h => h.user_id === targetId || h.user_id === currentUser.id);
-    const prevVal = headerSelect.value;
-    headerSelect.innerHTML = '<option value="">Standard Shared Route (Default)</option>' +
-      filtered.map(h => `<option value="${escapeHtml(h.header_name || h.sender_id)}">${escapeHtml(h.header_name || h.sender_id)} - ${escapeHtml(h.entity_id || h.entity_name || 'Verified')}</option>`).join('');
-    if (prevVal && filtered.some(h => (h.header_name || h.sender_id) === prevVal)) {
-      headerSelect.value = prevVal;
-    }
-  } catch (e) {
-    console.error('Error refreshing target sender headers:', e);
-  }
-};
-
 async function populateComposerSelectors() {
   const templateSelect = document.getElementById('composer-template-select');
-  const headerSelect = document.getElementById('composer-header-select');
   const groupSelect = document.getElementById('composer-contact-group-select');
 
   try {
@@ -11061,15 +10917,7 @@ async function populateComposerSelectors() {
       };
     }
 
-    // 2. Headers
-    if (headerSelect) {
-      const headers = await apiFetch('/headers').catch(() => []);
-      const approved = headers.filter(h => (h.status || '').toLowerCase() === 'approved');
-      headerSelect.innerHTML = '<option value="">Standard Shared Route (Default)</option>' +
-        approved.map(h => `<option value="${escapeHtml(h.header_name || h.sender_id)}">${escapeHtml(h.header_name || h.sender_id)} - ${escapeHtml(h.entity_id || h.entity_name || 'Verified')}</option>`).join('');
-    }
-
-    // 3. Contact Groups
+    // 2. Contact Groups
     if (groupSelect) {
       const groups = await apiFetch('/contacts/groups').catch(() => []);
       const prevVal = groupSelect.value;

@@ -59,7 +59,6 @@ app.use('/api/credits', require('./routes/credits'));
 app.use('/api/contacts', require('./routes/contacts'));
 app.use('/api/templates', require('./routes/templates'));
 app.use('/api/billing', require('./routes/billing'));
-app.use('/api/headers', require('./routes/headers'));
 app.use('/api/audit', require('./routes/audit'));
 app.use('/api/resellers', require('./routes/resellers'));
 app.use('/api/reports', require('./routes/reports'));
