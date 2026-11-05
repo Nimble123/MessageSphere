@@ -225,7 +225,12 @@ router.post('/requests', authenticate, async (req, res) => {
   }
 
   const calculatedAmount = Number((requestedQty * userRate).toFixed(4));
-  const receiptUrl = (req.body.receipt_url || '').trim() || null;
+  let receiptUrl = (req.body.receipt_url || '').trim() || null;
+  if (receiptUrl) {
+    if (!/^(https?:\/\/[^\s<>"'`]+|\/uploads\/[a-zA-Z0-9._-]+)$/i.test(receiptUrl)) {
+      return res.status(400).json({ error: 'Invalid receipt URL format. Only HTTP, HTTPS, or uploaded receipt paths are accepted.' });
+    }
+  }
   const paymentStatus = 'Unpaid';
   const paidAmount = 0.00;
 
@@ -276,6 +281,12 @@ const approveHandler = async (req, res) => {
     }
 
     // Role-based permission & quota checks:
+    // A user cannot approve their own credit request
+    if (item.user_id === req.user.id) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Permission denied: You cannot approve your own credit request.' });
+    }
+
     // If reseller is approving, the user MUST be under this reseller
     if (req.user.role === 'reseller') {
       if (item.reseller_id !== req.user.id) {
@@ -446,6 +457,12 @@ router.post('/requests/:id/record-payment', authenticate, requireRoles('admin', 
     }
 
     const order = orderRes.rows[0];
+
+    // Permission check: A user cannot record payment on or settle their own invoice
+    if (order.user_id === req.user.id) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Permission denied: You cannot record payment or settle your own invoice.' });
+    }
 
     // Permission check: Admin can record payment for all; Reseller can ONLY record for their downstream clients
     if (req.user.role !== 'admin') {

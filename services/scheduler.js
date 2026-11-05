@@ -31,23 +31,22 @@ async function checkScheduledCampaigns() {
         await client.query('BEGIN');
         const updateRes = await client.query(`
           UPDATE campaigns 
-          SET scheduled_triggered = TRUE, 
-              status = 'Approved'
+          SET scheduled_triggered = TRUE
           WHERE id = $1 AND status = 'Submitted'
         `, [c.id]);
 
         if (updateRes.rowCount > 0) {
           await logAudit(client, {
-            entityType: 'campaign', entityId: c.id, action: 'scheduled_campaign_released_to_manual_queue',
-            details: { scheduledAt: c.scheduled_at, manualDispatch: true }
+            entityType: 'campaign', entityId: c.id, action: 'scheduled_campaign_time_reached',
+            details: { scheduledAt: c.scheduled_at, manualReviewRequired: true }
           });
           await client.query(`
             INSERT INTO admin_reminders (campaign_id, title, message, scheduled_for, reminder_type)
             VALUES ($1, $2, $3, $4, $5)
           `, [
             c.id,
-            `⚡ Dispatch Ready: Campaign #${c.id} in Queue`,
-            `Campaign #${c.id} ("${c.title}") [${c.owner_email}] reached its scheduled dispatch time and is now waiting in the Operator Dispatch Queue.`,
+            `⚡ Scheduled Time Reached: Campaign #${c.id} Ready for Review`,
+            `Campaign #${c.id} ("${c.title}") [${c.owner_email}] reached its scheduled dispatch time and is awaiting Super Admin review in the queue.`,
             c.scheduled_at,
             'scheduled_dispatch_ready'
           ]);

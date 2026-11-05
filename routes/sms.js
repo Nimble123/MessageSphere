@@ -399,12 +399,13 @@ router.post('/', authenticate, async (req, res) => {
   let scheduledDate = null;
   if (scheduled_at) {
     const parsedDate = new Date(scheduled_at);
-    if (!isNaN(parsedDate.getTime())) {
-      if (parsedDate <= new Date()) {
-        return res.status(400).json({ error: 'scheduled_at must be a future date/time.' });
-      }
-      scheduledDate = parsedDate;
+    if (isNaN(parsedDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid scheduled_at date format. Please provide a valid ISO date/time string.' });
     }
+    if (parsedDate <= new Date()) {
+      return res.status(400).json({ error: 'scheduled_at must be a future date/time.' });
+    }
+    scheduledDate = parsedDate;
   }
 
   // ------------------------------------------------------------------
@@ -656,12 +657,12 @@ router.get('/metrics', authenticate, async (req, res) => {
           COALESCE(SUM(total_numbers), 0)                 AS total_messages
         FROM campaigns
         WHERE channel_type = 'sms'
+          AND status != 'Rejected'
       `;
       creditsSql = `
-        SELECT COALESCE(SUM(amount), 0) AS credits_used
+        SELECT COALESCE(SUM(CASE WHEN direction = 'debit' THEN amount WHEN direction = 'refund' THEN -amount ELSE 0 END), 0) AS credits_used
         FROM credit_transactions
         WHERE credit_type IN ('gsm_sms', 'normal')
-          AND direction = 'debit'
       `;
     } else if (req.user.role === 'reseller') {
       campaignsSql = `
@@ -671,16 +672,16 @@ router.get('/metrics', authenticate, async (req, res) => {
         FROM campaigns c
         JOIN users u ON c.user_id = u.id
         WHERE c.channel_type = 'sms'
+          AND c.status != 'Rejected'
           AND (c.user_id = $1 OR u.reseller_id = $1)
       `;
       campaignsParams = [req.user.id];
 
       creditsSql = `
-        SELECT COALESCE(SUM(ct.amount), 0) AS credits_used
+        SELECT COALESCE(SUM(CASE WHEN ct.direction = 'debit' THEN ct.amount WHEN ct.direction = 'refund' THEN -ct.amount ELSE 0 END), 0) AS credits_used
         FROM credit_transactions ct
         JOIN users u ON ct.to_user_id = u.id
         WHERE ct.credit_type IN ('gsm_sms', 'normal')
-          AND ct.direction = 'debit'
           AND (ct.to_user_id = $1 OR u.reseller_id = $1)
       `;
       creditsParams = [req.user.id];
@@ -691,15 +692,15 @@ router.get('/metrics', authenticate, async (req, res) => {
           COALESCE(SUM(total_numbers), 0)                 AS total_messages
         FROM campaigns
         WHERE channel_type = 'sms'
+          AND status != 'Rejected'
           AND user_id = $1
       `;
       campaignsParams = [req.user.id];
 
       creditsSql = `
-        SELECT COALESCE(SUM(amount), 0) AS credits_used
+        SELECT COALESCE(SUM(CASE WHEN direction = 'debit' THEN amount WHEN direction = 'refund' THEN -amount ELSE 0 END), 0) AS credits_used
         FROM credit_transactions
         WHERE credit_type IN ('gsm_sms', 'normal')
-          AND direction = 'debit'
           AND to_user_id = $1
       `;
       creditsParams = [req.user.id];
@@ -832,7 +833,7 @@ router.delete('/:id', authenticate, async (req, res) => {
       `SELECT ABS(amount) AS amount
        FROM credit_transactions
        WHERE to_user_id = $1 AND credit_type = 'gsm_sms' AND destination = $2
-         AND refund_campaign_id = $3
+         AND refund_campaign_id = $3 AND direction = 'debit'
        ORDER BY id DESC LIMIT 1`,
       [campaign.user_id, campaign.destination, campaignId]
     );

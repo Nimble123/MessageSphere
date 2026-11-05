@@ -62,7 +62,11 @@ router.get('/me', authenticate, async (req, res) => {
   const resellerId = await resolveResellerId(req.user);
   if (!resellerId) return res.json(null);
   const result = await query('SELECT rp.*, u.email AS reseller_email FROM reseller_profiles rp JOIN users u ON u.id = rp.reseller_id WHERE rp.reseller_id = $1', [resellerId]);
-  return res.json(result.rows[0] || null);
+  const row = result.rows[0] || null;
+  if (row && req.user.role === 'user') {
+    delete row.reseller_email;
+  }
+  return res.json(row);
 });
 
 router.get('/', authenticate, requireRoles('admin'), async (req, res) => {

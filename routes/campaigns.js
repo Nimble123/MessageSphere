@@ -382,12 +382,20 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
   if (cta_data) {
     try {
       parsedCta = typeof cta_data === 'string' ? JSON.parse(cta_data) : cta_data;
-      if (parsedCta && (parsedCta.callText || parsedCta.urlText || parsedCta.call_text || parsedCta.url_text)) {
-        hasCta = true;
+      if (parsedCta && typeof parsedCta === 'object') {
+        const hasBtn = !!(parsedCta.callText || parsedCta.urlText || parsedCta.call_text || parsedCta.url_text ||
+                          parsedCta.callNumber || parsedCta.call_number || parsedCta.urlLink || parsedCta.url_link);
+        if (hasBtn) hasCta = true;
       }
     } catch (e) {
       console.warn('CTA parse error:', e);
     }
+  }
+  if (req.body.cta_call_number || req.body.cta_call_text || req.body.cta_url_link || req.body.cta_url_text) {
+    hasCta = true;
+  }
+  if (req.body.campaign_type === 'cta' || req.body.campaign_type === 'dp_cta') {
+    hasCta = true;
   }
 
   // Strict CTA Business Rules Validation (Character Limit 1024, Button Text 20, HTTPS & No Direct WhatsApp)
@@ -457,6 +465,32 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
 
   // Support pre-saved template attachment URL if no new files were uploaded
   const templateAttachmentUrl = (req.body.attachment_url && typeof req.body.attachment_url === 'string') ? req.body.attachment_url.trim() : null;
+  if (templateAttachmentUrl) {
+    if (!/^(https?:\/\/|\/api\/campaigns\/files\/|\/uploads\/)/i.test(templateAttachmentUrl)) {
+      removeUploadedFiles(files);
+      return res.status(400).json({ error: 'Invalid attachment URL format.' });
+    }
+    // Cross-tenant protection: verify user has permission to reference this local file
+    if (!/^https?:\/\//i.test(templateAttachmentUrl) && req.user.role !== 'admin') {
+      const localFile = path.basename(templateAttachmentUrl);
+      const fileOwnerCheck = await query(
+        `SELECT c.id FROM campaigns c JOIN users u ON c.user_id = u.id 
+         WHERE (c.attachments::text LIKE $1 OR c.attachment_url LIKE $1) 
+           AND (c.user_id = $2 OR u.reseller_id = $2 OR c.user_id = (SELECT reseller_id FROM users WHERE id = $2))
+         UNION
+         SELECT t.id FROM templates t JOIN users u ON t.user_id = u.id 
+         WHERE (t.attachments::text LIKE $1 OR t.attachment_url LIKE $1) 
+           AND (t.user_id = $2 OR u.reseller_id = $2 OR t.user_id = (SELECT reseller_id FROM users WHERE id = $2))
+         LIMIT 1`,
+        [`%${localFile}%`, req.user.id]
+      );
+      if (fileOwnerCheck.rows.length === 0) {
+        removeUploadedFiles(files);
+        return res.status(403).json({ error: 'Permission denied: You do not have permission to attach this file.' });
+      }
+    }
+  }
+
   if (templateAttachmentUrl && attachments.length === 0) {
     attachments.push({
       type: 'image',
@@ -492,14 +526,16 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
   let scheduledDate = null;
   if (scheduled_at) {
     const parsedDate = new Date(scheduled_at);
-    if (!isNaN(parsedDate.getTime())) {
-      if (parsedDate <= new Date()) {
-        removeUploadedFiles(files);
-        return res.status(400).json({ error: 'Scheduled time must be in the future.' });
-      }
-      scheduledDate = parsedDate;
-      initialStatus = 'Submitted'; // Queued for scheduled dispatch
+    if (isNaN(parsedDate.getTime())) {
+      removeUploadedFiles(files);
+      return res.status(400).json({ error: 'Invalid scheduled_at date format. Please provide a valid date/time string.' });
     }
+    if (parsedDate <= new Date()) {
+      removeUploadedFiles(files);
+      return res.status(400).json({ error: 'Scheduled time must be in the future.' });
+    }
+    scheduledDate = parsedDate;
+    initialStatus = 'Submitted'; // Queued for scheduled dispatch
   }
 
   const client = await getClient();
@@ -822,36 +858,48 @@ router.get('/files/:filename', authenticate, async (req, res) => {
     let hasAccess = req.user.role === 'admin';
 
     if (!hasAccess) {
-      // Check if file belongs to any campaign accessible to the user
-      const campaigns = await query(
+      // Cross-tenant security: check original creator/uploader (earliest record)
+      const originalCampaign = await query(
         `SELECT c.id, c.user_id, u.reseller_id
          FROM campaigns c
          JOIN users u ON c.user_id = u.id
-         WHERE c.attachments::text ILIKE $1 OR c.attachment_url ILIKE $1`,
+         WHERE c.attachments::text LIKE $1 OR c.attachment_url LIKE $1
+         ORDER BY c.id ASC
+         LIMIT 1`,
         [`%${filename}%`]
       );
 
-      for (const c of campaigns.rows) {
-        if (c.user_id === req.user.id || (req.user.role === 'reseller' && c.reseller_id === req.user.id)) {
-          hasAccess = true;
-          break;
-        }
+      const originalTemplate = await query(
+        `SELECT t.id, t.user_id, u.reseller_id
+         FROM templates t
+         JOIN users u ON t.user_id = u.id
+         WHERE t.attachments::text LIKE $1 OR t.attachment_url LIKE $1
+         ORDER BY t.id ASC
+         LIMIT 1`,
+        [`%${filename}%`]
+      );
+
+      let ownerUserId = null;
+      let ownerResellerId = null;
+
+      if (originalCampaign.rows.length > 0 && originalTemplate.rows.length > 0) {
+        ownerUserId = originalCampaign.rows[0].user_id;
+        ownerResellerId = originalCampaign.rows[0].reseller_id;
+      } else if (originalCampaign.rows.length > 0) {
+        ownerUserId = originalCampaign.rows[0].user_id;
+        ownerResellerId = originalCampaign.rows[0].reseller_id;
+      } else if (originalTemplate.rows.length > 0) {
+        ownerUserId = originalTemplate.rows[0].user_id;
+        ownerResellerId = originalTemplate.rows[0].reseller_id;
       }
 
-      if (!hasAccess) {
-        // Also check if file is part of an accessible template
-        const templates = await query(
-          `SELECT t.id, t.user_id, u.reseller_id
-           FROM templates t
-           JOIN users u ON t.user_id = u.id
-           WHERE t.attachments::text ILIKE $1 OR t.attachment_url ILIKE $1`,
-          [`%${filename}%`]
-        );
-        for (const t of templates.rows) {
-          if (t.user_id === req.user.id || (req.user.role === 'reseller' && t.reseller_id === req.user.id)) {
-            hasAccess = true;
-            break;
-          }
+      if (ownerUserId) {
+        if (
+          ownerUserId === req.user.id ||
+          (req.user.role === 'reseller' && ownerResellerId === req.user.id) ||
+          (req.user.role === 'user' && req.user.reseller_id === ownerUserId)
+        ) {
+          hasAccess = true;
         }
       }
     }
@@ -1262,12 +1310,13 @@ router.post('/:id/report/preview', authenticate, requireRoles('admin'), reportUp
 
       fileTotalRows++;
       const parts = trimmed.split(/[\t,;]+/);
-      const phone = normalizePhoneNumber(parts[0]);
+      const cleanPhone = parts[0].replace(/["']/g, '').trim();
+      const phone = normalizePhoneNumber(cleanPhone);
       if (!phone) continue;
 
       let isDeliv = true;
       if (parts.length >= 2) {
-        const statusText = parts[1].trim().toLowerCase();
+        const statusText = parts[1].replace(/["']/g, '').trim().toLowerCase();
         isDeliv = SMPP_DELIVERED_STATUSES.has(statusText);
       }
 
@@ -1387,20 +1436,20 @@ router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.sin
       // Split by comma, tab, or semicolon
       const parts = trimmed.split(/[\t,;]+/);
       if (parts.length >= 2) {
-        const phone = normalizePhoneNumber(parts[0]);
-        const statusText = parts[1].trim().toLowerCase();
+        const cleanPhone = parts[0].replace(/["']/g, '').trim();
+        const phone = normalizePhoneNumber(cleanPhone);
+        const statusText = parts[1].replace(/["']/g, '').trim().toLowerCase();
         if (!phone) continue;
 
         if (SMPP_DELIVERED_STATUSES.has(statusText)) {
           deliveredNumbers.push(phone);
-        } else if (SMPP_FAILED_STATUSES.has(statusText)) {
-          failedNumbers.push(phone);
         } else {
           failedNumbers.push(phone);
         }
       } else if (parts.length === 1) {
         // If only phone number is provided in a list, assume Delivered
-        const phone = normalizePhoneNumber(parts[0]);
+        const cleanPhone = parts[0].replace(/["']/g, '').trim();
+        const phone = normalizePhoneNumber(cleanPhone);
         if (phone) deliveredNumbers.push(phone);
       }
     }

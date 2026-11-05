@@ -439,12 +439,7 @@ router.get('/transactions/export', authenticate, async (req, res) => {
     enriched.forEach(tx => {
       const id = tx.id;
       const dateStr = sanitizeCsvCell(new Date(tx.created_at).toLocaleString('en-IN'));
-      let dir = 'CREDIT IN (+)';
-      if (tx.direction === 'refund') {
-        dir = 'REFUND RESTORED (+)';
-      } else if (tx.direction === 'debit') {
-        dir = 'DEBIT OUT (-)';
-      }
+      let dir = tx.badge_text ? tx.badge_text.toUpperCase() : (tx.is_credit ? 'CREDIT IN (+)' : 'DEBIT OUT (-)');
       const dirCell = sanitizeCsvCell(dir);
       const amt = tx.signed_amount;
       const channel = sanitizeCsvCell(tx.credit_type);

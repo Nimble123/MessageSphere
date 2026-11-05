@@ -90,6 +90,15 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+function sanitizeUrl(url) {
+  if (!url || typeof url !== 'string') return '#';
+  const clean = url.trim();
+  if (/^(https?:\/\/|\/api\/campaigns\/files\/|\/uploads\/)/i.test(clean)) {
+    return escapeHtml(clean);
+  }
+  return '#';
+}
+
 async function downloadApiFile(endpoint, filename) {
   if (!endpoint) throw new Error('Invalid download request');
   // External or cloud URL: trigger direct browser download
@@ -4379,7 +4388,7 @@ function renderCampaignsTable() {
             if (attCount > 0) {
               return `<span style="font-size:0.73rem;display:inline-flex;align-items:center;gap:3px;margin-top:4px;color:#16a34a;font-weight:700;"><i data-lucide="paperclip" style="width:11px;height:11px;"></i> ${attCount} File${attCount > 1 ? 's' : ''} Attached</span>`;
             } else if (c.attachment_url) {
-              return `<a href="${c.attachment_url}" target="_blank" style="font-size:0.73rem;display:inline-flex;align-items:center;gap:3px;margin-top:4px;color:var(--primary);"><i data-lucide="paperclip" style="width:11px;height:11px;"></i> View Media</a>`;
+              return `<a href="${sanitizeUrl(c.attachment_url)}" target="_blank" rel="noopener noreferrer" style="font-size:0.73rem;display:inline-flex;align-items:center;gap:3px;margin-top:4px;color:var(--primary);"><i data-lucide="paperclip" style="width:11px;height:11px;"></i> View Media</a>`;
             }
             return '';
           })()}

@@ -6,7 +6,7 @@ const { query, getClient, initializeUserCredits, CREDIT_TYPES, DESTINATIONS } = 
 const { authenticate, requireRoles, JWT_SECRET } = require('../middleware/auth');
 const { logAudit } = require('../services/audit');
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_PATTERN = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
 // GET /api/users - List users
 router.get('/', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
@@ -300,8 +300,8 @@ router.get('/:id/360', authenticate, async (req, res) => {
         role: user.role,
         isBlocked: user.is_blocked,
         resellerId: user.reseller_id,
-        resellerEmail: user.reseller_email,
-        resellerName: user.reseller_name,
+        resellerEmail: req.user.role === 'user' ? 'Direct Support' : user.reseller_email,
+        resellerName: req.user.role === 'user' ? (user.reseller_company_name || 'Direct Telecom Platform') : user.reseller_name,
         fullName: user.full_name,
         companyName: user.company_name,
         phone: user.phone,
