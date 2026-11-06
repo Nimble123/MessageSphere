@@ -8,7 +8,7 @@ const archiver = require('archiver');
 const { query, getClient } = require('../db');
 const { authenticate, requireRoles } = require('../middleware/auth');
 const { logAudit } = require('../services/audit');
-const { calculateSmsMetrics, normalizePhoneNumber, SMPP_DELIVERED_STATUSES, SMPP_FAILED_STATUSES, sanitizeCsvCell } = require('../services/telecom');
+const { calculateSmsMetrics, normalizePhoneNumber, SMPP_DELIVERED_STATUSES, sanitizeCsvCell } = require('../services/telecom');
 const MAX_CAMPAIGN_RECIPIENTS = Number(process.env.MAX_CAMPAIGN_RECIPIENTS || 50000);
 
 // Setup multer storage for campaign attachments and reports
@@ -411,6 +411,11 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
       const urlText = String(parsedCta.urlText || parsedCta.url_text || '').trim();
       const urlLink = String(parsedCta.urlLink || parsedCta.url_link || '').trim();
 
+      if (callText && !callNumber) {
+        removeUploadedFiles(files);
+        return res.status(400).json({ error: 'CTA Call button requires a phone number to dial.' });
+      }
+
       // Rule: Button text max 20 characters
       if (callText && callText.length > 20) {
         removeUploadedFiles(files);
@@ -455,7 +460,6 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
   }
 
   // Determine campaign type and corresponding credit bucket
-  const validCampaignTypes = ['normal', 'dp', 'cta', 'dp_cta', 'own_number'];
   let campaignType = 'normal';
 
   // Support pre-saved template attachment URL if no new files were uploaded
@@ -663,7 +667,7 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
 router.get('/reminders/active', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
   try {
     let sql = '';
-    let params = [];
+    let params = [req.user.id];
 
     if (req.user.role === 'admin') {
       sql = `
@@ -672,6 +676,7 @@ router.get('/reminders/active', authenticate, requireRoles('admin', 'reseller'),
         JOIN campaigns c ON r.campaign_id = c.id
         JOIN users u ON c.user_id = u.id
         WHERE r.is_read = FALSE
+          AND r.id NOT IN (SELECT reminder_id FROM reminder_dismissals WHERE user_id = $1)
         ORDER BY r.scheduled_for ASC
         LIMIT 50
       `;
@@ -681,11 +686,12 @@ router.get('/reminders/active', authenticate, requireRoles('admin', 'reseller'),
         FROM admin_reminders r
         JOIN campaigns c ON r.campaign_id = c.id
         JOIN users u ON c.user_id = u.id
-        WHERE r.is_read = FALSE AND (c.user_id = $1 OR u.reseller_id = $1)
+        WHERE r.is_read = FALSE 
+          AND (c.user_id = $1 OR u.reseller_id = $1)
+          AND r.id NOT IN (SELECT reminder_id FROM reminder_dismissals WHERE user_id = $1)
         ORDER BY r.scheduled_for ASC
         LIMIT 50
       `;
-      params = [req.user.id];
     }
 
     const result = await query(sql, params);
@@ -696,34 +702,62 @@ router.get('/reminders/active', authenticate, requireRoles('admin', 'reseller'),
   }
 });
 
-// POST /api/campaigns/reminders/:id/dismiss - Dismiss a single reminder
+// POST /api/campaigns/reminders/:id/dismiss - Dismiss a single reminder per-user with ownership check
 router.post('/reminders/:id/dismiss', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
   const reminderId = parseInt(req.params.id, 10);
   if (isNaN(reminderId)) return res.status(400).json({ error: 'Invalid reminder ID' });
   try {
-    await query('UPDATE admin_reminders SET is_read = TRUE WHERE id = $1', [reminderId]);
+    // Ownership check: Verify user has permission to see this reminder's campaign
+    const checkSql = req.user.role === 'admin'
+      ? `SELECT r.id FROM admin_reminders r WHERE r.id = $1`
+      : `SELECT r.id FROM admin_reminders r 
+         JOIN campaigns c ON r.campaign_id = c.id 
+         JOIN users u ON c.user_id = u.id 
+         WHERE r.id = $1 AND (c.user_id = $2 OR u.reseller_id = $2)`;
+    const checkParams = req.user.role === 'admin' ? [reminderId] : [reminderId, req.user.id];
+    const checkRes = await query(checkSql, checkParams);
+
+    if (checkRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Reminder not found or access denied' });
+    }
+
+    // Insert user-scoped dismissal record
+    await query(`
+      INSERT INTO reminder_dismissals (reminder_id, user_id)
+      VALUES ($1, $2)
+      ON CONFLICT (reminder_id, user_id) DO NOTHING
+    `, [reminderId, req.user.id]);
+
     return res.json({ success: true });
   } catch (err) {
+    console.error('Dismiss reminder error:', err);
     return res.status(500).json({ error: 'Failed to dismiss reminder' });
   }
 });
 
-// POST /api/campaigns/reminders/dismiss-all - Dismiss all active reminders
+// POST /api/campaigns/reminders/dismiss-all - Dismiss all active reminders per-user
 router.post('/reminders/dismiss-all', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
   try {
     if (req.user.role === 'admin') {
-      await query('UPDATE admin_reminders SET is_read = TRUE WHERE is_read = FALSE');
+      await query(`
+        INSERT INTO reminder_dismissals (reminder_id, user_id)
+        SELECT r.id, $1 FROM admin_reminders r
+        WHERE r.is_read = FALSE
+        ON CONFLICT (reminder_id, user_id) DO NOTHING
+      `, [req.user.id]);
     } else {
       await query(`
-        UPDATE admin_reminders SET is_read = TRUE 
-        WHERE is_read = FALSE AND campaign_id IN (
-          SELECT c.id FROM campaigns c JOIN users u ON c.user_id = u.id 
-          WHERE c.user_id = $1 OR u.reseller_id = $1
-        )
+        INSERT INTO reminder_dismissals (reminder_id, user_id)
+        SELECT r.id, $1 FROM admin_reminders r
+        JOIN campaigns c ON r.campaign_id = c.id
+        JOIN users u ON c.user_id = u.id
+        WHERE r.is_read = FALSE AND (c.user_id = $1 OR u.reseller_id = $1)
+        ON CONFLICT (reminder_id, user_id) DO NOTHING
       `, [req.user.id]);
     }
     return res.json({ success: true });
   } catch (err) {
+    console.error('Dismiss all reminders error:', err);
     return res.status(500).json({ error: 'Failed to dismiss reminders' });
   }
 });
@@ -1264,14 +1298,6 @@ router.post('/:id/report/preview', authenticate, requireRoles('admin'), reportUp
     return res.status(400).json({ error: 'Report file is required for preview' });
   }
 
-  function normalizeReportPhone(raw) {
-    if (!raw) return '';
-    let cleaned = raw.replace(/[^0-9]/g, '').trim();
-    if (cleaned.startsWith('0')) cleaned = cleaned.substring(1);
-    if (/^[6-9]\d{9}$/.test(cleaned)) cleaned = '91' + cleaned;
-    return cleaned;
-  }
-
   try {
     const campRes = await query(`SELECT id, title, total_numbers, status, delivered_count, failed_count, report_processed_at FROM campaigns WHERE id = $1`, [campaignId]);
     if (campRes.rows.length === 0) {
@@ -1289,9 +1315,6 @@ router.post('/:id/report/preview', authenticate, requireRoles('admin'), reportUp
     const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
 
     let fileTotalRows = 0;
-    let fileDeliveredCount = 0;
-    let fileFailedCount = 0;
-    let matchedCount = 0;
     let unmatchedInFileCount = 0;
     const matchedPhonesSet = new Set();
     const matchedDeliveredPhones = new Set();
@@ -1315,7 +1338,6 @@ router.post('/:id/report/preview', authenticate, requireRoles('admin'), reportUp
       }
 
       if (campaignPhoneSet.has(phone)) {
-        matchedCount++;
         matchedPhonesSet.add(phone);
         if (isDeliv) {
           matchedDeliveredPhones.add(phone);
@@ -1325,8 +1347,6 @@ router.post('/:id/report/preview', authenticate, requireRoles('admin'), reportUp
       } else {
         unmatchedInFileCount++;
       }
-
-      if (isDeliv) fileDeliveredCount++; else fileFailedCount++;
     }
 
     if (reportFile.path) fs.unlink(reportFile.path, () => {});
@@ -1408,14 +1428,6 @@ router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.sin
     input: fileStream,
     crlfDelay: Infinity
   });
-
-  function normalizeReportPhone(raw) {
-    if (!raw) return '';
-    let cleaned = raw.replace(/[^0-9]/g, '').trim();
-    if (cleaned.startsWith('0')) cleaned = cleaned.substring(1);
-    if (/^[6-9]\d{9}$/.test(cleaned)) cleaned = '91' + cleaned;
-    return cleaned;
-  }
 
   const deliveredNumbers = [];
   const failedNumbers = [];

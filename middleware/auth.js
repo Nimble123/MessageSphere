@@ -2,8 +2,20 @@ const jwt = require('jsonwebtoken');
 const { query } = require('../db');
 require('dotenv').config();
 
-if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
-  throw new Error('JWT_SECRET must be set in production');
+const INSECURE_JWT_PLACEHOLDERS = new Set([
+  'super_secret_jwt_key_change_in_production',
+  'development-only-change-me',
+  'change_in_production',
+  'messagesphere_super_secret_jwt_key_2026_change_in_production',
+  'your_jwt_secret_here',
+  'secret'
+]);
+
+if (process.env.NODE_ENV === 'production') {
+  const secret = (process.env.JWT_SECRET || '').trim();
+  if (!secret || INSECURE_JWT_PLACEHOLDERS.has(secret) || secret.length < 32) {
+    throw new Error('FATAL SECURITY CONFIGURATION: In production, JWT_SECRET must be set to a strong, unique secret of at least 32 characters (cannot be a default placeholder).');
+  }
 }
 const JWT_SECRET = process.env.JWT_SECRET || 'development-only-change-me';
 

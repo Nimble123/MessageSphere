@@ -5,7 +5,9 @@ const {
   normalizePhoneNumber, 
   calculateSmsMetrics, 
   SMPP_DELIVERED_STATUSES, 
-  sanitizeCsvCell 
+  sanitizeCsvCell,
+  EMAIL_PATTERN,
+  isValidEmail
 } = require('../services/telecom');
 
 test('Security & Telecom Unit Verification Suite', async (t) => {
@@ -30,20 +32,20 @@ test('Security & Telecom Unit Verification Suite', async (t) => {
   });
 
   await t.test('CSV Formula Injection Prevention neutralizes dangerous command prefixes', () => {
-    assert.equal(sanitizeCsvCell('=1+1'), `"\'=1+1"`);
-    assert.equal(sanitizeCsvCell('+cmd'), `"\'+\cmd"`);
-    assert.equal(sanitizeCsvCell('-exec'), `"\'-\exec"`);
-    assert.equal(sanitizeCsvCell('@payload'), `"\'@payload"`);
+    assert.equal(sanitizeCsvCell('=1+1'), `"'=1+1"`);
+    assert.equal(sanitizeCsvCell('+cmd'), ` "'+cmd"`.trim());
+    assert.equal(sanitizeCsvCell('-exec'), ` "'-exec"`.trim());
+    assert.equal(sanitizeCsvCell('@payload'), `"'@payload"`);
   });
 
   await t.test('Email Regex strictly rejects XSS payloads and quotes', () => {
-    const EMAIL_PATTERN = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    assert.equal(isValidEmail('admin@messagesphere.com'), true);
+    assert.equal(isValidEmail('client.user@domain.co.in'), true);
+    // Malicious breakout payloads must be rejected by app telecom validator
+    assert.equal(isValidEmail("x');fetch('/api/x');//@a.bc"), false);
+    assert.equal(isValidEmail('<script>alert(1)</script>@test.com'), false);
+    assert.equal(isValidEmail('user@domain.com; DROP TABLE users;'), false);
     assert.equal(EMAIL_PATTERN.test('admin@messagesphere.com'), true);
-    assert.equal(EMAIL_PATTERN.test('client.user@domain.co.in'), true);
-    // Malicious breakout payloads must be rejected
-    assert.equal(EMAIL_PATTERN.test("x');fetch('/api/x');//@a.bc"), false);
-    assert.equal(EMAIL_PATTERN.test('<script>alert(1)</script>@test.com'), false);
-    assert.equal(EMAIL_PATTERN.test('user@domain.com; DROP TABLE users;'), false);
   });
 
   await t.test('Path traversal is blocked by basename sanitization', () => {
@@ -71,6 +73,6 @@ test('Security & Telecom Unit Verification Suite', async (t) => {
     const cleanStatus = sanitizeCsvCell(status);
 
     assert.equal(cleanPhone, `"'+919876543210"`);
-    assert.equal(cleanStatus, `"\'=HYPERLINK(\"\"http://evil.com\"\",\"\"Click\"\")"`);
+    assert.equal(cleanStatus, `"'=HYPERLINK(""http://evil.com"",""Click"")"`);
   });
 });

@@ -5,9 +5,9 @@ const path = require('path');
 const fs = require('fs');
 const readline = require('readline');
 const { query, getClient } = require('../db');
-const { authenticate, requireRoles } = require('../middleware/auth');
+const { authenticate } = require('../middleware/auth');
 const { logAudit } = require('../services/audit');
-const { calculateSmsMetrics, normalizePhoneNumber } = require('../services/telecom');
+const { calculateSmsMetrics } = require('../services/telecom');
 
 const MAX_SMS_RECIPIENTS = Number(process.env.MAX_CAMPAIGN_RECIPIENTS || 50000);
 
@@ -207,7 +207,6 @@ router.post('/', authenticate, async (req, res) => {
     message,        // message body — also accept 'text' alias
     text,
     numbers: rawNumbers,
-    destination,
     scheduled_at,
     target_user_id,
   } = req.body;

@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const fs = require('fs');
 const { initDB } = require('./db');
 const { initScheduler } = require('./services/scheduler');
 require('dotenv').config();
@@ -9,8 +8,17 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Enable reverse proxy trust (Cloudflare, Nginx, ALB) for accurate client IP resolution
-app.set('trust proxy', 1);
+// Reverse proxy trust: Only enable if explicitly configured in environment (e.g., behind Nginx, Cloudflare)
+// Default is false to prevent rate limiter bypass via forged X-Forwarded-For headers
+if (process.env.TRUST_PROXY === 'true' || process.env.TRUST_PROXY === '1') {
+  app.set('trust proxy', 1);
+} else if (process.env.TRUST_PROXY && !isNaN(Number(process.env.TRUST_PROXY))) {
+  app.set('trust proxy', Number(process.env.TRUST_PROXY));
+} else if (process.env.TRUST_PROXY) {
+  app.set('trust proxy', process.env.TRUST_PROXY);
+} else {
+  app.set('trust proxy', false);
+}
 
 const allowedOrigins = (process.env.CORS_ORIGIN || '')
   .split(',')
@@ -48,42 +56,11 @@ app.use((req, res, next) => {
   res.set('X-Frame-Options', 'DENY');
   res.set('Referrer-Policy', 'same-origin');
   res.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  res.set('Content-Security-Policy', "default-src 'self'; connect-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+  res.set('Content-Security-Policy', "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
   next();
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
-
-// Safe inline delivery for uploaded template media assets
-app.get('/uploads/:filename', (req, res) => {
-  const filename = path.basename(req.params.filename);
-  if (!filename || filename !== req.params.filename) {
-    return res.status(400).json({ error: 'Invalid file name' });
-  }
-  const filePath = path.join(__dirname, 'uploads', filename);
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ error: 'File not found' });
-  }
-
-  const ext = path.extname(filename).toLowerCase();
-  const mimeTypes = {
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.png': 'image/png',
-    '.gif': 'image/gif',
-    '.webp': 'image/webp',
-    '.svg': 'image/svg+xml',
-    '.mp4': 'video/mp4',
-    '.mov': 'video/quicktime',
-    '.webm': 'video/webm',
-    '.pdf': 'application/pdf'
-  };
-
-  const contentType = mimeTypes[ext] || 'application/octet-stream';
-  res.setHeader('Content-Type', contentType);
-  res.setHeader('Content-Disposition', 'inline');
-  return res.sendFile(filePath);
-});
 
 // API Routes
 app.use('/api/auth', require('./routes/auth'));
@@ -99,7 +76,7 @@ app.use('/api/reports', require('./routes/reports'));
 app.use('/api/sms', require('./routes/sms'));
 
 // Global error handler - Never leak raw stack traces or internal errors to clients in production
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
   console.error('Unhandled server error:', err);
   const isProd = process.env.NODE_ENV === 'production';
   const statusCode = err.status || 500;

@@ -8,22 +8,28 @@ on:
 
 jobs:
   test:
-    name: Lint & Security Tests
+    name: Lint & Security Tests (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20.x, 22.x]
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Use Node.js 20.x
+    - name: Use Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v4
       with:
-        node-version: 20.x
+        node-version: ${{ matrix.node-version }}
 
     - name: Install Dependencies
       run: npm ci
 
+    - name: Run ESLint Quality Check
+      run: npm run lint
+
     - name: Run Syntax Verification
       run: node -c server.js db.js middleware/*.js routes/*.js services/*.js public/app.js
 
-    - name: Run Automated Security Test Suite
+    - name: Run Automated Security & Logic Test Suite
       run: npm test

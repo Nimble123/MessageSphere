@@ -5,8 +5,7 @@ const jwt = require('jsonwebtoken');
 const { query, getClient, initializeUserCredits, CREDIT_TYPES, DESTINATIONS } = require('../db');
 const { authenticate, requireRoles, JWT_SECRET } = require('../middleware/auth');
 const { logAudit } = require('../services/audit');
-
-const EMAIL_PATTERN = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+const { isValidEmail } = require('../services/telecom');
 
 // GET /api/users - List users
 router.get('/', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
@@ -355,7 +354,7 @@ router.post('/', authenticate, requireRoles('admin', 'reseller'), async (req, re
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
   }
-  if (!EMAIL_PATTERN.test(email.trim())) {
+  if (!isValidEmail(email)) {
     return res.status(400).json({ error: 'A valid email address is required' });
   }
   if (!full_name || !String(full_name).trim()) {
@@ -462,7 +461,24 @@ router.patch('/:id/block', authenticate, requireRoles('admin', 'reseller'), asyn
     }
 
     const newBlockedState = !targetUser.is_blocked;
-    await query('UPDATE users SET is_blocked = $1, token_version = token_version + 1 WHERE id = $2', [newBlockedState, targetId]);
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      await client.query('UPDATE users SET is_blocked = $1, token_version = token_version + 1 WHERE id = $2', [newBlockedState, targetId]);
+      await logAudit(client, {
+        actorId: req.user.id,
+        entityType: 'user',
+        entityId: targetId,
+        action: newBlockedState ? 'user_blocked' : 'user_unblocked',
+        details: { isBlocked: newBlockedState, targetUserId: targetId }
+      });
+      await client.query('COMMIT');
+    } catch (blockErr) {
+      await client.query('ROLLBACK');
+      throw blockErr;
+    } finally {
+      client.release();
+    }
 
     return res.json({ message: `User ${newBlockedState ? 'blocked' : 'unblocked'} successfully`, isBlocked: newBlockedState });
   } catch (err) {
@@ -529,11 +545,31 @@ router.patch('/:id/settings', authenticate, requireRoles('admin', 'reseller'), a
 
     values.push(targetId);
     const updateSql = `UPDATE users SET ${updates.join(', ')} WHERE id = $${pIdx} RETURNING id, email, role, full_name, company_name, phone, gstin, tax_mode, refund_destination`;
-    const updated = await query(updateSql, values);
+
+    const client = await getClient();
+    let updatedUser;
+    try {
+      await client.query('BEGIN');
+      const updated = await client.query(updateSql, values);
+      updatedUser = updated.rows[0];
+      await logAudit(client, {
+        actorId: req.user.id,
+        entityType: 'user',
+        entityId: targetId,
+        action: 'user_settings_updated',
+        details: { updatedFields: updates }
+      });
+      await client.query('COMMIT');
+    } catch (setErr) {
+      await client.query('ROLLBACK');
+      throw setErr;
+    } finally {
+      client.release();
+    }
 
     return res.json({
       message: 'Account settings updated successfully',
-      user: updated.rows[0]
+      user: updatedUser
     });
   } catch (err) {
     console.error('Update user settings error:', err);
@@ -547,12 +583,57 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
   if (isNaN(targetId)) return res.status(400).json({ error: 'Invalid user ID' });
 
   const { updates, reason } = req.body;
-  // updates is expected as an object: { 'normal_domestic': 500, 'dp_international': 100, ... }
-  if (!updates || typeof updates !== 'object' || Object.keys(updates).length === 0) {
+  if (!updates || typeof updates !== 'object' || Array.isArray(updates) || Object.keys(updates).length === 0) {
     return res.status(400).json({ error: 'Please specify credits to add' });
   }
   if (!reason || !String(reason).trim()) {
     return res.status(400).json({ error: 'A reason is required for manual credit allocation' });
+  }
+
+  // Strictly validate all credit update keys and positive integer amounts
+  const validatedItems = [];
+  for (const [key, rawVal] of Object.entries(updates)) {
+    let destination = '';
+    let creditType = '';
+    if (key.endsWith('_domestic')) {
+      destination = 'domestic';
+      creditType = key.replace(/_domestic$/, '');
+    } else if (key.endsWith('_international')) {
+      destination = 'international';
+      creditType = key.replace(/_international$/, '');
+    } else {
+      return res.status(400).json({ error: `Invalid credit channel key "${key}". Keys must end with _domestic or _international.` });
+    }
+
+    if (!CREDIT_TYPES.includes(creditType) || !DESTINATIONS.includes(destination)) {
+      return res.status(400).json({ error: `Unrecognized channel type or destination for key "${key}".` });
+    }
+
+    const amount = parseInt(rawVal, 10);
+    if (isNaN(amount) || amount <= 0 || amount !== Number(rawVal)) {
+      return res.status(400).json({ error: `Credit amount for "${key}" must be a positive integer greater than 0.` });
+    }
+
+    validatedItems.push({ key, creditType, destination, amount });
+  }
+
+  if (validatedItems.length === 0) {
+    return res.status(400).json({ error: 'At least one valid credit channel update must be specified.' });
+  }
+
+  // Validate incoming custom rates if provided
+  const incomingRates = req.body.rates || {};
+  if (typeof incomingRates !== 'object' || Array.isArray(incomingRates)) {
+    return res.status(400).json({ error: 'Rates must be a valid key-value map of channel rates.' });
+  }
+
+  for (const [rateKey, rateVal] of Object.entries(incomingRates)) {
+    if (rateVal !== undefined && rateVal !== '') {
+      const r = parseFloat(rateVal);
+      if (isNaN(r) || r <= 0 || r > 1000) {
+        return res.status(400).json({ error: `Custom rate for "${rateKey}" must be a positive number greater than 0.` });
+      }
+    }
   }
 
   const client = await getClient();
@@ -578,27 +659,9 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
       ? req.body.tax_mode
       : ((targetUser.tax_mode === 'with_gst' || (targetUser.gstin && String(targetUser.gstin).trim())) ? 'with_gst' : 'non_gst');
 
-    // Process each credit update
-    for (const [key, rawVal] of Object.entries(updates)) {
-      const amount = parseInt(rawVal, 10);
-      if (isNaN(amount) || amount <= 0) continue;
-
-      // Extract credit_type and destination from key (e.g., normal_domestic, dp_cta_domestic, etc.)
-      let destination = '';
-      let creditType = '';
-      if (key.endsWith('_domestic')) {
-        destination = 'domestic';
-        creditType = key.replace(/_domestic$/, '');
-      } else if (key.endsWith('_international')) {
-        destination = 'international';
-        creditType = key.replace(/_international$/, '');
-      } else {
-        continue;
-      }
-
-      if (!CREDIT_TYPES.includes(creditType) || !DESTINATIONS.includes(destination)) {
-        continue;
-      }
+    // Process each strictly validated credit update
+    for (const item of validatedItems) {
+      const { creditType, destination, amount } = item;
 
       if (mode === 'debit') {
         // --- DEBIT / CLAWBACK MODE ---
@@ -689,52 +752,40 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
       let primaryDest = 'domestic';
       const channelRatesBreakdown = {};
 
-      for (const [key, rawVal] of Object.entries(updates)) {
-        const val = parseInt(rawVal, 10) || 0;
-        if (val > 0) {
-          totalAllotted += val;
-          let dest = 'domestic';
-          let cType = '';
-          if (key.endsWith('_international')) {
-            dest = 'international';
-            cType = key.replace(/_international$/, '');
-          } else {
-            dest = 'domestic';
-            cType = key.replace(/_domestic$/, '');
+      for (const item of validatedItems) {
+        const { key, creditType, destination, amount: val } = item;
+        totalAllotted += val;
+        primaryDest = destination;
+        primaryType = creditType;
+
+        // Get channel rate (either incoming custom rate or user's existing rate or default)
+        let chRate = 0.1500;
+        if (incomingRates[key] !== undefined && incomingRates[key] !== '') {
+          chRate = parseFloat(incomingRates[key]) || 0.1500;
+        } else {
+          const chRateRes = await client.query(
+            `SELECT rate_inr FROM user_credits WHERE user_id = $1 AND credit_type = $2 AND destination = $3`,
+            [targetId, creditType, destination]
+          );
+          if (chRateRes.rows.length > 0 && chRateRes.rows[0].rate_inr !== null) {
+            chRate = parseFloat(chRateRes.rows[0].rate_inr);
           }
-
-          primaryDest = dest;
-          primaryType = cType;
-
-          // Get channel rate (either incoming custom rate or user's existing rate or default)
-          let chRate = 0.1500;
-          if (incomingRates[key] !== undefined && incomingRates[key] !== '') {
-            chRate = parseFloat(incomingRates[key]) || 0.1500;
-          } else {
-            const chRateRes = await client.query(
-              `SELECT rate_inr FROM user_credits WHERE user_id = $1 AND credit_type = $2 AND destination = $3`,
-              [targetId, cType, dest]
-            );
-            if (chRateRes.rows.length > 0 && chRateRes.rows[0].rate_inr !== null) {
-              chRate = parseFloat(chRateRes.rows[0].rate_inr);
-            }
-          }
-
-          // Persist user's custom rate for this channel
-          await client.query(`
-            UPDATE user_credits 
-            SET rate_inr = $1 
-            WHERE user_id = $2 AND credit_type = $3 AND destination = $4
-          `, [chRate, targetId, cType, dest]);
-
-          const channelCost = Math.round((val * chRate) * 100) / 100;
-          totalBill += channelCost;
-          channelRatesBreakdown[key] = {
-            credits: val,
-            rate: chRate,
-            cost: channelCost
-          };
         }
+
+        // Persist user's custom rate for this channel
+        await client.query(`
+          UPDATE user_credits 
+          SET rate_inr = $1 
+          WHERE user_id = $2 AND credit_type = $3 AND destination = $4
+        `, [chRate, targetId, creditType, destination]);
+
+        const channelCost = Math.round((val * chRate) * 100) / 100;
+        totalBill += channelCost;
+        channelRatesBreakdown[key] = {
+          credits: val,
+          rate: chRate,
+          cost: channelCost
+        };
       }
 
       if (totalAllotted > 0) {
@@ -914,21 +965,43 @@ router.delete('/:id', authenticate, requireRoles('admin', 'reseller'), async (re
       });
     }
 
-    // Safety Rule 3: For resellers, prevent accidental loss of unspent client credit stock
-    if (req.user.role === 'reseller') {
-      const balRes = await query(
-        `SELECT COALESCE(SUM(balance), 0)::bigint as total_bal FROM user_credits WHERE user_id = $1`,
-        [targetId]
-      );
-      const totalBal = parseInt(balRes.rows[0].total_bal, 10) || 0;
-      if (totalBal > 0) {
-        return res.status(400).json({
-          error: `Cannot delete account: Client still has ${totalBal.toLocaleString()} unspent credits in their wallet. Please claw back/deduct these credits back to your reseller stock before deleting the account.`
-        });
-      }
+    // Safety Rule 3: Prevent accidental deletion of accounts with unspent credit balance
+    const balRes = await query(
+      `SELECT COALESCE(SUM(balance), 0)::bigint as total_bal FROM user_credits WHERE user_id = $1`,
+      [targetId]
+    );
+    const totalBal = parseInt(balRes.rows[0].total_bal, 10) || 0;
+    if (totalBal > 0) {
+      return res.status(400).json({
+        error: `Cannot delete account: User still has ${totalBal.toLocaleString()} unspent credits in their wallet. Please claw back or deduct these credits before deleting the account.`
+      });
     }
 
-    await query('DELETE FROM users WHERE id = $1', [targetId]);
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      await logAudit(client, {
+        actorId: req.user.id,
+        entityType: 'user',
+        entityId: targetId,
+        action: 'user_deleted',
+        details: { email: targetUser.email, role: targetRole, resellerId: targetUser.reseller_id }
+      });
+      // Archive user email into related credit transactions before setting user_id null on delete
+      await client.query(`
+        UPDATE credit_transactions 
+        SET refund_client_email = COALESCE(refund_client_email, $1)
+        WHERE to_user_id = $2 OR from_user_id = $2
+      `, [targetUser.email, targetId]);
+      await client.query('DELETE FROM users WHERE id = $1', [targetId]);
+      await client.query('COMMIT');
+    } catch (delErr) {
+      await client.query('ROLLBACK');
+      throw delErr;
+    } finally {
+      client.release();
+    }
+
     return res.json({ message: `User ${targetUser.email} deleted successfully.` });
   } catch (err) {
     console.error('Delete user error:', err);

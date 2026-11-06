@@ -6,7 +6,7 @@ const isRemoteDb = process.env.DATABASE_URL && !process.env.DATABASE_URL.include
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || (process.env.NODE_ENV !== 'production' ? 'postgresql://localhost:5432/messagesphere' : undefined),
-  ssl: isRemoteDb ? { rejectUnauthorized: process.env.PG_SSL_REJECT_UNAUTHORIZED === 'true' } : false,
+  ssl: isRemoteDb ? { rejectUnauthorized: process.env.PG_SSL_REJECT_UNAUTHORIZED !== 'false' } : false,
   max: parseInt(process.env.PG_POOL_MAX || '50', 10),
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000
@@ -72,6 +72,8 @@ async function initDB() {
       CREATE TABLE IF NOT EXISTS campaigns (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title VARCHAR(255) DEFAULT 'Untitled Campaign',
+        channel_type VARCHAR(50) DEFAULT 'shared_gateway',
         campaign_type VARCHAR(50) NOT NULL,
         destination VARCHAR(50) NOT NULL,
         message_text TEXT NOT NULL,
@@ -80,7 +82,13 @@ async function initDB() {
         delivered_count INTEGER DEFAULT 0,
         failed_count INTEGER DEFAULT 0,
         attachment_url TEXT,
+        attachments JSONB DEFAULT '[]'::jsonb,
         cta_data JSONB,
+        scheduled_at TIMESTAMP WITH TIME ZONE,
+        scheduled_triggered BOOLEAN DEFAULT FALSE,
+        failed_refunded BOOLEAN DEFAULT FALSE,
+        report_processed_at TIMESTAMP WITH TIME ZONE,
+        report_processed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -102,12 +110,12 @@ async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_campaigns_user ON campaigns(user_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(status);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_campaigns_created_at ON campaigns(created_at DESC);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_campaigns_channel_created ON campaigns(channel_type, created_at DESC);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_transactions_user ON credit_transactions(to_user_id, created_at DESC);`);
 
     // Schema migrations for enterprise features
     await client.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS title VARCHAR(255) DEFAULT 'Untitled Campaign';`);
     await client.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS channel_type VARCHAR(50) DEFAULT 'shared_gateway';`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_campaigns_channel_created ON campaigns(channel_type, created_at DESC);`);
     await client.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMP WITH TIME ZONE;`);
     await client.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS failed_refunded BOOLEAN DEFAULT FALSE;`);
     await client.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS attachments JSONB DEFAULT '[]'::jsonb;`);
@@ -144,11 +152,6 @@ async function initDB() {
       );
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_contacts_group ON contacts(group_id);`);
-    await client.query(`
-      DELETE FROM contacts a USING contacts b 
-      WHERE a.id < b.id AND a.group_id = b.group_id AND a.phone_number = b.phone_number;
-    `);
-    await client.query(`DROP INDEX IF EXISTS idx_contacts_group_phone;`);
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_group_phone ON contacts(group_id, phone_number);`);
 
     // Immutable operational log for the intentionally manual dispatch workflow.
@@ -278,6 +281,15 @@ async function initDB() {
       );
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_admin_reminders_status ON admin_reminders(is_read, scheduled_for ASC);`);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS reminder_dismissals (
+        reminder_id BIGINT NOT NULL REFERENCES admin_reminders(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        dismissed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (reminder_id, user_id)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_reminder_dismissals_user ON reminder_dismissals(user_id);`);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS credit_requests (
@@ -354,10 +366,14 @@ async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_credit_requests_user ON credit_requests(user_id, status);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_credit_requests_payment ON credit_requests(payment_status, status);`);
     await client.query(`
+      ALTER TABLE credit_transactions ALTER COLUMN to_user_id DROP NOT NULL;
       ALTER TABLE credit_transactions DROP CONSTRAINT IF EXISTS credit_transactions_from_user_id_fkey;
       ALTER TABLE credit_transactions ADD CONSTRAINT credit_transactions_from_user_id_fkey FOREIGN KEY (from_user_id) REFERENCES users(id) ON DELETE SET NULL;
       ALTER TABLE credit_transactions DROP CONSTRAINT IF EXISTS credit_transactions_to_user_id_fkey;
-      ALTER TABLE credit_transactions ADD CONSTRAINT credit_transactions_to_user_id_fkey FOREIGN KEY (to_user_id) REFERENCES users(id) ON DELETE CASCADE;
+      ALTER TABLE credit_transactions ADD CONSTRAINT credit_transactions_to_user_id_fkey FOREIGN KEY (to_user_id) REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE credit_requests ALTER COLUMN user_id DROP NOT NULL;
+      ALTER TABLE credit_requests DROP CONSTRAINT IF EXISTS credit_requests_user_id_fkey;
+      ALTER TABLE credit_requests ADD CONSTRAINT credit_requests_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
     `);
 
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 1;`);
@@ -367,42 +383,60 @@ async function initDB() {
     await client.query(`ALTER TABLE credit_requests ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(50);`);
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_requests_invoice_no ON credit_requests(invoice_number) WHERE invoice_number IS NOT NULL;`);
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_reseller_custom_domain ON reseller_profiles(LOWER(custom_domain)) WHERE custom_domain IS NOT NULL AND custom_domain != '';`);
+
+    // Schema Migrations Table: guarantees migrations run ONCE and never mutate runtime data on boot
     await client.query(`
-      UPDATE credit_transactions 
-      SET direction = (
-        CASE 
-          WHEN refund_campaign_id IS NOT NULL OR reason ILIKE '%refund%' THEN 'refund'
-          WHEN reason ILIKE '%deduction%' OR reason ILIKE '%debit%' OR reason ILIKE '%campaign #%' OR reason ILIKE '%transferred out%' THEN 'debit'
-          ELSE 'credit'
-        END
-      )
-      WHERE direction IS NULL OR direction = 'credit';
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        id VARCHAR(100) PRIMARY KEY,
+        applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
     `);
+
+    const hasMigratedDirection = await client.query(`SELECT 1 FROM schema_migrations WHERE id = 'migrate_legacy_ledger_directions'`);
+    if (hasMigratedDirection.rows.length === 0) {
+      await client.query(`
+        UPDATE credit_transactions 
+        SET direction = (
+          CASE 
+            WHEN refund_campaign_id IS NOT NULL THEN 'refund'
+            WHEN reason ILIKE '%deduction%' OR reason ILIKE '%debit%' OR reason ILIKE '%campaign #%' OR reason ILIKE '%transferred out%' THEN 'debit'
+            ELSE 'credit'
+          END
+        )
+        WHERE direction IS NULL;
+      `);
+      await client.query(`INSERT INTO schema_migrations (id) VALUES ('migrate_legacy_ledger_directions') ON CONFLICT DO NOTHING;`);
+    }
 
     const adminEmail = (process.env.ADMIN_EMAIL || 'admin@messagesphere.com').trim().toLowerCase();
     const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+    const isProduction = process.env.NODE_ENV === 'production';
     const adminCheck = await client.query(`SELECT id, password_hash FROM users WHERE email = $1`, [adminEmail]);
 
     if (adminCheck.rows.length === 0) {
-      console.log(`[AUTH] Seeding initial admin account: ${adminEmail}`);
-      const hash = await bcrypt.hash(adminPassword, 10);
-      const insertUser = await client.query(`
-        INSERT INTO users (email, password_hash, role, token_version)
-        VALUES ($1, $2, 'admin', 1)
-        RETURNING id
-      `, [adminEmail, hash]);
+      if (isProduction && (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD === 'admin123')) {
+        console.warn(`[AUTH] Production environment detected: Default admin account creation skipped. Set explicit ADMIN_PASSWORD or run 'npm run reset-admin' to initialize.`);
+      } else {
+        console.log(`[AUTH] Seeding initial admin account: ${adminEmail}`);
+        const hash = await bcrypt.hash(adminPassword, 10);
+        const insertUser = await client.query(`
+          INSERT INTO users (email, password_hash, role, token_version)
+          VALUES ($1, $2, 'admin', 1)
+          RETURNING id
+        `, [adminEmail, hash]);
 
-      const adminId = insertUser.rows[0].id;
-      for (const dest of DESTINATIONS) {
-        for (const type of CREDIT_TYPES) {
-          await client.query(`
-            INSERT INTO user_credits (user_id, credit_type, destination, balance)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (user_id, credit_type, destination) DO NOTHING
-          `, [adminId, type, dest, 10000000]);
+        const adminId = insertUser.rows[0].id;
+        for (const dest of DESTINATIONS) {
+          for (const type of CREDIT_TYPES) {
+            await client.query(`
+              INSERT INTO user_credits (user_id, credit_type, destination, balance)
+              VALUES ($1, $2, $3, $4)
+              ON CONFLICT (user_id, credit_type, destination) DO NOTHING
+            `, [adminId, type, dest, 10000000]);
+          }
         }
+        console.log(`[AUTH] Admin successfully provisioned: ${adminEmail}`);
       }
-      console.log(`[AUTH] Admin successfully provisioned: ${adminEmail}`);
     } else if (process.env.RESET_ADMIN === 'true') {
       const newHash = await bcrypt.hash(adminPassword, 10);
       await client.query(`UPDATE users SET password_hash = $1, token_version = token_version + 1 WHERE id = $2`, [newHash, adminCheck.rows[0].id]);

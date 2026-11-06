@@ -112,11 +112,12 @@ async function downloadApiFile(endpoint, filename) {
     anchor.remove();
     return;
   }
-  if (!endpoint.startsWith('/campaigns/') || endpoint.includes('?token=')) {
+  let pathOnly = endpoint.startsWith('/api') ? endpoint.replace(/^\/api/, '') : endpoint;
+  if ((!pathOnly.startsWith('/campaigns/') && !pathOnly.startsWith('/credits/')) || endpoint.includes('?token=')) {
     throw new Error('Invalid download request');
   }
   const token = getAuthToken();
-  const response = await fetch(`${API_BASE}${endpoint}`, { headers: { Authorization: `Bearer ${token}` } });
+  const response = await fetch(`${API_BASE}${pathOnly}`, { headers: { Authorization: `Bearer ${token}` } });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data.error || 'Download failed');
@@ -128,7 +129,20 @@ async function downloadApiFile(endpoint, filename) {
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+
+async function viewOrDownloadCampaignAsset(assetUrl, filename) {
+  try {
+    let cleanUrl = assetUrl;
+    if (cleanUrl.startsWith('/uploads/')) {
+      cleanUrl = `/campaigns/files/${encodeURIComponent(cleanUrl.replace('/uploads/', ''))}`;
+    }
+    const safeName = filename || cleanUrl.split('/').pop() || 'asset';
+    await downloadApiFile(cleanUrl, safeName);
+  } catch (err) {
+    showToast('error', 'Asset Access Error', err.message || 'Cannot access protected asset');
+  }
 }
 
 // Global XSS-safe event delegation for data-action elements (replaces vulnerable inline JS string interpolation)
@@ -4384,7 +4398,7 @@ function renderCampaignsTable() {
             if (attCount > 0) {
               return `<span style="font-size:0.73rem;display:inline-flex;align-items:center;gap:3px;margin-top:4px;color:#16a34a;font-weight:700;"><i data-lucide="paperclip" style="width:11px;height:11px;"></i> ${attCount} File${attCount > 1 ? 's' : ''} Attached</span>`;
             } else if (c.attachment_url) {
-              return `<a href="${sanitizeUrl(c.attachment_url)}" target="_blank" rel="noopener noreferrer" style="font-size:0.73rem;display:inline-flex;align-items:center;gap:3px;margin-top:4px;color:var(--primary);"><i data-lucide="paperclip" style="width:11px;height:11px;"></i> View Media</a>`;
+              return `<button type="button" class="btn-action btn-action-secondary" onclick="viewOrDownloadCampaignAsset('${escapeHtml(c.attachment_url)}')" style="font-size:0.73rem;display:inline-flex;align-items:center;gap:3px;margin-top:4px;color:var(--primary);background:none;border:none;cursor:pointer;padding:0;"><i data-lucide="paperclip" style="width:11px;height:11px;"></i> View Media</button>`;
             }
             return '';
           })()}

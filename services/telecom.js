@@ -125,6 +125,15 @@ function calculateSmsMetrics(text) {
 }
 
 /**
+ * Standard Email Pattern and Validation
+ */
+const EMAIL_PATTERN = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+function isValidEmail(email) {
+  if (!email || typeof email !== 'string') return false;
+  return EMAIL_PATTERN.test(email.trim().toLowerCase());
+}
+
+/**
  * Sanitize a string to prevent CSV / Spreadsheet formula injection (=, +, -, @, tab, CR).
  * @param {any} val
  * @returns {string} Escaped CSV cell enclosed in quotes
@@ -132,7 +141,7 @@ function calculateSmsMetrics(text) {
 function sanitizeCsvCell(val) {
   if (val === null || val === undefined) return '""';
   let str = String(val);
-  if (/^[=\+\-@\t\r]/.test(str)) {
+  if (/^[=+\-@\t\r]/.test(str)) {
     str = "'" + str;
   }
   return `"${str.replace(/"/g, '""')}"`;
@@ -143,6 +152,8 @@ module.exports = {
   GSM_7_EXTENDED_CHARS,
   SMPP_DELIVERED_STATUSES,
   SMPP_FAILED_STATUSES,
+  EMAIL_PATTERN,
+  isValidEmail,
   normalizePhoneNumber,
   calculateSmsMetrics,
   sanitizeCsvCell

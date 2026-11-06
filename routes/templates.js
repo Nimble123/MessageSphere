@@ -332,7 +332,7 @@ router.get('/', authenticate, async (req, res) => {
 
 // POST /api/templates - Create new template (with GSM / WhatsApp calculation & Multi-Attachments)
 router.post('/', authenticate, upload.any(), async (req, res) => {
-  const { title, channel, template_type, cta_data, category, sub_category, content, body, target_user_id } = req.body;
+  const { title, channel, template_type, cta_data, content, body, target_user_id } = req.body;
   const templateText = String(content || body || '').trim();
 
   if (!title || !title.trim()) {
@@ -364,7 +364,7 @@ router.post('/', authenticate, upload.any(), async (req, res) => {
         attachments.push({
           slot: file.fieldname,
           type,
-          url: '/uploads/' + file.filename,
+          url: '/api/campaigns/files/' + encodeURIComponent(file.filename),
           filename: file.originalname,
           size: file.size,
           mimetype: file.mimetype
@@ -513,7 +513,7 @@ router.get('/:id', authenticate, async (req, res) => {
 // PUT /api/templates/:id - Update existing template
 router.put('/:id', authenticate, upload.any(), async (req, res) => {
   const templateId = parseInt(req.params.id, 10);
-  const { title, channel, template_type, cta_data, category, sub_category, content, body, remove_attachment, existing_attachments } = req.body;
+  const { title, channel, template_type, cta_data, content, body, remove_attachment, existing_attachments } = req.body;
   const templateText = String(content || body || '').trim();
 
   if (isNaN(templateId)) return res.status(400).json({ error: 'Invalid template ID' });
@@ -575,7 +575,7 @@ router.put('/:id', authenticate, upload.any(), async (req, res) => {
           attachments.push({
             slot: file.fieldname,
             type,
-            url: '/uploads/' + file.filename,
+            url: '/api/campaigns/files/' + encodeURIComponent(file.filename),
             filename: file.originalname,
             size: file.size,
             mimetype: file.mimetype
