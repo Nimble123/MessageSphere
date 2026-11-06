@@ -106,4 +106,32 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.throws(() => checkJwtSecret('short_secret', 'production'));
     assert.equal(checkJwtSecret('a_very_strong_random_secret_with_more_than_32_characters_ok', 'production'), true);
   });
+
+  await t.test('Receipt URL validation allows secure paths and blocks dangerous protocols', () => {
+    const validReceiptRegex = /^(https?:\/\/[^\s<>"'`]+|\/api\/campaigns\/files\/[a-zA-Z0-9._-]+)$/i;
+    assert.equal(validReceiptRegex.test('https://example.com/receipt.pdf'), true);
+    assert.equal(validReceiptRegex.test('/api/campaigns/files/rec_1234.png'), true);
+    assert.equal(validReceiptRegex.test('javascript:alert(1)'), false);
+    assert.equal(validReceiptRegex.test('/uploads/evil.php'), false);
+    assert.equal(validReceiptRegex.test('data:text/html;base64,PHNjcmlwdD4='), false);
+  });
+
+  await t.test('Top-up tax mode calculates 18% GST correctly for with_gst and zero for non_gst', () => {
+    function calculateTopupTotals(requestedQty, rate, taxMode) {
+      const baseAmount = Number((requestedQty * rate).toFixed(2));
+      const gstAmount = taxMode === 'with_gst' ? Number((baseAmount * 0.18).toFixed(2)) : 0.00;
+      const totalAmount = Number((baseAmount + gstAmount).toFixed(2));
+      return { baseAmount, gstAmount, totalAmount };
+    }
+
+    const withGst = calculateTopupTotals(10000, 0.15, 'with_gst');
+    assert.equal(withGst.baseAmount, 1500.00);
+    assert.equal(withGst.gstAmount, 270.00);
+    assert.equal(withGst.totalAmount, 1770.00);
+
+    const nonGst = calculateTopupTotals(10000, 0.15, 'non_gst');
+    assert.equal(nonGst.baseAmount, 1500.00);
+    assert.equal(nonGst.gstAmount, 0.00);
+    assert.equal(nonGst.totalAmount, 1500.00);
+  });
 });

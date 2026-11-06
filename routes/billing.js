@@ -212,7 +212,15 @@ router.post('/requests', authenticate, async (req, res) => {
 
   // Security: Ignore client-supplied rate, amount, and payment status
   let userRate = 0.1500;
+  let effectiveTaxMode = 'non_gst';
   try {
+    const userRow = await query(`SELECT tax_mode, gstin FROM users WHERE id = $1`, [req.user.id]);
+    if (userRow.rows.length > 0) {
+      const u = userRow.rows[0];
+      if (u.tax_mode === 'with_gst' || (u.gstin && String(u.gstin).trim())) {
+        effectiveTaxMode = 'with_gst';
+      }
+    }
     const rateCheck = await query(
       `SELECT rate_inr FROM user_credits WHERE user_id = $1 AND credit_type = $2 AND destination = $3`,
       [req.user.id, cType, cDest]
@@ -221,13 +229,15 @@ router.post('/requests', authenticate, async (req, res) => {
       userRate = Number(rateCheck.rows[0].rate_inr);
     }
   } catch (err) {
-    console.error('Failed to lookup rate_inr, using default rate:', err.message);
+    console.error('Failed to lookup rate_inr or tax_mode, using default:', err.message);
   }
 
-  const calculatedAmount = Number((requestedQty * userRate).toFixed(4));
+  const baseAmount = Number((requestedQty * userRate).toFixed(2));
+  const gstAmount = effectiveTaxMode === 'with_gst' ? Number((baseAmount * 0.18).toFixed(2)) : 0.00;
+  const calculatedAmount = Number((baseAmount + gstAmount).toFixed(2));
   let receiptUrl = (req.body.receipt_url || '').trim() || null;
   if (receiptUrl) {
-    if (!/^(https?:\/\/[^\s<>"'`]+|\/uploads\/[a-zA-Z0-9._-]+)$/i.test(receiptUrl)) {
+    if (!/^(https?:\/\/[^\s<>"'`]+|\/api\/campaigns\/files\/[a-zA-Z0-9._-]+)$/i.test(receiptUrl)) {
       return res.status(400).json({ error: 'Invalid receipt URL format. Only HTTP, HTTPS, or uploaded receipt paths are accepted.' });
     }
   }
@@ -237,10 +247,10 @@ router.post('/requests', authenticate, async (req, res) => {
   try {
     const result = await query(`
       INSERT INTO credit_requests 
-        (user_id, package_name, credits_requested, credit_type, destination, amount_inr, rate_per_credit, paid_amount, payment_status, utr_number, receipt_url, status, invoice_number)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'Pending', 'INV-' || TO_CHAR(CURRENT_DATE, 'YYYY') || '-' || LPAD(nextval('invoice_number_seq')::text, 6, '0'))
+        (user_id, package_name, credits_requested, credit_type, destination, amount_inr, rate_per_credit, paid_amount, payment_status, utr_number, receipt_url, status, invoice_number, tax_mode, base_amount, gst_amount)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'Pending', 'INV-' || TO_CHAR(CURRENT_DATE, 'YYYY') || '-' || LPAD(nextval('invoice_number_seq')::text, 6, '0'), $12, $13, $14)
       RETURNING *
-    `, [req.user.id, package_name, requestedQty, cType, cDest, calculatedAmount, userRate, paidAmount, paymentStatus, utr.trim(), receiptUrl]);
+    `, [req.user.id, package_name, requestedQty, cType, cDest, calculatedAmount, userRate, paidAmount, paymentStatus, utr.trim(), receiptUrl, effectiveTaxMode, baseAmount, gstAmount]);
 
     return res.status(201).json({
       message: 'Top-up request submitted successfully. Credits will be allocated upon verification.',
