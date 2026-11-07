@@ -75,6 +75,11 @@ app.use('/api/resellers', require('./routes/resellers'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/sms', require('./routes/sms'));
 
+// Client SPA Routes (e.g. /signup?ref=... or /register)
+app.get(['/signup', '/register', '/login'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 // Global error handler - Never leak raw stack traces or internal errors to clients in production
 app.use((err, req, res, _next) => {
   console.error('Unhandled server error:', err);

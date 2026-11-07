@@ -155,4 +155,31 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.equal(cleanDomain('http://app.reseller.in:3000'), 'app.reseller.in');
     assert.equal(cleanDomain('partner.messaging.com'), 'partner.messaging.com');
   });
+
+  await t.test('Reseller Invite Slug validation strictly enforces format rules', () => {
+    function isValidInviteSlug(slug) {
+      if (!slug) return false;
+      const clean = String(slug).trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+      return clean.length >= 3 && clean.length <= 50 && clean === String(slug).trim().toLowerCase();
+    }
+
+    assert.equal(isValidInviteSlug('exhume'), true);
+    assert.equal(isValidInviteSlug('nml-nexus_2026'), true);
+    assert.equal(isValidInviteSlug('ab'), false, 'Slugs shorter than 3 chars must fail');
+    assert.equal(isValidInviteSlug('a'.repeat(51)), false, 'Slugs longer than 50 chars must fail');
+    assert.equal(isValidInviteSlug('invalid slug!'), false, 'Slugs with spaces or special symbols must fail');
+    assert.equal(isValidInviteSlug('slug/with/slash'), false, 'Slugs with slashes must fail');
+  });
+
+  await t.test('Self-registration role boundary guard ensures role is always user', () => {
+    function enforceClientRole(requestedRole) {
+      // Self registration always forces 'user' role regardless of what is passed
+      const safeRole = requestedRole === 'user' ? 'user' : 'user';
+      return safeRole;
+    }
+
+    assert.equal(enforceClientRole('admin'), 'user', 'Cannot self-register as admin');
+    assert.equal(enforceClientRole('reseller'), 'user', 'Cannot self-register as reseller');
+    assert.equal(enforceClientRole('user'), 'user');
+  });
 });

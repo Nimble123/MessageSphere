@@ -418,10 +418,18 @@ router.post('/', authenticate, requireRoles('admin', 'reseller'), async (req, re
     `, [email.trim().toLowerCase(), passwordHash, assignedRole, resellerId, String(full_name).trim().slice(0, 120), String(company_name || '').trim().slice(0, 160) || null, String(phone).trim().slice(0, 30), String(business_address || '').trim().slice(0, 2000) || null, String(gstin || '').trim().toUpperCase().slice(0, 20) || null, finalTaxMode, finalRefundDest]);
 
     const newUser = insertResult.rows[0];
-    await initializeUserCredits(client, newUser.id);
+    let resellerRates = null;
+    if (resellerId) {
+      const rpRes = await client.query('SELECT default_rates FROM reseller_profiles WHERE reseller_id = $1', [resellerId]);
+      if (rpRes.rows.length > 0 && rpRes.rows[0].default_rates) {
+        resellerRates = rpRes.rows[0].default_rates;
+      }
+    }
+    await initializeUserCredits(client, newUser.id, resellerRates);
     if (newUser.role === 'reseller') {
       const defaultBrand = newUser.company_name || newUser.email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
-      await client.query(`INSERT INTO reseller_profiles (reseller_id, brand_name) VALUES ($1, $2)`, [newUser.id, defaultBrand || 'Reseller Portal']);
+      const inviteCode = (newUser.company_name || newUser.email.split('@')[0]).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 30) || `reseller${newUser.id}`;
+      await client.query(`INSERT INTO reseller_profiles (reseller_id, brand_name, invite_code) VALUES ($1, $2, $3) ON CONFLICT (reseller_id) DO NOTHING`, [newUser.id, defaultBrand || 'Reseller Portal', inviteCode]);
     }
     await logAudit(client, { actorId: req.user.id, entityType: 'user', entityId: newUser.id, action: 'user_created', details: { role: newUser.role, resellerId: newUser.reseller_id } });
 

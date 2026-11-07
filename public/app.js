@@ -569,6 +569,100 @@ authForm.addEventListener('submit', async (e) => {
   }
 });
 
+// --- AUTH MODE SWITCHER (LOGIN vs CREATE ACCOUNT) ---
+window.switchAuthMode = function(mode) {
+  const formLogin = document.getElementById('auth-form');
+  const formReg = document.getElementById('auth-form-register');
+  const tabLogin = document.getElementById('tab-auth-login');
+  const tabReg = document.getElementById('tab-auth-register');
+  const heading = document.getElementById('auth-heading');
+  const subheading = document.getElementById('auth-subheading');
+  const currentBrand = window.currentBrandName || 'MessageSphere';
+
+  hideAuthError();
+  const regErrBox = document.getElementById('reg-error-box');
+  if (regErrBox) regErrBox.style.display = 'none';
+
+  if (mode === 'register') {
+    if (formLogin) formLogin.style.display = 'none';
+    if (formReg) formReg.style.display = 'block';
+    if (tabLogin) tabLogin.classList.remove('active');
+    if (tabReg) tabReg.classList.add('active');
+    if (heading) heading.innerHTML = `Create Your Account`;
+    if (subheading) subheading.textContent = `Sign up to launch verified WhatsApp and GSM SMS campaigns in minutes.`;
+  } else {
+    if (formLogin) formLogin.style.display = 'block';
+    if (formReg) formReg.style.display = 'none';
+    if (tabLogin) tabLogin.classList.add('active');
+    if (tabReg) tabReg.classList.remove('active');
+    if (heading) heading.innerHTML = `Sign in to <span class="brand-title">${escapeHtml(currentBrand)}</span>`;
+    if (subheading) subheading.textContent = `Enter your account credentials to access your dashboard.`;
+  }
+};
+
+// --- CLIENT SELF-REGISTRATION FORM SUBMIT ---
+const authFormRegister = document.getElementById('auth-form-register');
+const btnSubmitRegister = document.getElementById('btn-submit-register');
+
+if (authFormRegister) {
+  authFormRegister.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fullName = document.getElementById('reg-fullname')?.value.trim();
+    const email = document.getElementById('reg-email')?.value.trim();
+    const phone = document.getElementById('reg-phone')?.value.trim();
+    const companyName = document.getElementById('reg-company')?.value.trim();
+    const password = document.getElementById('reg-password')?.value;
+    const confirmPassword = document.getElementById('reg-confirm-password')?.value;
+    const inviteCode = document.getElementById('reg-invite-code')?.value.trim();
+    const errBox = document.getElementById('reg-error-box');
+
+    const showRegError = (msg) => {
+      if (errBox) {
+        errBox.textContent = msg;
+        errBox.style.display = 'block';
+      }
+    };
+
+    if (errBox) errBox.style.display = 'none';
+
+    if (!fullName) return showRegError('Full Name is required.');
+    if (!email) return showRegError('A valid Email Address is required.');
+    if (!phone || phone.replace(/\D/g, '').length < 10) return showRegError('A valid 10-digit mobile number is required.');
+    if (!password || password.length < 8) return showRegError('Password must be at least 8 characters long.');
+    if (password !== confirmPassword) return showRegError('Passwords do not match. Please re-enter.');
+
+    if (btnSubmitRegister) {
+      btnSubmitRegister.disabled = true;
+      btnSubmitRegister.textContent = 'Creating Account...';
+    }
+
+    try {
+      const res = await apiFetch('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          full_name: fullName,
+          email,
+          phone,
+          company_name: companyName,
+          password,
+          invite_code: inviteCode || undefined
+        })
+      });
+
+      setAuthToken(res.token);
+      showToast('success', 'Account Created!', `Welcome to MessageSphere, ${res.user.fullName || res.user.email}!`);
+      handleLoginSuccess(res.user);
+    } catch (err) {
+      showRegError(err.message || 'Registration failed.');
+    } finally {
+      if (btnSubmitRegister) {
+        btnSubmitRegister.disabled = false;
+        btnSubmitRegister.textContent = 'Create Account & Get Started →';
+      }
+    }
+  });
+}
+
 if (btnOpenForgotPassword) {
   btnOpenForgotPassword.addEventListener('click', () => {
     forgotPasswordEmail.value = loginEmailInput.value.trim();
@@ -764,8 +858,55 @@ if (changePassForm) {
   });
 }
 
+async function handleInviteUrlState() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const refCode = params.get('ref') || params.get('invite');
+    const isSignup = window.location.pathname.includes('/signup') || window.location.pathname.includes('/register') || params.has('signup') || params.has('register');
+
+    if (refCode) {
+      const inviteRes = await fetch(`/api/auth/invite/${encodeURIComponent(refCode)}`);
+      if (inviteRes.ok) {
+        const inviteData = await inviteRes.json();
+        if (inviteData && inviteData.valid) {
+          if (inviteData.reseller) {
+            applyBrandProfile(inviteData.reseller);
+          }
+          const inviteInput = document.getElementById('reg-invite-code');
+          if (inviteInput) inviteInput.value = inviteData.invite_code || refCode;
+
+          const refBanner = document.getElementById('auth-referral-banner');
+          const partnerNameEl = document.getElementById('auth-partner-name');
+          if (refBanner && partnerNameEl) {
+            partnerNameEl.textContent = inviteData.reseller?.brand_name || 'Partner';
+            refBanner.style.display = 'flex';
+          }
+
+          if (inviteData.allow_self_registration === false) {
+            const errBox = document.getElementById('reg-error-box');
+            if (errBox) {
+              errBox.textContent = 'Notice: Public self-registration is currently paused by this partner. Please contact partner support.';
+              errBox.style.display = 'block';
+            }
+          } else {
+            window.switchAuthMode('register');
+          }
+          return;
+        }
+      }
+    }
+
+    if (isSignup) {
+      window.switchAuthMode('register');
+    }
+  } catch (err) {
+    console.error('Error handling invite URL state:', err);
+  }
+}
+
 async function checkSession() {
   resolveHostBranding();
+  handleInviteUrlState();
   if (window.location.protocol === 'file:') {
     showAuthView();
     showAuthError('This portal needs its secure backend. Run “npm start” in the project folder, then open http://localhost:3000 — do not open public/index.html directly.');
@@ -10555,6 +10696,16 @@ async function resolveHostBranding() {
     const data = await res.json();
     if (data && data.custom_branding && data.branding) {
       applyBrandProfile(data.branding);
+      if (data.branding.invite_code) {
+        const inviteInput = document.getElementById('reg-invite-code');
+        if (inviteInput && !inviteInput.value) inviteInput.value = data.branding.invite_code;
+        const refBanner = document.getElementById('auth-referral-banner');
+        const partnerNameEl = document.getElementById('auth-partner-name');
+        if (refBanner && partnerNameEl) {
+          partnerNameEl.textContent = data.branding.brand_name || 'Partner';
+          refBanner.style.display = 'flex';
+        }
+      }
     }
   } catch (_) {}
 }
@@ -11126,6 +11277,99 @@ async function loadMyBrandProfile() {
   updateBrandLogoPreview(profile?.logo_url);
   const status = document.getElementById('brand-domain-status');
   if (status) status.textContent = profile?.custom_domain ? `Domain status: ${profile.domain_status}. Configure DNS with your hosting provider before Super Admin verification.` : 'Add a custom domain when DNS is ready; it will remain pending until Super Admin verifies it.';
+  await loadResellerInviteSettings();
+}
+
+async function loadResellerInviteSettings() {
+  if (!currentUser || currentUser.role !== 'reseller') return;
+  try {
+    const data = await apiFetch('/resellers/invite-settings');
+    const shareableInput = document.getElementById('invite-shareable-link');
+    const previewLink = document.getElementById('invite-preview-link');
+    const customSlugInput = document.getElementById('invite-custom-slug');
+    const allowSelfRegToggle = document.getElementById('invite-allow-self-reg');
+
+    if (shareableInput) shareableInput.value = data.shareable_url || '';
+    if (previewLink) previewLink.href = data.shareable_url || '#';
+    if (customSlugInput) customSlugInput.value = data.invite_code || '';
+    if (allowSelfRegToggle) allowSelfRegToggle.checked = data.allow_self_registration !== false;
+
+    const rates = data.default_rates || {};
+    const rateFields = {
+      'rate-normal-domestic': rates.normal_domestic ?? 0.1500,
+      'rate-dp-domestic': rates.dp_domestic ?? 0.2800,
+      'rate-cta-domestic': rates.cta_domestic ?? 0.2400,
+      'rate-dp-cta-domestic': rates.dp_cta_domestic ?? 0.3500,
+      'rate-gsm-sms-domestic': rates.gsm_sms_domestic ?? 0.1200,
+      'rate-own-number-domestic': rates.own_number_domestic ?? 0.0800,
+      'rate-normal-intl': rates.normal_international ?? 2.0000,
+      'rate-gsm-sms-intl': rates.gsm_sms_international ?? 1.5000
+    };
+
+    for (const [id, val] of Object.entries(rateFields)) {
+      const el = document.getElementById(id);
+      if (el) el.value = parseFloat(val).toFixed(4);
+    }
+  } catch (err) {
+    console.error('Failed to load reseller invite settings:', err);
+  }
+}
+
+const btnCopyInvite = document.getElementById('btn-copy-invite-link');
+if (btnCopyInvite) {
+  btnCopyInvite.addEventListener('click', async () => {
+    const input = document.getElementById('invite-shareable-link');
+    if (!input || !input.value) return;
+    try {
+      await navigator.clipboard.writeText(input.value);
+      btnCopyInvite.innerHTML = '<i data-lucide="check" style="width:14px;height:14px;"></i> Copied! ✓';
+      if (window.lucide) window.lucide.createIcons();
+      showToast('success', 'Link Copied', 'Invite signup link copied to clipboard.');
+      setTimeout(() => {
+        btnCopyInvite.innerHTML = '<i data-lucide="copy" style="width:14px;height:14px;"></i> Copy Link';
+        if (window.lucide) window.lucide.createIcons();
+      }, 2500);
+    } catch (_) {
+      input.select();
+      document.execCommand('copy');
+      showToast('success', 'Link Copied', 'Invite signup link copied to clipboard.');
+    }
+  });
+}
+
+const btnSaveInvite = document.getElementById('btn-save-invite-settings');
+if (btnSaveInvite) {
+  btnSaveInvite.addEventListener('click', async () => {
+    const customSlug = document.getElementById('invite-custom-slug')?.value.trim();
+    const allowSelfReg = document.getElementById('invite-allow-self-reg')?.checked;
+
+    const default_rates = {
+      normal_domestic: parseFloat(document.getElementById('rate-normal-domestic')?.value) || 0.1500,
+      dp_domestic: parseFloat(document.getElementById('rate-dp-domestic')?.value) || 0.2800,
+      cta_domestic: parseFloat(document.getElementById('rate-cta-domestic')?.value) || 0.2400,
+      dp_cta_domestic: parseFloat(document.getElementById('rate-dp-cta-domestic')?.value) || 0.3500,
+      gsm_sms_domestic: parseFloat(document.getElementById('rate-gsm-sms-domestic')?.value) || 0.1200,
+      own_number_domestic: parseFloat(document.getElementById('rate-own-number-domestic')?.value) || 0.0800,
+      normal_international: parseFloat(document.getElementById('rate-normal-intl')?.value) || 2.0000,
+      gsm_sms_international: parseFloat(document.getElementById('rate-gsm-sms-intl')?.value) || 1.5000
+    };
+
+    try {
+      await apiFetch('/resellers/invite-settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          invite_code: customSlug,
+          allow_self_registration: allowSelfReg,
+          default_rates
+        })
+      });
+
+      showToast('success', 'Invite Settings Saved', 'Your client invite link and default credit margins were updated successfully!');
+      await loadResellerInviteSettings();
+    } catch (err) {
+      showToast('error', 'Update Failed', err.message);
+    }
+  });
 }
 
 if (brandForm) brandForm.addEventListener('submit', async event => {

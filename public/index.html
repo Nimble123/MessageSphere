@@ -274,6 +274,35 @@
       color: var(--slate-500);
       font-size: 0.92rem;
     }
+    .auth-tabs {
+      display: flex;
+      background: #f1f5f9;
+      border-radius: var(--radius-md);
+      padding: 4px;
+      margin-bottom: 20px;
+      gap: 4px;
+    }
+    .auth-tab {
+      flex: 1;
+      border: none;
+      background: transparent;
+      padding: 8px 12px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--slate-600);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-align: center;
+    }
+    .auth-tab.active {
+      background: white;
+      color: var(--slate-900);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .auth-tab:hover:not(.active) {
+      color: var(--slate-900);
+    }
     .demo-callout {
       background: #f8fafc;
       border: 1px solid #e2e8f0;
@@ -2022,10 +2051,25 @@
     </div>
     <div class="auth-form-wrapper">
       <div class="auth-card">
+        <div class="auth-tabs" id="auth-tab-bar">
+          <button type="button" id="tab-auth-login" class="auth-tab active" onclick="switchAuthMode('login')">Sign In</button>
+          <button type="button" id="tab-auth-register" class="auth-tab" onclick="switchAuthMode('register')">Create Account</button>
+        </div>
+
+        <div id="auth-referral-banner" style="display:none;margin-bottom:18px;padding:12px 14px;border-radius:8px;background:rgba(79,70,229,0.06);border:1px solid rgba(79,70,229,0.18);display:flex;align-items:center;gap:10px;">
+          <i data-lucide="shield-check" style="width:20px;height:20px;color:var(--brand-accent,#4f46e5);flex-shrink:0;"></i>
+          <div style="font-size:0.83rem;color:var(--slate-700);">
+            <div style="font-weight:600;color:var(--brand-accent,#4f46e5);">Partner Onboarding Portal</div>
+            <div>Registering account under: <strong id="auth-partner-name">Partner</strong></div>
+          </div>
+        </div>
+
         <div class="auth-header">
           <h2 id="auth-heading">Sign in to <span class="brand-title">MessageSphere</span></h2>
-          <p>Enter your account credentials to access your dashboard.</p>
+          <p id="auth-subheading">Enter your account credentials to access your dashboard.</p>
         </div>
+
+        <!-- LOGIN FORM -->
         <form id="auth-form" onsubmit="return false;">
           <div class="form-group">
             <label for="login-email">Email Address</label>
@@ -2038,6 +2082,44 @@
           <div id="auth-error-box" style="display:none;margin-bottom:18px;padding:12px;border-radius:var(--radius-md);background:#fef2f2;border:1px solid #fecaca;color:#991b1b;font-size:0.88rem;"></div>
           <button type="submit" id="btn-submit-login" class="btn-primary">Sign In to Dashboard →</button>
           <button type="button" id="btn-open-forgot-password" class="btn-action btn-action-secondary" style="width:100%;margin-top:10px;">Forgot password?</button>
+        </form>
+
+        <!-- REGISTER FORM -->
+        <form id="auth-form-register" style="display:none;" onsubmit="return false;">
+          <div class="form-group">
+            <label for="reg-fullname">Full Name <span style="color:#ef4444;">*</span></label>
+            <input type="text" id="reg-fullname" class="form-input" placeholder="e.g. John Doe" required autocomplete="name">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="form-group">
+              <label for="reg-email">Email Address <span style="color:#ef4444;">*</span></label>
+              <input type="email" id="reg-email" class="form-input" placeholder="name@company.com" required autocomplete="email">
+            </div>
+            <div class="form-group">
+              <label for="reg-phone">Phone Number <span style="color:#ef4444;">*</span></label>
+              <input type="tel" id="reg-phone" class="form-input" placeholder="+91 9876543210" required autocomplete="tel">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="reg-company">Company / Business Name <span style="font-weight:400;color:var(--slate-500);">(Optional)</span></label>
+            <input type="text" id="reg-company" class="form-input" placeholder="e.g. Acme Enterprises">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="form-group">
+              <label for="reg-password">Password <span style="color:#ef4444;">*</span></label>
+              <input type="password" id="reg-password" class="form-input" placeholder="Min 8 characters" required autocomplete="new-password">
+            </div>
+            <div class="form-group">
+              <label for="reg-confirm-password">Confirm Password <span style="color:#ef4444;">*</span></label>
+              <input type="password" id="reg-confirm-password" class="form-input" placeholder="Repeat password" required autocomplete="new-password">
+            </div>
+          </div>
+          <input type="hidden" id="reg-invite-code" value="">
+          <div id="reg-error-box" style="display:none;margin-bottom:14px;padding:10px;border-radius:6px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;font-size:0.84rem;"></div>
+          <button type="submit" id="btn-submit-register" class="btn-primary" style="width:100%;">Create Account & Get Started →</button>
+          <p style="text-align:center;font-size:0.82rem;color:var(--slate-500);margin-top:14px;">
+            Already have an account? <a href="javascript:void(0)" onclick="switchAuthMode('login')" style="color:var(--brand-accent,#4f46e5);font-weight:600;text-decoration:none;">Sign in</a>
+          </p>
         </form>
       </div>
     </div>
@@ -3923,6 +4005,111 @@
                   </div>
                   <div id="brand-domain-status" style="font-size:0.82rem;color:var(--slate-500);margin:4px 0 14px;"></div>
                   <button type="submit" class="btn-primary" style="max-width:220px;">Save white-label brand</button>
+                </form>
+              </div>
+            </div>
+
+            <!-- Client Invite & Self-Registration Engine Card -->
+            <div class="card" style="margin-top:20px;">
+              <div class="card-header">
+                <div>
+                  <div class="card-title" style="display:flex;align-items:center;gap:8px;">
+                    <i data-lucide="user-plus" style="width:20px;height:20px;color:var(--brand-accent, #4f46e5);"></i>
+                    <span>Client Invite & Self-Registration Engine</span>
+                  </div>
+                  <div class="card-desc">Share your customized signup link with prospective clients. New clients register automatically under your reseller account with pre-set credit selling rates.</div>
+                </div>
+              </div>
+              <div class="card-body">
+                <form id="reseller-invite-form" onsubmit="return false;">
+                  <!-- Shareable Link Box -->
+                  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:18px;">
+                    <label style="font-weight:600;font-size:0.85rem;color:var(--slate-700);display:block;margin-bottom:6px;">
+                      Your Unique Client Signup Link
+                    </label>
+                    <div style="display:flex;gap:8px;">
+                      <input type="text" id="invite-shareable-link" class="form-input" readonly style="background:#ffffff;font-family:monospace;font-size:0.82rem;font-weight:600;color:var(--slate-800);" value="Loading invite link...">
+                      <button type="button" id="btn-copy-invite-link" class="btn-action btn-action-primary" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;white-space:nowrap;">
+                        <i data-lucide="copy" style="width:14px;height:14px;"></i> <span>Copy Link</span>
+                      </button>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:0.75rem;color:var(--slate-500);">
+                      <span>Send this URL to clients via WhatsApp, Email, or website banner</span>
+                      <a id="invite-preview-link" href="#" target="_blank" style="color:var(--brand-accent,#4f46e5);text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:3px;">Preview Signup Page ↗</a>
+                    </div>
+                  </div>
+
+                  <!-- Invite Code Slug & Toggle -->
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
+                    <div class="form-group" style="margin-bottom:0;">
+                      <label for="invite-custom-slug" style="font-weight:600;display:flex;justify-content:space-between;">
+                        <span>Custom Invite Slug / Code</span>
+                        <span style="font-size:0.75rem;font-weight:400;color:var(--slate-500);">3-50 letters/numbers</span>
+                      </label>
+                      <input type="text" id="invite-custom-slug" class="form-input" maxlength="50" placeholder="e.g. exhume" style="padding-left:12px;">
+                      <small style="font-size:0.75rem;color:var(--slate-500);display:block;margin-top:3px;">e.g. ?ref=<strong>exhume</strong></small>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom:0;">
+                      <label style="font-weight:600;display:block;margin-bottom:8px;">Self-Registration Status</label>
+                      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;">
+                        <input type="checkbox" id="invite-allow-self-reg" checked style="width:18px;height:18px;accent-color:var(--brand-accent,#4f46e5);">
+                        <span style="font-size:0.85rem;font-weight:600;color:var(--slate-800);">Allow new clients to self-register</span>
+                      </label>
+                      <small style="font-size:0.75rem;color:var(--slate-500);display:block;margin-top:3px;">Turn off to pause public registrations</small>
+                    </div>
+                  </div>
+
+                  <!-- Default Client Selling Rates Grid -->
+                  <div style="border-top:1px solid #f1f5f9;padding-top:16px;margin-top:14px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                      <label style="font-weight:700;font-size:0.88rem;color:var(--slate-900);">
+                        Default Client Selling Rates (Margins in INR ₹)
+                      </label>
+                      <span style="font-size:0.75rem;color:var(--slate-500);">These rates apply automatically to self-registered clients</span>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:12px;">
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.78rem;font-weight:600;color:var(--slate-600);">Normal WhatsApp (₹)</label>
+                        <input type="number" step="0.0001" min="0.0001" id="rate-normal-domestic" class="form-input" style="padding:6px 10px;font-size:0.82rem;" placeholder="0.1500">
+                      </div>
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.78rem;font-weight:600;color:var(--slate-600);">Profile DP Route (₹)</label>
+                        <input type="number" step="0.0001" min="0.0001" id="rate-dp-domestic" class="form-input" style="padding:6px 10px;font-size:0.82rem;" placeholder="0.2800">
+                      </div>
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.78rem;font-weight:600;color:var(--slate-600);">Direct Action CTA (₹)</label>
+                        <input type="number" step="0.0001" min="0.0001" id="rate-cta-domestic" class="form-input" style="padding:6px 10px;font-size:0.82rem;" placeholder="0.2400">
+                      </div>
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.78rem;font-weight:600;color:var(--slate-600);">DP + CTA Route (₹)</label>
+                        <input type="number" step="0.0001" min="0.0001" id="rate-dp-cta-domestic" class="form-input" style="padding:6px 10px;font-size:0.82rem;" placeholder="0.3500">
+                      </div>
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.78rem;font-weight:600;color:var(--slate-600);">GSM Bulk SMS Dom (₹)</label>
+                        <input type="number" step="0.0001" min="0.0001" id="rate-gsm-sms-domestic" class="form-input" style="padding:6px 10px;font-size:0.82rem;" placeholder="0.1200">
+                      </div>
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.78rem;font-weight:600;color:var(--slate-600);">Own Number Route (₹)</label>
+                        <input type="number" step="0.0001" min="0.0001" id="rate-own-number-domestic" class="form-input" style="padding:6px 10px;font-size:0.82rem;" placeholder="0.0800">
+                      </div>
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.78rem;font-weight:600;color:var(--slate-600);">Intl WhatsApp (₹)</label>
+                        <input type="number" step="0.0001" min="0.0001" id="rate-normal-intl" class="form-input" style="padding:6px 10px;font-size:0.82rem;" placeholder="2.0000">
+                      </div>
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.78rem;font-weight:600;color:var(--slate-600);">Intl GSM SMS (₹)</label>
+                        <input type="number" step="0.0001" min="0.0001" id="rate-gsm-sms-intl" class="form-input" style="padding:6px 10px;font-size:0.82rem;" placeholder="1.5000">
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style="margin-top:18px;display:flex;justify-content:flex-end;">
+                    <button type="button" id="btn-save-invite-settings" class="btn-primary" style="padding:8px 20px;font-size:0.88rem;display:inline-flex;align-items:center;gap:6px;">
+                      <i data-lucide="save" style="width:15px;height:15px;"></i> Save Invite & Rate Settings
+                    </button>
+                  </div>
                 </form>
               </div>
             </div>
@@ -7684,6 +7871,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=202611071410"></script>
+  <script src="app.js?v=202611071440"></script>
 </body>
 </html>

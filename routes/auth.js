@@ -3,7 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
-const { query, getClient } = require('../db');
+const { query, getClient, initializeUserCredits } = require('../db');
 const { authenticate, requireRoles, JWT_SECRET } = require('../middleware/auth');
 const { logAudit } = require('../services/audit');
 
@@ -14,6 +14,14 @@ const loginLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many login attempts from this IP address. Please try again after 15 minutes.' }
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 15, // max 15 registration attempts per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many account registrations attempted from this IP. Please wait 15 minutes.' }
 });
 
 const forgotPasswordLimiter = rateLimit({
@@ -119,6 +127,207 @@ router.post('/login', loginLimiter, async (req, res) => {
   } catch (err) {
     console.error('Login error:', err);
     return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/auth/invite/:codeOrDomain - Public invite & self-registration verification
+router.get('/invite/:codeOrDomain', async (req, res) => {
+  try {
+    const rawParam = String(req.params.codeOrDomain || '').trim();
+    if (!rawParam) {
+      return res.status(400).json({ valid: false, error: 'Invite code or domain parameter is required' });
+    }
+    let cleanParam = rawParam.toLowerCase().replace(/^https?:\/\//i, '').replace(/:\d+$/, '').replace(/\/.*$/, '').trim();
+    if (cleanParam.startsWith('www.')) cleanParam = cleanParam.slice(4);
+
+    const result = await query(`
+      SELECT rp.reseller_id, rp.brand_name, rp.logo_url, rp.accent_color, rp.support_email, rp.support_phone,
+             rp.custom_domain, rp.domain_status, rp.invite_code, rp.allow_self_registration, rp.default_rates,
+             u.email AS reseller_email, u.company_name, u.is_blocked
+      FROM reseller_profiles rp
+      JOIN users u ON u.id = rp.reseller_id
+      WHERE (LOWER(rp.invite_code) = LOWER($1) OR LOWER(rp.custom_domain) = LOWER($1) OR rp.reseller_id::text = $1)
+        AND u.is_blocked = FALSE
+    `, [cleanParam]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ valid: false, error: 'Invalid or inactive invite code' });
+    }
+
+    const row = result.rows[0];
+    return res.json({
+      valid: true,
+      invite_code: row.invite_code,
+      allow_self_registration: row.allow_self_registration !== false,
+      reseller: {
+        id: row.reseller_id,
+        brand_name: row.brand_name || row.company_name || 'Partner',
+        logo_url: row.logo_url,
+        accent_color: row.accent_color || '#4f46e5',
+        support_email: row.support_email,
+        support_phone: row.support_phone,
+        custom_domain: row.custom_domain
+      },
+      default_rates: row.default_rates || {}
+    });
+  } catch (err) {
+    console.error('Invite lookup error:', err);
+    return res.status(500).json({ valid: false, error: 'Failed to verify invite link' });
+  }
+});
+
+// POST /api/auth/register - Client self-registration via invite link or partner domain
+router.post('/register', registerLimiter, async (req, res) => {
+  const { email, password, full_name, phone, company_name, business_address, gstin, invite_code } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+  const cleanEmail = String(email).trim().toLowerCase();
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(cleanEmail)) {
+    return res.status(400).json({ error: 'A valid email address is required' });
+  }
+  if (!full_name || !String(full_name).trim()) {
+    return res.status(400).json({ error: 'Full name is required' });
+  }
+  const cleanPhone = String(phone || '').replace(/\D/g, '');
+  if (cleanPhone.length < 10) {
+    return res.status(400).json({ error: 'A valid 10-digit mobile number is required' });
+  }
+  if (String(password).length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+  }
+
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+  let resellerId = null;
+  let customRates = null;
+  let partnerBrandName = null;
+
+  let candidateSlug = String(invite_code || req.query.ref || '').trim().toLowerCase();
+  let candidateHost = String(req.body.domain || req.hostname || req.get('host') || '').toLowerCase().split(':')[0];
+  if (candidateHost.startsWith('www.')) candidateHost = candidateHost.slice(4);
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    const dupCheck = await client.query('SELECT id FROM users WHERE email = $1', [cleanEmail]);
+    if (dupCheck.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'An account with this email address already exists. Please sign in instead.' });
+    }
+
+    if (candidateSlug) {
+      const rpRes = await client.query(`
+        SELECT rp.reseller_id, rp.brand_name, rp.allow_self_registration, rp.default_rates, u.is_blocked
+        FROM reseller_profiles rp
+        JOIN users u ON u.id = rp.reseller_id
+        WHERE LOWER(rp.invite_code) = LOWER($1) OR rp.reseller_id::text = $1
+      `, [candidateSlug]);
+
+      if (rpRes.rows.length === 0 || rpRes.rows[0].is_blocked) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'The provided invite link is invalid or no longer active.' });
+      }
+
+      if (rpRes.rows[0].allow_self_registration === false) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Self-registration is currently paused by this partner. Please contact their support.' });
+      }
+
+      resellerId = rpRes.rows[0].reseller_id;
+      customRates = rpRes.rows[0].default_rates;
+      partnerBrandName = rpRes.rows[0].brand_name;
+    } else if (candidateHost && candidateHost !== 'localhost' && candidateHost !== '127.0.0.1') {
+      const domainRes = await client.query(`
+        SELECT rp.reseller_id, rp.brand_name, rp.allow_self_registration, rp.default_rates, u.is_blocked
+        FROM reseller_profiles rp
+        JOIN users u ON u.id = rp.reseller_id
+        WHERE (LOWER(rp.custom_domain) = LOWER($1) OR LOWER(rp.custom_domain) = LOWER($2))
+      `, [candidateHost, `www.${candidateHost}`]);
+
+      if (domainRes.rows.length > 0 && !domainRes.rows[0].is_blocked) {
+        if (domainRes.rows[0].allow_self_registration === false) {
+          await client.query('ROLLBACK');
+          return res.status(403).json({ error: 'Self-registration is currently paused on this portal.' });
+        }
+        resellerId = domainRes.rows[0].reseller_id;
+        customRates = domainRes.rows[0].default_rates;
+        partnerBrandName = domainRes.rows[0].brand_name;
+      }
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const taxMode = (gstin && String(gstin).trim()) ? 'with_gst' : 'non_gst';
+
+    const insertResult = await client.query(`
+      INSERT INTO users (email, password_hash, role, reseller_id, full_name, company_name, phone, business_address, gstin, tax_mode, refund_destination)
+      VALUES ($1, $2, 'user', $3, $4, $5, $6, $7, $8, $9, 'user')
+      RETURNING id, email, role, is_blocked, reseller_id, full_name, company_name, phone, business_address, gstin, tax_mode, refund_destination, created_at
+    `, [
+      cleanEmail,
+      passwordHash,
+      resellerId,
+      String(full_name).trim().slice(0, 120),
+      String(company_name || '').trim().slice(0, 160) || null,
+      String(phone).trim().slice(0, 30),
+      String(business_address || '').trim().slice(0, 2000) || null,
+      String(gstin || '').trim().toUpperCase().slice(0, 20) || null,
+      taxMode
+    ]);
+
+    const newUser = insertResult.rows[0];
+
+    // Seed credits with reseller's default rates or standard system rates
+    await initializeUserCredits(client, newUser.id, customRates);
+
+    await logAudit(client, {
+      actorId: newUser.id,
+      entityType: 'user',
+      entityId: newUser.id,
+      action: 'client_self_registered',
+      details: {
+        resellerId,
+        partnerBrandName,
+        inviteCode: candidateSlug || null,
+        ip: clientIp
+      }
+    });
+
+    await client.query('COMMIT');
+
+    const token = jwt.sign(
+      { userId: newUser.id, email: newUser.email, role: newUser.role, tokenVersion: 1 },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    const credits = await getUserCredits(newUser.id);
+
+    return res.status(201).json({
+      message: 'Registration successful! Welcome to MessageSphere.',
+      token,
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        role: newUser.role,
+        isBlocked: newUser.is_blocked,
+        resellerId: newUser.reseller_id,
+        fullName: newUser.full_name,
+        companyName: newUser.company_name,
+        phone: newUser.phone,
+        businessAddress: newUser.business_address,
+        gstin: newUser.gstin,
+        ...credits
+      }
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Self-registration error:', err);
+    return res.status(500).json({ error: 'Failed to complete registration: ' + (err.message || 'Database error') });
+  } finally {
+    client.release();
   }
 });
 

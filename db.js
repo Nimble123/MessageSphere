@@ -383,6 +383,28 @@ async function initDB() {
     await client.query(`ALTER TABLE credit_requests ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(50);`);
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_requests_invoice_no ON credit_requests(invoice_number) WHERE invoice_number IS NOT NULL;`);
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_reseller_custom_domain ON reseller_profiles(LOWER(custom_domain)) WHERE custom_domain IS NOT NULL AND custom_domain != '';`);
+    await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS invite_code VARCHAR(64);`);
+    await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS allow_self_registration BOOLEAN NOT NULL DEFAULT TRUE;`);
+    await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS default_rates JSONB DEFAULT '{}'::jsonb;`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_reseller_invite_code ON reseller_profiles(LOWER(invite_code)) WHERE invite_code IS NOT NULL AND invite_code != '';`);
+
+    // Backfill clean invite codes for any reseller profiles missing one
+    const unseededInvites = await client.query(`SELECT reseller_id, brand_name FROM reseller_profiles WHERE invite_code IS NULL OR invite_code = ''`);
+    for (const rRow of unseededInvites.rows) {
+      let codeCandidate = (rRow.brand_name || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 30);
+      if (!codeCandidate || codeCandidate.length < 3) {
+        codeCandidate = `reseller${rRow.reseller_id}`;
+      }
+      let finalCode = codeCandidate;
+      let suffix = 1;
+      while (true) {
+        const clashRes = await client.query(`SELECT 1 FROM reseller_profiles WHERE LOWER(invite_code) = LOWER($1) AND reseller_id != $2`, [finalCode, rRow.reseller_id]);
+        if (clashRes.rows.length === 0) break;
+        suffix++;
+        finalCode = `${codeCandidate}${suffix}`;
+      }
+      await client.query(`UPDATE reseller_profiles SET invite_code = $1 WHERE reseller_id = $2`, [finalCode, rRow.reseller_id]);
+    }
 
     // Schema Migrations Table: guarantees migrations run ONCE and never mutate runtime data on boot
     await client.query(`
@@ -465,17 +487,40 @@ async function initDB() {
 }
 
 // Helper to initialize credits for a newly created user (zero for users/resellers, 10M for admin)
-async function initializeUserCredits(client, userId) {
+async function initializeUserCredits(client, userId, customRates = null) {
   const roleRes = await client.query('SELECT role FROM users WHERE id = $1', [userId]);
   const isAdmin = roleRes.rows.length > 0 && roleRes.rows[0].role === 'admin';
   const defaultBal = isAdmin ? 10000000 : 0;
+  const DEFAULT_CHANNEL_RATES = {
+    normal_domestic: 0.1500,
+    dp_domestic: 0.2800,
+    cta_domestic: 0.2400,
+    dp_cta_domestic: 0.3500,
+    gsm_sms_domestic: 0.1200,
+    own_number_domestic: 0.0800,
+    normal_international: 2.0000,
+    dp_international: 2.5000,
+    cta_international: 2.5000,
+    dp_cta_international: 3.0000,
+    gsm_sms_international: 1.5000,
+    own_number_international: 1.2000
+  };
   for (const dest of DESTINATIONS) {
     for (const type of CREDIT_TYPES) {
+      const key = `${type}_${dest}`;
+      let rate = DEFAULT_CHANNEL_RATES[key] || 0.1500;
+      if (customRates && customRates[key] !== undefined && customRates[key] !== null) {
+        const parsed = parseFloat(customRates[key]);
+        if (!isNaN(parsed) && parsed > 0) {
+          rate = parsed;
+        }
+      }
       await client.query(`
-        INSERT INTO user_credits (user_id, credit_type, destination, balance)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (user_id, credit_type, destination) DO NOTHING
-      `, [userId, type, dest, defaultBal]);
+        INSERT INTO user_credits (user_id, credit_type, destination, balance, rate_inr)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (user_id, credit_type, destination) 
+        DO UPDATE SET rate_inr = COALESCE(EXCLUDED.rate_inr, user_credits.rate_inr)
+      `, [userId, type, dest, defaultBal, rate]);
     }
   }
 }

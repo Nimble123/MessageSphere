@@ -235,7 +235,7 @@ router.get('/branding/resolve', async (req, res) => {
       const resId = parseInt(req.query.reseller_id, 10);
       if (!isNaN(resId)) {
         const testRes = await query(`
-          SELECT rp.brand_name, rp.logo_url, rp.accent_color, rp.support_email, rp.support_phone, rp.custom_domain, rp.domain_status
+          SELECT rp.brand_name, rp.logo_url, rp.accent_color, rp.support_email, rp.support_phone, rp.custom_domain, rp.domain_status, rp.invite_code, rp.allow_self_registration
           FROM reseller_profiles rp
           JOIN users u ON u.id = rp.reseller_id
           WHERE rp.reseller_id = $1 AND u.is_blocked = FALSE
@@ -255,7 +255,7 @@ router.get('/branding/resolve', async (req, res) => {
     }
 
     const result = await query(`
-      SELECT rp.brand_name, rp.logo_url, rp.accent_color, rp.support_email, rp.support_phone, rp.custom_domain, rp.domain_status
+      SELECT rp.brand_name, rp.logo_url, rp.accent_color, rp.support_email, rp.support_phone, rp.custom_domain, rp.domain_status, rp.invite_code, rp.allow_self_registration
       FROM reseller_profiles rp
       JOIN users u ON u.id = rp.reseller_id
       WHERE (LOWER(rp.custom_domain) = LOWER($1) OR LOWER(rp.custom_domain) = LOWER($2))
@@ -441,6 +441,180 @@ async function saveProfile(req, res, resellerId, actorId) {
     client.release();
   }
 }
+
+// GET /api/resellers/invite-settings - Reseller views their invite code, toggle & rate settings
+router.get('/invite-settings', authenticate, requireRoles('reseller', 'admin'), async (req, res) => {
+  try {
+    let targetResellerId = req.user.role === 'reseller' ? req.user.id : parseInt(req.query.reseller_id || req.user.id, 10);
+    if (!targetResellerId || isNaN(targetResellerId)) {
+      return res.status(400).json({ error: 'Valid reseller ID is required' });
+    }
+
+    const result = await query(`
+      SELECT rp.reseller_id, rp.brand_name, rp.invite_code, rp.allow_self_registration, rp.default_rates,
+             rp.custom_domain, rp.domain_status, u.company_name, u.email
+      FROM reseller_profiles rp
+      JOIN users u ON u.id = rp.reseller_id
+      WHERE rp.reseller_id = $1
+    `, [targetResellerId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Reseller profile not found' });
+    }
+
+    const row = result.rows[0];
+    let inviteCode = row.invite_code;
+
+    // Auto-generate if missing
+    if (!inviteCode) {
+      inviteCode = (row.brand_name || row.company_name || 'reseller').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 30) || `reseller${row.reseller_id}`;
+      await query(`UPDATE reseller_profiles SET invite_code = $1 WHERE reseller_id = $2`, [inviteCode, targetResellerId]);
+    }
+
+    const hostHeader = req.get('host') || 'localhost:3000';
+    const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+    const platformUrl = `${protocol}://${hostHeader}/signup?ref=${encodeURIComponent(inviteCode)}`;
+    const customDomainUrl = row.custom_domain ? `https://${row.custom_domain}/signup?ref=${encodeURIComponent(inviteCode)}` : null;
+
+    const primaryShareableUrl = (row.custom_domain && row.domain_status === 'Verified') ? customDomainUrl : platformUrl;
+
+    const DEFAULT_RATES = {
+      normal_domestic: 0.1500,
+      dp_domestic: 0.2800,
+      cta_domestic: 0.2400,
+      dp_cta_domestic: 0.3500,
+      gsm_sms_domestic: 0.1200,
+      own_number_domestic: 0.0800,
+      normal_international: 2.0000,
+      dp_international: 2.5000,
+      cta_international: 2.5000,
+      dp_cta_international: 3.0000,
+      gsm_sms_international: 1.5000,
+      own_number_international: 1.2000
+    };
+
+    return res.json({
+      reseller_id: row.reseller_id,
+      brand_name: row.brand_name,
+      invite_code: inviteCode,
+      allow_self_registration: row.allow_self_registration !== false,
+      default_rates: { ...DEFAULT_RATES, ...(row.default_rates || {}) },
+      platform_url: platformUrl,
+      custom_domain_url: customDomainUrl,
+      shareable_url: primaryShareableUrl
+    });
+  } catch (err) {
+    console.error('Get invite settings error:', err);
+    return res.status(500).json({ error: 'Failed to retrieve invite settings' });
+  }
+});
+
+// PUT /api/resellers/invite-settings - Reseller or Admin updates invite code, toggle & default margins
+router.put('/invite-settings', authenticate, requireRoles('reseller', 'admin'), async (req, res) => {
+  let targetResellerId = req.user.role === 'reseller' ? req.user.id : parseInt(req.body.reseller_id || req.user.id, 10);
+  if (!targetResellerId || isNaN(targetResellerId)) {
+    return res.status(400).json({ error: 'Valid reseller ID is required' });
+  }
+
+  const { invite_code, allow_self_registration, default_rates } = req.body;
+
+  let cleanInviteCode = undefined;
+  if (invite_code !== undefined) {
+    cleanInviteCode = String(invite_code).trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    if (cleanInviteCode.length < 3 || cleanInviteCode.length > 50) {
+      return res.status(400).json({ error: 'Invite code must be 3-50 alphanumeric characters (hyphens and underscores allowed).' });
+    }
+
+    const clash = await query(`
+      SELECT 1 FROM reseller_profiles 
+      WHERE LOWER(invite_code) = LOWER($1) AND reseller_id != $2
+    `, [cleanInviteCode, targetResellerId]);
+    if (clash.rows.length > 0) {
+      return res.status(400).json({ error: `Invite slug '${cleanInviteCode}' is already taken by another partner. Please choose another.` });
+    }
+  }
+
+  let cleanAllowSelfReg = undefined;
+  if (allow_self_registration !== undefined) {
+    cleanAllowSelfReg = allow_self_registration === true || allow_self_registration === 'true' || allow_self_registration === 1;
+  }
+
+  let cleanRates = undefined;
+  if (default_rates && typeof default_rates === 'object') {
+    cleanRates = {};
+    const validKeys = [
+      'normal_domestic', 'dp_domestic', 'cta_domestic', 'dp_cta_domestic', 'gsm_sms_domestic', 'own_number_domestic',
+      'normal_international', 'dp_international', 'cta_international', 'dp_cta_international', 'gsm_sms_international', 'own_number_international'
+    ];
+    for (const key of validKeys) {
+      if (default_rates[key] !== undefined && default_rates[key] !== null) {
+        const parsed = parseFloat(default_rates[key]);
+        if (isNaN(parsed) || parsed < 0.0001 || parsed > 100) {
+          return res.status(400).json({ error: `Invalid rate for ${key}. Must be a positive number between ₹0.0001 and ₹100.` });
+        }
+        cleanRates[key] = parseFloat(parsed.toFixed(4));
+      }
+    }
+  }
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    const updateRes = await client.query(`
+      UPDATE reseller_profiles
+      SET invite_code = COALESCE($1, invite_code),
+          allow_self_registration = COALESCE($2, allow_self_registration),
+          default_rates = CASE WHEN $3::jsonb IS NOT NULL THEN (COALESCE(default_rates, '{}'::jsonb) || $3::jsonb) ELSE default_rates END,
+          updated_at = NOW()
+      WHERE reseller_id = $4
+      RETURNING *
+    `, [cleanInviteCode, cleanAllowSelfReg, cleanRates ? JSON.stringify(cleanRates) : null, targetResellerId]);
+
+    if (updateRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Reseller profile not found' });
+    }
+
+    await logAudit(client, {
+      actorId: req.user.id,
+      entityType: 'reseller_profile',
+      entityId: targetResellerId,
+      action: 'reseller_invite_settings_updated',
+      details: {
+        inviteCode: cleanInviteCode,
+        allowSelfRegistration: cleanAllowSelfReg,
+        defaultRates: cleanRates
+      }
+    });
+
+    await client.query('COMMIT');
+
+    const updated = updateRes.rows[0];
+    const hostHeader = req.get('host') || 'localhost:3000';
+    const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+    const platformUrl = `${protocol}://${hostHeader}/signup?ref=${encodeURIComponent(updated.invite_code)}`;
+    const customDomainUrl = updated.custom_domain ? `https://${updated.custom_domain}/signup?ref=${encodeURIComponent(updated.invite_code)}` : null;
+    const primaryShareableUrl = (updated.custom_domain && updated.domain_status === 'Verified') ? customDomainUrl : platformUrl;
+
+    return res.json({
+      message: 'Invite & self-registration settings saved successfully!',
+      reseller_id: updated.reseller_id,
+      invite_code: updated.invite_code,
+      allow_self_registration: updated.allow_self_registration,
+      default_rates: updated.default_rates,
+      platform_url: platformUrl,
+      custom_domain_url: customDomainUrl,
+      shareable_url: primaryShareableUrl
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Update invite settings error:', err);
+    return res.status(500).json({ error: 'Failed to update invite settings: ' + (err.message || 'Database error') });
+  } finally {
+    client.release();
+  }
+});
 
 router.put('/me', authenticate, requireRoles('reseller'), async (req, res) => saveProfile(req, res, req.user.id, req.user.id));
 router.put('/:id', authenticate, requireRoles('admin'), async (req, res) => saveProfile(req, res, parseInt(req.params.id, 10), req.user.id));
