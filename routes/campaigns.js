@@ -762,9 +762,17 @@ router.post('/reminders/dismiss-all', authenticate, requireRoles('admin', 'resel
   }
 });
 
-// GET /api/campaigns - List campaigns
+// GET /api/campaigns - List campaigns (Strictly WhatsApp campaigns by default)
 router.get('/', authenticate, async (req, res) => {
   try {
+    const channelFilter = req.query.channel_type;
+    let channelClause = "AND (c.channel_type = 'whatsapp' OR c.channel_type IS NULL OR c.channel_type != 'sms')";
+    if (channelFilter === 'all') {
+      channelClause = "";
+    } else if (channelFilter === 'sms') {
+      channelClause = "AND c.channel_type = 'sms'";
+    }
+
     let listSql = '';
     let params = [];
 
@@ -775,6 +783,7 @@ router.get('/', authenticate, async (req, res) => {
           (SELECT details->>'reason' FROM audit_events WHERE entity_type = 'campaign' AND entity_id = c.id AND action IN ('status_changed_to_rejected', 'status_changed_to_rejected_bulk', 'campaign_cancelled_by_user') ORDER BY id DESC LIMIT 1) as rejection_reason
         FROM campaigns c
         JOIN users u ON c.user_id = u.id
+        WHERE 1=1 ${channelClause}
         ORDER BY c.created_at DESC
       `;
     } else if (req.user.role === 'reseller') {
@@ -784,7 +793,7 @@ router.get('/', authenticate, async (req, res) => {
           (SELECT details->>'reason' FROM audit_events WHERE entity_type = 'campaign' AND entity_id = c.id AND action IN ('status_changed_to_rejected', 'status_changed_to_rejected_bulk', 'campaign_cancelled_by_user') ORDER BY id DESC LIMIT 1) as rejection_reason
         FROM campaigns c
         JOIN users u ON c.user_id = u.id
-        WHERE c.user_id = $1 OR u.reseller_id = $1
+        WHERE (c.user_id = $1 OR u.reseller_id = $1) ${channelClause}
         ORDER BY c.created_at DESC
       `;
       params = [req.user.id];
@@ -795,7 +804,7 @@ router.get('/', authenticate, async (req, res) => {
           (SELECT details->>'reason' FROM audit_events WHERE entity_type = 'campaign' AND entity_id = c.id AND action IN ('status_changed_to_rejected', 'status_changed_to_rejected_bulk', 'campaign_cancelled_by_user') ORDER BY id DESC LIMIT 1) as rejection_reason
         FROM campaigns c
         JOIN users u ON c.user_id = u.id
-        WHERE c.user_id = $1
+        WHERE c.user_id = $1 ${channelClause}
         ORDER BY c.created_at DESC
       `;
       params = [req.user.id];

@@ -2978,10 +2978,10 @@
           </div>
         </section>
 
-        <!-- 3. ALL CAMPAIGNS VIEW -->
+        <!-- 3. ALL WHATSAPP CAMPAIGNS VIEW -->
         <section id="view-campaigns" class="app-view">
           
-          <!-- Channel Switcher Strip (WhatsApp vs GSM SMS) -->
+          <!-- Dedicated WhatsApp Campaigns Header -->
           <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;background:white;padding:12px 18px;border-radius:10px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,0.03);flex-wrap:wrap;">
             <div style="display:flex;align-items:center;gap:10px;">
               <div style="width:36px;height:36px;border-radius:8px;background:#dcfce7;color:#16a34a;display:flex;align-items:center;justify-content:center;">
@@ -2989,20 +2989,16 @@
               </div>
               <div>
                 <h3 style="margin:0;font-size:1.05rem;font-weight:700;color:#0f172a;" id="campaigns-view-heading">WhatsApp Campaign History & Reports</h3>
-                <div style="font-size:0.75rem;color:#64748b;margin-top:2px;">Track delivery performance, recipient status, and dispatch reports</div>
+                <div style="font-size:0.75rem;color:#64748b;margin-top:2px;">Track delivery performance, recipient status, and dispatch reports for WhatsApp messaging</div>
               </div>
             </div>
 
-            <!-- Channel Scope Switcher Tabs -->
-            <div style="display:inline-flex;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;padding:3px;gap:3px;">
-              <button type="button" class="btn-action" id="scope-chan-whatsapp" onclick="setCampaignChannelScope('whatsapp', this)" style="padding:5px 12px;font-size:0.78rem;border:none;background:#16a34a;color:#ffffff;border-radius:6px;font-weight:700;display:inline-flex;align-items:center;gap:5px;cursor:pointer;">
-                <i data-lucide="message-circle" style="width:13px;height:13px;"></i> WhatsApp
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button type="button" class="btn-action btn-action-secondary" onclick="loadCampaigns()" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;font-size:0.8rem;">
+                <i data-lucide="refresh-cw" style="width:13px;height:13px;"></i> Refresh
               </button>
-              <button type="button" class="btn-action" id="scope-chan-sms" onclick="setCampaignChannelScope('sms', this)" style="padding:5px 12px;font-size:0.78rem;border:none;background:transparent;color:#475569;border-radius:6px;font-weight:600;display:inline-flex;align-items:center;gap:5px;cursor:pointer;">
-                <i data-lucide="radio" style="width:13px;height:13px;"></i> GSM Bulk SMS
-              </button>
-              <button type="button" class="btn-action" id="scope-chan-all" onclick="setCampaignChannelScope('all', this)" style="padding:5px 12px;font-size:0.78rem;border:none;background:transparent;color:#475569;border-radius:6px;font-weight:600;display:inline-flex;align-items:center;gap:5px;cursor:pointer;">
-                <i data-lucide="layers" style="width:13px;height:13px;"></i> All Broadcasts
+              <button type="button" class="btn-action btn-action-primary" onclick="switchView('view-new-campaign')" style="background:#16a34a;display:inline-flex;align-items:center;gap:6px;padding:6px 14px;font-size:0.82rem;font-weight:700;">
+                <i data-lucide="plus-circle" style="width:14px;height:14px;"></i> New Campaign
               </button>
             </div>
           </div>

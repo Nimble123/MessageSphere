@@ -2834,45 +2834,12 @@ async function loadCampaigns() {
 
 let campaignChannelScope = 'whatsapp';
 
-window.setCampaignChannelScope = function(scope, btn) {
-  campaignChannelScope = scope;
-  
-  const btnWa = document.getElementById('scope-chan-whatsapp');
-  const btnSms = document.getElementById('scope-chan-sms');
-  const btnAll = document.getElementById('scope-chan-all');
-  const heading = document.getElementById('campaigns-view-heading');
-
-  [btnWa, btnSms, btnAll].forEach(b => {
-    if (b) {
-      b.style.background = 'transparent';
-      b.style.color = '#475569';
-      b.style.fontWeight = '600';
-    }
-  });
-
-  if (scope === 'whatsapp') {
-    if (btnWa) {
-      btnWa.style.background = '#16a34a';
-      btnWa.style.color = '#ffffff';
-      btnWa.style.fontWeight = '700';
-    }
-    if (heading) heading.textContent = 'WhatsApp Campaign History & Reports';
-  } else if (scope === 'sms') {
-    if (btnSms) {
-      btnSms.style.background = '#4f46e5';
-      btnSms.style.color = '#ffffff';
-      btnSms.style.fontWeight = '700';
-    }
-    if (heading) heading.textContent = 'GSM Bulk SMS Broadcast History';
-  } else {
-    if (btnAll) {
-      btnAll.style.background = '#0f172a';
-      btnAll.style.color = '#ffffff';
-      btnAll.style.fontWeight = '700';
-    }
-    if (heading) heading.textContent = 'All Messaging Campaigns & Reports';
+window.setCampaignChannelScope = function(scope) {
+  if (scope === 'sms') {
+    switchView('view-sms');
+    return;
   }
-
+  campaignChannelScope = 'whatsapp';
   campaignCurrentPage = 1;
   renderCampaignsTable();
   updateCampaignTabBadges();
@@ -2883,12 +2850,8 @@ function updateCampaignTabBadges() {
   if (!allCampaigns) return;
   const now = new Date();
   
-  const scopeCampaigns = allCampaigns.filter(c => {
-    const isSms = c.channel_type === 'sms' || c.campaign_type === 'gsm_sms';
-    if (campaignChannelScope === 'whatsapp' && isSms) return false;
-    if (campaignChannelScope === 'sms' && !isSms) return false;
-    return true;
-  });
+  // Strictly WhatsApp campaigns (GSM SMS has its own dedicated view)
+  const scopeCampaigns = allCampaigns.filter(c => c.channel_type !== 'sms' && c.campaign_type !== 'gsm_sms');
 
   const counts = {
     all: scopeCampaigns.length,
@@ -4074,10 +4037,9 @@ function renderCampaignsTable() {
   const toDateVal = campaignToDate ? campaignToDate.value : null;
 
   let filtered = allCampaigns.filter(c => {
-    // 0. Channel Scope Filter (WhatsApp vs GSM SMS)
+    // Strictly WhatsApp campaigns only (GSM SMS broadcasts are managed in the dedicated view-sms module)
     const isSms = c.channel_type === 'sms' || c.campaign_type === 'gsm_sms';
-    if (campaignChannelScope === 'whatsapp' && isSms) return false;
-    if (campaignChannelScope === 'sms' && !isSms) return false;
+    if (isSms) return false;
 
     // 1. Status Filter
     if (campaignFilter === 'Scheduled') {
