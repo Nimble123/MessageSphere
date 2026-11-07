@@ -766,11 +766,11 @@ router.post('/reminders/dismiss-all', authenticate, requireRoles('admin', 'resel
 router.get('/', authenticate, async (req, res) => {
   try {
     const channelFilter = req.query.channel_type;
-    let channelClause = "AND (c.channel_type = 'whatsapp' OR c.channel_type IS NULL OR c.channel_type != 'sms')";
+    let channelClause = "AND COALESCE(c.channel_type, 'whatsapp') != 'sms' AND COALESCE(c.campaign_type, '') != 'gsm_sms'";
     if (channelFilter === 'all') {
       channelClause = "";
     } else if (channelFilter === 'sms') {
-      channelClause = "AND c.channel_type = 'sms'";
+      channelClause = "AND (c.channel_type = 'sms' OR c.campaign_type = 'gsm_sms')";
     }
 
     let listSql = '';
@@ -1707,6 +1707,8 @@ router.get('/operator/queue', authenticate, requireRoles('admin'), async (req, r
       FROM campaigns c
       JOIN users u ON c.user_id = u.id
       WHERE c.status IN ('Submitted', 'Approved')
+        AND COALESCE(c.channel_type, 'whatsapp') != 'sms'
+        AND COALESCE(c.campaign_type, '') != 'gsm_sms'
       ORDER BY 
         CASE WHEN c.scheduled_at IS NOT NULL AND c.scheduled_at <= NOW() THEN 0 ELSE 1 END,
         c.created_at ASC
@@ -1755,6 +1757,8 @@ router.get('/operator/bulk-export', authenticate, requireRoles('admin'), async (
         FROM campaigns c
         JOIN users u ON c.user_id = u.id
         WHERE c.status IN ('Submitted', 'Approved')
+          AND COALESCE(c.channel_type, 'whatsapp') != 'sms'
+          AND COALESCE(c.campaign_type, '') != 'gsm_sms'
         ORDER BY c.id ASC
       `;
     }

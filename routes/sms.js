@@ -558,7 +558,7 @@ router.get('/', authenticate, async (req, res) => {
       FROM campaigns c
       JOIN users u ON c.user_id = u.id
       LEFT JOIN users ru ON u.reseller_id = ru.id
-      WHERE c.channel_type = 'sms'
+      WHERE (c.channel_type = 'sms' OR c.campaign_type = 'gsm_sms')
     `;
 
     let sql = baseSelect;
@@ -644,7 +644,7 @@ router.get('/:id', authenticate, async (req, res) => {
       `SELECT c.*, u.email AS owner_email
        FROM campaigns c
        JOIN users u ON c.user_id = u.id
-       WHERE c.id = $1 AND c.channel_type = 'sms'`,
+       WHERE c.id = $1 AND (c.channel_type = 'sms' OR c.campaign_type = 'gsm_sms')`,
       [campaignId]
     );
 
@@ -708,7 +708,7 @@ router.delete('/:id', authenticate, async (req, res) => {
     await client.query('BEGIN');
 
     const campResult = await client.query(
-      `SELECT * FROM campaigns WHERE id = $1 AND channel_type = 'sms' FOR UPDATE`,
+      `SELECT * FROM campaigns WHERE id = $1 AND (channel_type = 'sms' OR campaign_type = 'gsm_sms') FOR UPDATE`,
       [campaignId]
     );
 
