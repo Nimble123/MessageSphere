@@ -134,4 +134,25 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.equal(nonGst.gstAmount, 0.00);
     assert.equal(nonGst.totalAmount, 1500.00);
   });
+
+  await t.test('Brand Logo URL validation accepts uploaded logos, HTTPS URLs, and data URIs', () => {
+    const validLogoRegex = /^(https?:\/\/|\/api\/resellers\/logo\/|\/api\/campaigns\/files\/|data:image\/)/i;
+    assert.equal(validLogoRegex.test('/api/resellers/logo/logo-reseller-2-123.png'), true);
+    assert.equal(validLogoRegex.test('https://cdn.example.com/logo.svg'), true);
+    assert.equal(validLogoRegex.test('data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=='), true);
+    assert.equal(validLogoRegex.test('javascript:alert(1)'), false);
+    assert.equal(validLogoRegex.test('/etc/passwd'), false);
+  });
+
+  await t.test('Custom domain cleaning normalizes protocols, ports, and trailing slashes', () => {
+    function cleanDomain(raw) {
+      let d = String(raw || '').trim().toLowerCase();
+      d = d.replace(/^https?:\/\//i, '').replace(/:\d+$/, '').replace(/\/.*$/, '').trim();
+      return d;
+    }
+
+    assert.equal(cleanDomain('https://portal.partner.com/'), 'portal.partner.com');
+    assert.equal(cleanDomain('http://app.reseller.in:3000'), 'app.reseller.in');
+    assert.equal(cleanDomain('partner.messaging.com'), 'partner.messaging.com');
+  });
 });

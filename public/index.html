@@ -2004,7 +2004,7 @@
       <div class="auth-brand">
         <div class="brand-badge"><i data-lucide="zap" style="width:22px;height:22px;"></i></div>
         <img class="brand-logo" alt="Brand Logo" style="display:none;max-height:40px;max-width:140px;object-fit:contain;" />
-        <span>MessageSphere</span>
+        <span class="brand-title">MessageSphere</span>
       </div>
       <div class="auth-hero">
         <h1>Manual Campaign Operations Portal</h1>
@@ -2023,7 +2023,7 @@
     <div class="auth-form-wrapper">
       <div class="auth-card">
         <div class="auth-header">
-          <h2>Sign in to MessageSphere</h2>
+          <h2 id="auth-heading">Sign in to <span class="brand-title">MessageSphere</span></h2>
           <p>Enter your account credentials to access your dashboard.</p>
         </div>
         <form id="auth-form" onsubmit="return false;">
@@ -3890,10 +3890,40 @@
                   <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
                     <div class="form-group"><label>Brand name</label><input id="brand-name" class="form-input" maxlength="120" placeholder="Your company name"></div>
                     <div class="form-group"><label>Accent colour</label><input id="brand-accent" class="form-input" pattern="^#[0-9A-Fa-f]{6}$" placeholder="#4f46e5"></div>
-                    <div class="form-group"><label>Logo URL (HTTPS)</label><input id="brand-logo-url" type="url" class="form-input" placeholder="https://..."></div>
+
+                    <!-- Enhanced Brand Logo Upload Section -->
+                    <div class="form-group" style="grid-column: 1 / -1; margin-bottom: 4px;">
+                      <label style="font-weight: 600; display: flex; justify-content: space-between; align-items: center;">
+                        <span>Brand Logo</span>
+                        <span style="font-size: 0.75rem; font-weight: 400; color: var(--slate-500);">PNG, JPG, WebP, SVG (Max 5MB)</span>
+                      </label>
+                      <div style="display: flex; gap: 14px; align-items: center; margin-top: 6px; padding: 12px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px;">
+                        <div id="brand-logo-preview-box" style="width: 68px; height: 68px; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
+                          <img id="brand-logo-preview-img" src="" alt="Brand Logo Preview" style="max-width: 100%; max-height: 100%; object-fit: contain; display: none;" />
+                          <i id="brand-logo-preview-placeholder" data-lucide="image" style="width: 26px; height: 26px; color: #94a3b8;"></i>
+                        </div>
+                        <div style="flex: 1;">
+                          <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap;">
+                            <input type="file" id="brand-logo-file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif" style="display: none;">
+                            <button type="button" id="btn-choose-brand-logo" class="btn-action btn-action-primary" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 0.82rem;">
+                              <i data-lucide="upload" style="width: 14px; height: 14px;"></i> Upload Logo File
+                            </button>
+                            <button type="button" id="btn-remove-brand-logo" class="btn-action btn-action-secondary" style="display: none; align-items: center; gap: 6px; padding: 7px 12px; font-size: 0.82rem; color: #dc2626;">
+                              <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i> Remove
+                            </button>
+                            <span id="brand-logo-upload-status" style="font-size: 0.8rem; color: #64748b;"></span>
+                          </div>
+                          <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="font-size: 0.75rem; color: #64748b; white-space: nowrap;">Or image URL:</span>
+                            <input id="brand-logo-url" type="text" class="form-input" style="padding: 5px 10px; font-size: 0.8rem;" placeholder="https://... or uploaded /api/resellers/logo/...">
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                     <div class="form-group"><label>Support email</label><input id="brand-support-email" type="email" class="form-input" placeholder="support@yourbrand.com"></div>
                     <div class="form-group"><label>Support phone</label><input id="brand-support-phone" class="form-input" placeholder="+91..."></div>
-                    <div class="form-group"><label>Custom domain</label><input id="brand-custom-domain" class="form-input" placeholder="portal.yourbrand.com"></div>
+                    <div class="form-group" style="grid-column: 1 / -1;"><label>Custom domain</label><input id="brand-custom-domain" class="form-input" placeholder="portal.yourbrand.com"></div>
                   </div>
                   <div id="brand-domain-status" style="font-size:0.82rem;color:var(--slate-500);margin:4px 0 14px;"></div>
                   <button type="submit" class="btn-primary" style="max-width:220px;">Save white-label brand</button>
@@ -5645,8 +5675,29 @@
           </div>
 
           <div class="form-group" style="margin-top:12px;">
-            <label style="font-size:0.8rem;font-weight:600;color:#334155;">Brand Logo URL (HTTPS)</label>
-            <input type="url" id="admin-reseller-brand-logo" class="form-input" placeholder="https://yourdomain.com/logo.png">
+            <label style="font-size:0.8rem;font-weight:600;color:#334155;display:flex;justify-content:space-between;align-items:center;">
+              <span>Partner Brand Logo</span>
+              <span style="font-size:0.72rem;font-weight:400;color:#64748b;">PNG, JPG, WebP, SVG (Max 5MB)</span>
+            </label>
+            <div style="display:flex;gap:12px;align-items:center;margin-top:6px;padding:10px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;">
+              <div id="admin-reseller-logo-preview-box" style="width:56px;height:56px;border-radius:6px;border:1px solid #e2e8f0;background:#ffffff;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;">
+                <img id="admin-reseller-logo-preview-img" src="" alt="Reseller Logo Preview" style="max-width:100%;max-height:100%;object-fit:contain;display:none;" />
+                <i id="admin-reseller-logo-preview-placeholder" data-lucide="image" style="width:24px;height:24px;color:#94a3b8;"></i>
+              </div>
+              <div style="flex:1;">
+                <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
+                  <input type="file" id="admin-reseller-brand-logo-file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif" style="display:none;">
+                  <button type="button" id="btn-admin-choose-logo" class="btn-action btn-action-primary" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;font-size:0.8rem;">
+                    <i data-lucide="upload" style="width:13px;height:13px;"></i> Upload Logo File
+                  </button>
+                  <button type="button" id="btn-admin-remove-logo" class="btn-action btn-action-secondary" style="display:none;align-items:center;gap:5px;padding:6px 10px;font-size:0.8rem;color:#dc2626;">
+                    <i data-lucide="trash-2" style="width:13px;height:13px;"></i> Remove
+                  </button>
+                  <span id="admin-reseller-logo-upload-status" style="font-size:0.75rem;color:#64748b;"></span>
+                </div>
+                <input type="text" id="admin-reseller-brand-logo" class="form-input" style="padding:5px 10px;font-size:0.8rem;" placeholder="https://... or /api/resellers/logo/...">
+              </div>
+            </div>
           </div>
 
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px;">

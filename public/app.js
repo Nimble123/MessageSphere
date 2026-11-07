@@ -93,7 +93,7 @@ function escapeHtml(str) {
 function sanitizeUrl(url) {
   if (!url || typeof url !== 'string') return '#';
   const clean = url.trim();
-  if (/^(https?:\/\/|\/api\/campaigns\/files\/|\/uploads\/)/i.test(clean)) {
+  if (/^(https?:\/\/|\/api\/resellers\/logo\/|\/api\/campaigns\/files\/|\/uploads\/|data:image\/)/i.test(clean)) {
     return escapeHtml(clean);
   }
   return '#';
@@ -10847,6 +10847,50 @@ window.viewResellerClients = function(resellerId) {
   }, 100);
 };
 
+function updateAdminLogoPreview(url) {
+  const previewImg = document.getElementById('admin-reseller-logo-preview-img');
+  const placeholder = document.getElementById('admin-reseller-logo-preview-placeholder');
+  const btnRemove = document.getElementById('btn-admin-remove-logo');
+  const safe = sanitizeUrl(url);
+  if (url && safe !== '#') {
+    if (previewImg) {
+      previewImg.src = safe;
+      previewImg.style.display = 'block';
+    }
+    if (placeholder) placeholder.style.display = 'none';
+    if (btnRemove) btnRemove.style.display = 'inline-flex';
+  } else {
+    if (previewImg) {
+      previewImg.src = '';
+      previewImg.style.display = 'none';
+    }
+    if (placeholder) placeholder.style.display = 'block';
+    if (btnRemove) btnRemove.style.display = 'none';
+  }
+}
+
+function updateBrandLogoPreview(url) {
+  const previewImg = document.getElementById('brand-logo-preview-img');
+  const placeholder = document.getElementById('brand-logo-preview-placeholder');
+  const btnRemove = document.getElementById('btn-remove-brand-logo');
+  const safe = sanitizeUrl(url);
+  if (url && safe !== '#') {
+    if (previewImg) {
+      previewImg.src = safe;
+      previewImg.style.display = 'block';
+    }
+    if (placeholder) placeholder.style.display = 'none';
+    if (btnRemove) btnRemove.style.display = 'inline-flex';
+  } else {
+    if (previewImg) {
+      previewImg.src = '';
+      previewImg.style.display = 'none';
+    }
+    if (placeholder) placeholder.style.display = 'block';
+    if (btnRemove) btnRemove.style.display = 'none';
+  }
+}
+
 window.openAdminResellerBrandModal = function(resellerId) {
   const item = (resellersData || []).find(r => Number(r.id) === Number(resellerId));
   if (!item) return;
@@ -10876,6 +10920,8 @@ window.openAdminResellerBrandModal = function(resellerId) {
   if (emailInput) emailInput.value = item.support_email || item.email || '';
   if (phoneInput) phoneInput.value = item.support_phone || item.phone || '';
 
+  updateAdminLogoPreview(item.logo_url);
+
   if (statusPill) {
     const dStatus = item.domain_status || 'Not configured';
     statusPill.innerHTML = `<span class="status-badge ${dStatus === 'Verified' ? 'badge-updated' : 'badge-submitted'}">${escapeHtml(dStatus)}</span>`;
@@ -10888,6 +10934,75 @@ window.openAdminResellerBrandModal = function(resellerId) {
   if (modal) modal.style.display = 'flex';
   if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
 };
+
+// Admin logo file upload handlers
+const btnAdminChooseLogo = document.getElementById('btn-admin-choose-logo');
+const adminLogoFileInput = document.getElementById('admin-reseller-brand-logo-file');
+const adminLogoInput = document.getElementById('admin-reseller-brand-logo');
+const btnAdminRemoveLogo = document.getElementById('btn-admin-remove-logo');
+const adminLogoStatus = document.getElementById('admin-reseller-logo-upload-status');
+
+if (btnAdminChooseLogo && adminLogoFileInput) {
+  btnAdminChooseLogo.addEventListener('click', () => adminLogoFileInput.click());
+  adminLogoFileInput.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    const resellerId = document.getElementById('admin-reseller-brand-id')?.value;
+    if (!file || !resellerId) return;
+
+    if (!file.type.startsWith('image/')) {
+      showToast('error', 'Invalid File', 'Please select an image file (PNG, JPG, WebP, SVG).');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('error', 'File Too Large', 'Maximum logo file size is 5 MB.');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('logo', file);
+
+    try {
+      if (adminLogoStatus) adminLogoStatus.textContent = 'Uploading logo...';
+      const res = await apiFetch(`/resellers/${resellerId}/logo`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (adminLogoInput) adminLogoInput.value = res.logo_url;
+      updateAdminLogoPreview(res.logo_url);
+      showToast('success', 'Logo Uploaded', 'Reseller brand logo updated successfully!');
+      if (adminLogoStatus) adminLogoStatus.textContent = '';
+      loadResellerNetwork();
+    } catch (err) {
+      if (adminLogoStatus) adminLogoStatus.textContent = '';
+      showToast('error', 'Upload Failed', err.message);
+    } finally {
+      adminLogoFileInput.value = '';
+    }
+  });
+}
+
+if (btnAdminRemoveLogo) {
+  btnAdminRemoveLogo.addEventListener('click', async () => {
+    const resellerId = document.getElementById('admin-reseller-brand-id')?.value;
+    if (!resellerId) return;
+    try {
+      await apiFetch(`/resellers/${resellerId}/logo`, { method: 'DELETE' });
+      if (adminLogoInput) adminLogoInput.value = '';
+      updateAdminLogoPreview('');
+      showToast('success', 'Logo Removed', 'Reseller brand logo removed.');
+      loadResellerNetwork();
+    } catch (err) {
+      showToast('error', 'Failed', err.message);
+    }
+  });
+}
+
+if (adminLogoInput) {
+  adminLogoInput.addEventListener('input', () => {
+    updateAdminLogoPreview(adminLogoInput.value.trim());
+  });
+}
 
 window.saveAdminResellerBrand = async function() {
   const resellerId = document.getElementById('admin-reseller-brand-id')?.value;
@@ -10985,10 +11100,76 @@ const brandFields = {
   support_email: document.getElementById('brand-support-email'), support_phone: document.getElementById('brand-support-phone'), custom_domain: document.getElementById('brand-custom-domain')
 };
 
+// Reseller logo file upload handlers
+const btnChooseBrandLogo = document.getElementById('btn-choose-brand-logo');
+const brandLogoFileInput = document.getElementById('brand-logo-file');
+const brandLogoStatus = document.getElementById('brand-logo-upload-status');
+const btnRemoveBrandLogo = document.getElementById('btn-remove-brand-logo');
+
+if (btnChooseBrandLogo && brandLogoFileInput) {
+  btnChooseBrandLogo.addEventListener('click', () => brandLogoFileInput.click());
+  brandLogoFileInput.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showToast('error', 'Invalid File', 'Please select an image file (PNG, JPG, WebP, SVG).');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('error', 'File Too Large', 'Maximum logo file size is 5 MB.');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('logo', file);
+
+    try {
+      if (brandLogoStatus) brandLogoStatus.textContent = 'Uploading logo...';
+      const res = await apiFetch('/resellers/logo', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (brandFields.logo_url) brandFields.logo_url.value = res.logo_url;
+      updateBrandLogoPreview(res.logo_url);
+      applyBrandProfile(res.profile || { ...res, logo_url: res.logo_url });
+      showToast('success', 'Logo Uploaded', 'Brand logo has been uploaded and applied successfully!');
+      if (brandLogoStatus) brandLogoStatus.textContent = '';
+    } catch (err) {
+      if (brandLogoStatus) brandLogoStatus.textContent = '';
+      showToast('error', 'Upload Failed', err.message);
+    } finally {
+      brandLogoFileInput.value = '';
+    }
+  });
+}
+
+if (btnRemoveBrandLogo) {
+  btnRemoveBrandLogo.addEventListener('click', async () => {
+    try {
+      await apiFetch('/resellers/logo', { method: 'DELETE' });
+      if (brandFields.logo_url) brandFields.logo_url.value = '';
+      updateBrandLogoPreview('');
+      showToast('success', 'Logo Removed', 'Brand logo reset to default.');
+      applyBrandProfile({ brand_name: brandFields.brand_name?.value || 'MessageSphere', accent_color: brandFields.accent_color?.value || '#4f46e5', logo_url: null });
+    } catch (err) {
+      showToast('error', 'Failed', err.message);
+    }
+  });
+}
+
+if (brandFields.logo_url) {
+  brandFields.logo_url.addEventListener('input', () => {
+    updateBrandLogoPreview(brandFields.logo_url.value.trim());
+  });
+}
+
 async function loadMyBrandProfile() {
   if (!currentUser || currentUser.role !== 'reseller') return;
   const profile = await apiFetch('/resellers/me');
   Object.entries(brandFields).forEach(([key, field]) => { if (field) field.value = profile?.[key] || ''; });
+  updateBrandLogoPreview(profile?.logo_url);
   const status = document.getElementById('brand-domain-status');
   if (status) status.textContent = profile?.custom_domain ? `Domain status: ${profile.domain_status}. Configure DNS with your hosting provider before Super Admin verification.` : 'Add a custom domain when DNS is ready; it will remain pending until Super Admin verifies it.';
 }
