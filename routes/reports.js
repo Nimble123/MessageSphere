@@ -19,7 +19,7 @@ router.get('/dashboard', authenticate, async (req, res) => {
           COALESCE(SUM(failed_count), 0)::bigint as total_failed,
           COALESCE(SUM(total_numbers) FILTER (WHERE status IN ('Submitted', 'Approved', 'Completed')), 0)::bigint as pending_recipients,
           COALESCE(SUM(total_numbers) FILTER (WHERE status = 'Rejected'), 0)::bigint as rejected_recipients,
-          COUNT(*) FILTER (WHERE status IN ('Submitted', 'Approved'))::int as operator_queue_pending
+          COUNT(*) FILTER (WHERE status IN ('Submitted', 'Approved') AND COALESCE(channel_type, 'whatsapp') NOT ILIKE '%sms%' AND COALESCE(campaign_type, '') NOT ILIKE '%sms%')::int as operator_queue_pending
         FROM campaigns
       `);
 
@@ -87,7 +87,7 @@ router.get('/dashboard', authenticate, async (req, res) => {
           COALESCE(SUM(c.failed_count), 0)::bigint as total_failed,
           COALESCE(SUM(c.total_numbers) FILTER (WHERE c.status IN ('Submitted', 'Approved', 'Completed')), 0)::bigint as pending_recipients,
           COALESCE(SUM(c.total_numbers) FILTER (WHERE c.status = 'Rejected'), 0)::bigint as rejected_recipients,
-          COUNT(c.id) FILTER (WHERE c.status IN ('Submitted', 'Approved'))::int as operator_queue_pending
+          COUNT(c.id) FILTER (WHERE c.status IN ('Submitted', 'Approved') AND COALESCE(c.channel_type, 'whatsapp') NOT ILIKE '%sms%' AND COALESCE(c.campaign_type, '') NOT ILIKE '%sms%')::int as operator_queue_pending
         FROM campaigns c
         JOIN users u ON c.user_id = u.id
         WHERE u.reseller_id = $1 OR c.user_id = $1
