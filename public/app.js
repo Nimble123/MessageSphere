@@ -12946,8 +12946,10 @@ window.filterSmsCampaigns = function() {
 window.loadSmsCampaigns = async function() {
   const tbody = document.getElementById('sms-campaigns-tbody');
   if (!tbody) return;
-  if (!allSmsCampaigns || allSmsCampaigns.length === 0) {
-    window.renderTableSkeleton(tbody, 8, 3);
+  if (!smsCampaignsData || smsCampaignsData.length === 0) {
+    if (typeof window.renderTableSkeleton === 'function') {
+      window.renderTableSkeleton(tbody, 8, 3);
+    }
   }
 
   // Always sync fresh user balance in background
