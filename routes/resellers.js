@@ -7,6 +7,7 @@ const multer = require('multer');
 const { query, getClient } = require('../db');
 const { authenticate, requireRoles } = require('../middleware/auth');
 const { logAudit } = require('../services/audit');
+const { addCustomDomainToRender, removeCustomDomainFromRender, checkRenderDomainStatus } = require('../services/renderDomains');
 
 const logosDir = path.join(__dirname, '../uploads/logos');
 if (!fs.existsSync(logosDir)) {
@@ -381,6 +382,9 @@ async function saveProfile(req, res, resellerId, actorId) {
 
   const initialStatus = explicitStatus || (profile.customDomain ? 'Pending verification' : 'Not configured');
 
+  const prevProfile = await query('SELECT custom_domain FROM reseller_profiles WHERE reseller_id = $1', [resellerId]);
+  const oldDomain = prevProfile.rows[0]?.custom_domain;
+
   const client = await getClient();
   try {
     await client.query('BEGIN');
@@ -413,6 +417,21 @@ async function saveProfile(req, res, resellerId, actorId) {
     });
 
     await client.query('COMMIT');
+
+    // Automated Cloud Domain & SSL Provisioning (Asynchronous background task)
+    if (oldDomain && oldDomain.toLowerCase() !== (profile.customDomain || '').toLowerCase()) {
+      removeCustomDomainFromRender(oldDomain).catch(() => {});
+    }
+    if (profile.customDomain) {
+      addCustomDomainToRender(profile.customDomain).then(renderRes => {
+        if (renderRes.success) {
+          console.log(`[WHITE-LABEL] Automated Render domain registered for: ${profile.customDomain}`);
+        } else if (!renderRes.configured) {
+          console.log('[WHITE-LABEL] RENDER_API_KEY not configured; manual Render domain binding required.');
+        }
+      }).catch(e => console.error('[WHITE-LABEL] Automated domain provisioning error:', e.message));
+    }
+
     return res.json(result.rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -466,10 +485,22 @@ router.post('/:id/verify-dns', authenticate, requireRoles('admin'), async (req, 
         });
       }
     }
+    // Also check and provision with Render cloud if configured
+    let renderInfo = null;
+    try {
+      const renderProv = await addCustomDomainToRender(domain);
+      const renderStatus = await checkRenderDomainStatus(domain);
+      renderInfo = {
+        registered: renderProv.success,
+        ssl_status: renderStatus?.verificationStatus || 'provisioning'
+      };
+    } catch (_) {}
+
     return res.json({
       verified: true,
       domain,
       resolved_to: dnsRecords,
+      render: renderInfo,
       message: `DNS records successfully resolved for ${domain}: ${dnsRecords.join(', ')}`
     });
   } catch (err) {
