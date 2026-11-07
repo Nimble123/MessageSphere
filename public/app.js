@@ -10997,19 +10997,11 @@ window.saveAdminResellerBrand = async function() {
         accent_color: accentColor,
         logo_url: logoUrl,
         custom_domain: customDomain,
+        domain_status: domainStatus,
         support_email: supportEmail,
         support_phone: supportPhone
       })
     });
-
-    if (domainStatus && domainStatus !== 'Pending verification') {
-      try {
-        await apiFetch(`/resellers/${resellerId}/domain-status`, {
-          method: 'PATCH',
-          body: JSON.stringify({ status: domainStatus, reason: 'Super Admin manual configuration in partner portal' })
-        });
-      } catch (e) { }
-    }
 
     showToast('success', 'White-Label Configured', 'Partner white-label branding & DNS settings saved successfully.');
     const modal = document.getElementById('modal-admin-reseller-brand');

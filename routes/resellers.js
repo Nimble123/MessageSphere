@@ -373,25 +373,54 @@ async function saveProfile(req, res, resellerId, actorId) {
     }
   }
 
+  // If Admin explicitly provided domain_status (e.g., 'Verified', 'Pending verification', 'Not configured')
+  const isAdmin = req.user && req.user.role === 'admin';
+  const explicitStatus = isAdmin && ['Not configured', 'Pending verification', 'Verified'].includes(req.body.domain_status)
+    ? req.body.domain_status
+    : null;
+
+  const initialStatus = explicitStatus || (profile.customDomain ? 'Pending verification' : 'Not configured');
+
   const client = await getClient();
   try {
     await client.query('BEGIN');
     const result = await client.query(`
       INSERT INTO reseller_profiles (reseller_id, brand_name, logo_url, accent_color, support_email, support_phone, custom_domain, domain_status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $7 IS NULL THEN 'Not configured' ELSE 'Pending verification' END)
+      VALUES ($1, $2, $3, $4, $5, $6, $7::varchar, $8)
       ON CONFLICT (reseller_id) DO UPDATE SET
-        brand_name = EXCLUDED.brand_name, logo_url = EXCLUDED.logo_url, accent_color = EXCLUDED.accent_color,
-        support_email = EXCLUDED.support_email, support_phone = EXCLUDED.support_phone,
+        brand_name = EXCLUDED.brand_name,
+        logo_url = EXCLUDED.logo_url,
+        accent_color = EXCLUDED.accent_color,
+        support_email = EXCLUDED.support_email,
+        support_phone = EXCLUDED.support_phone,
         custom_domain = EXCLUDED.custom_domain,
-        domain_status = CASE WHEN reseller_profiles.custom_domain IS DISTINCT FROM EXCLUDED.custom_domain THEN CASE WHEN EXCLUDED.custom_domain IS NULL THEN 'Not configured' ELSE 'Pending verification' END ELSE reseller_profiles.domain_status END,
+        domain_status = CASE 
+          WHEN $9::varchar IS NOT NULL THEN $9::varchar
+          WHEN reseller_profiles.custom_domain IS DISTINCT FROM EXCLUDED.custom_domain THEN 
+            CASE WHEN EXCLUDED.custom_domain IS NULL THEN 'Not configured' ELSE 'Pending verification' END 
+          ELSE reseller_profiles.domain_status 
+        END,
         updated_at = NOW()
       RETURNING *
-    `, [resellerId, profile.brandName, profile.logoUrl, profile.accentColor, profile.supportEmail, profile.supportPhone, profile.customDomain]);
-    await logAudit(client, { actorId, entityType: 'reseller_profile', entityId: resellerId, action: 'white_label_profile_updated', details: { brandName: profile.brandName, customDomain: profile.customDomain } });
+    `, [resellerId, profile.brandName, profile.logoUrl, profile.accentColor, profile.supportEmail, profile.supportPhone, profile.customDomain, initialStatus, explicitStatus]);
+
+    await logAudit(client, {
+      actorId,
+      entityType: 'reseller_profile',
+      entityId: resellerId,
+      action: 'white_label_profile_updated',
+      details: { brandName: profile.brandName, customDomain: profile.customDomain, domainStatus: result.rows[0]?.domain_status }
+    });
+
     await client.query('COMMIT');
     return res.json(result.rows[0]);
-  } catch (err) { await client.query('ROLLBACK'); return res.status(500).json({ error: 'Failed to save reseller brand profile' }); }
-  finally { client.release(); }
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Failed to save reseller brand profile:', err);
+    return res.status(500).json({ error: 'Failed to save reseller brand profile: ' + (err.message || 'Database error') });
+  } finally {
+    client.release();
+  }
 }
 
 router.put('/me', authenticate, requireRoles('reseller'), async (req, res) => saveProfile(req, res, req.user.id, req.user.id));
