@@ -6,7 +6,7 @@ const isRemoteDb = process.env.DATABASE_URL && !process.env.DATABASE_URL.include
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || (process.env.NODE_ENV !== 'production' ? 'postgresql://localhost:5432/messagesphere' : undefined),
-  ssl: isRemoteDb ? { rejectUnauthorized: process.env.PG_SSL_REJECT_UNAUTHORIZED !== 'false' } : false,
+  ssl: isRemoteDb ? { rejectUnauthorized: process.env.PG_SSL_REJECT_UNAUTHORIZED === 'true' } : false,
   max: parseInt(process.env.PG_POOL_MAX || '50', 10),
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000
