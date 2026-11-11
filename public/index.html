@@ -2086,6 +2086,28 @@
 
         <!-- REGISTER FORM -->
         <form id="auth-form-register" style="display:none;" onsubmit="return false;">
+          <!-- Account Type Selector -->
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="font-size: 0.82rem; font-weight: 600; color: var(--slate-700); margin-bottom: 6px; display: block;">Select Account Type</label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;" id="reg-account-type-toggle">
+              <div id="reg-type-card-user" onclick="setRegAccountType('user')" style="padding: 10px 12px; border-radius: 8px; border: 2px solid var(--primary, #4f46e5); background: rgba(79,70,229,0.05); cursor: pointer; transition: all 0.2s ease;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px;">
+                  <span style="font-weight: 700; font-size: 0.84rem; color: var(--primary, #4f46e5);" id="reg-user-label"><i data-lucide="user" style="width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px;"></i> Client Account</span>
+                  <span id="reg-user-check" style="color: var(--primary, #4f46e5);"><i data-lucide="check-circle-2" style="width: 15px; height: 15px;"></i></span>
+                </div>
+                <div style="font-size: 0.72rem; color: var(--slate-500); line-height: 1.2;">Direct campaigns</div>
+              </div>
+              <div id="reg-type-card-reseller" onclick="setRegAccountType('reseller')" style="padding: 10px 12px; border-radius: 8px; border: 1px solid var(--slate-200); background: #ffffff; cursor: pointer; transition: all 0.2s ease;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px;">
+                  <span style="font-weight: 700; font-size: 0.84rem; color: var(--slate-700);" id="reg-reseller-label"><i data-lucide="briefcase" style="width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px;"></i> Reseller Partner</span>
+                  <span id="reg-reseller-check" style="display: none; color: var(--primary, #4f46e5);"><i data-lucide="check-circle-2" style="width: 15px; height: 15px;"></i></span>
+                </div>
+                <div style="font-size: 0.72rem; color: var(--slate-500); line-height: 1.2;">White-label &amp; clients</div>
+              </div>
+            </div>
+            <input type="hidden" id="reg-account-type" value="user">
+          </div>
+
           <div class="form-group">
             <label for="reg-fullname">Full Name <span style="color:#ef4444;">*</span></label>
             <input type="text" id="reg-fullname" class="form-input" placeholder="e.g. John Doe" required autocomplete="name">
@@ -2114,6 +2136,61 @@
               <input type="password" id="reg-confirm-password" class="form-input" placeholder="Repeat password" required autocomplete="new-password">
             </div>
           </div>
+
+          <!-- Reseller Minimum Commitment Section (Visible only when Reseller is selected) -->
+          <div id="reg-reseller-commitment-section" style="display:none;margin-bottom:14px;padding:12px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+              <span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#4f46e5;color:#fff;">
+                <i data-lucide="zap" style="width:11px;height:11px;"></i>
+              </span>
+              <div>
+                <div style="font-size:0.82rem;font-weight:700;color:#1e293b;">Partner Onboarding (Min 1 Lakh Credits)</div>
+                <div style="font-size:0.71rem;color:#64748b;">Wholesale reseller accounts require an initial 1,00,000 credit commitment.</div>
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom:8px;">
+              <label for="reg-reseller-channel" style="font-size:0.78rem;font-weight:600;">Message Product Channel <span style="color:#ef4444;">*</span></label>
+              <select id="reg-reseller-channel" class="form-input" style="font-size:0.82rem;padding:7px 10px;" onchange="updateResellerOrderEstimate()">
+                <option value="gsm_sms_domestic" data-rate="0.1200" selected>GSM Bulk SMS (Domestic) — ₹0.1200 / msg</option>
+                <option value="normal_domestic" data-rate="0.1500">WhatsApp Normal (Domestic) — ₹0.1500 / msg</option>
+                <option value="cta_domestic" data-rate="0.2400">WhatsApp CTA Interactive (Domestic) — ₹0.2400 / msg</option>
+                <option value="dp_domestic" data-rate="0.2800">WhatsApp DP High Priority (Domestic) — ₹0.2800 / msg</option>
+                <option value="dp_cta_domestic" data-rate="0.3500">WhatsApp DP + CTA (Domestic) — ₹0.3500 / msg</option>
+                <option value="own_number_domestic" data-rate="0.0800">Own Virtual SIM (Domestic) — ₹0.0800 / msg</option>
+              </select>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+              <div class="form-group" style="margin-bottom:0;">
+                <label for="reg-reseller-qty" style="font-size:0.78rem;font-weight:600;">Order Quantity <span style="color:#ef4444;">*</span></label>
+                <input type="number" id="reg-reseller-qty" class="form-input" min="100000" step="10000" value="100000" style="font-size:0.82rem;padding:7px 10px;" oninput="updateResellerOrderEstimate()">
+                <div style="font-size:0.69rem;color:#64748b;margin-top:2px;">Minimum: 1,00,000</div>
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label for="reg-reseller-brand" style="font-size:0.78rem;font-weight:600;">White-Label Brand Name</label>
+                <input type="text" id="reg-reseller-brand" class="form-input" placeholder="e.g. Nexus Media" style="font-size:0.82rem;padding:7px 10px;">
+                <div style="font-size:0.69rem;color:#64748b;margin-top:2px;">For your client portal</div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+              <div class="form-group" style="margin-bottom:0;">
+                <label for="reg-reseller-gstin" style="font-size:0.78rem;font-weight:600;">GSTIN (Optional)</label>
+                <input type="text" id="reg-reseller-gstin" class="form-input" placeholder="e.g. 29ABCDE1234F1Z5" style="font-size:0.82rem;padding:7px 10px;" oninput="updateResellerOrderEstimate()">
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label for="reg-reseller-address" style="font-size:0.78rem;font-weight:600;">Billing City / State</label>
+                <input type="text" id="reg-reseller-address" class="form-input" placeholder="e.g. Mumbai, MH" style="font-size:0.82rem;padding:7px 10px;">
+              </div>
+            </div>
+
+            <div id="reg-reseller-order-summary" style="padding:8px 10px;background:#e0e7ff;border:1px solid #c7d2fe;border-radius:6px;font-size:0.78rem;color:#1e1b4b;display:flex;align-items:center;justify-content:space-between;">
+              <div>Initial Order: <strong id="reseller-est-qty">1,00,000</strong> Credits @ <span id="reseller-est-rate">₹0.12</span></div>
+              <div style="font-size:0.88rem;font-weight:800;color:#4338ca;" id="reseller-est-total">₹12,000</div>
+            </div>
+          </div>
+
           <input type="hidden" id="reg-invite-code" value="">
           <div id="reg-error-box" style="display:none;margin-bottom:14px;padding:10px;border-radius:6px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;font-size:0.84rem;"></div>
           <button type="submit" id="btn-submit-register" class="btn-primary" style="width:100%;">Create Account & Get Started →</button>

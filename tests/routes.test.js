@@ -171,15 +171,30 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.equal(isValidInviteSlug('slug/with/slash'), false, 'Slugs with slashes must fail');
   });
 
-  await t.test('Self-registration role boundary guard ensures role is always user', () => {
-    function enforceClientRole(requestedRole) {
-      // Self registration always forces 'user' role regardless of what is passed
-      const safeRole = requestedRole === 'user' ? 'user' : 'user';
-      return safeRole;
+  await t.test('Self-registration role & minimum commitment validation', () => {
+    function validateRegistration(accountType, commitmentQty) {
+      if (accountType === 'admin') return { allowed: false, error: 'Cannot self-register as admin' };
+      if (accountType === 'reseller') {
+        const qty = parseInt(commitmentQty, 10);
+        if (isNaN(qty) || qty < 100000) {
+          return { allowed: false, error: 'Reseller partner registration requires an initial minimum purchase commitment of 1,00,000 (1 Lakh) credits.' };
+        }
+        return { allowed: true, role: 'reseller', commitmentQty: qty };
+      }
+      return { allowed: true, role: 'user', commitmentQty: 0 };
     }
 
-    assert.equal(enforceClientRole('admin'), 'user', 'Cannot self-register as admin');
-    assert.equal(enforceClientRole('reseller'), 'user', 'Cannot self-register as reseller');
-    assert.equal(enforceClientRole('user'), 'user');
+    assert.equal(validateRegistration('admin', 0).allowed, false);
+    assert.equal(validateRegistration('reseller', 50000).allowed, false, 'Less than 100k commitment must fail');
+    assert.equal(validateRegistration('reseller', 99999).allowed, false, '99,999 commitment must fail');
+    assert.equal(validateRegistration('reseller', 'abc').allowed, false);
+    
+    const validPartner = validateRegistration('reseller', 100000);
+    assert.equal(validPartner.allowed, true);
+    assert.equal(validPartner.role, 'reseller');
+
+    const validUser = validateRegistration('user', 0);
+    assert.equal(validUser.allowed, true);
+    assert.equal(validUser.role, 'user');
   });
 });

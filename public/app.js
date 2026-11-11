@@ -601,13 +601,91 @@ window.switchAuthMode = function(mode) {
   }
 };
 
-// --- CLIENT SELF-REGISTRATION FORM SUBMIT ---
+// --- ACCOUNT TYPE TOGGLE & PRICING ESTIMATION ---
+window.setRegAccountType = function(type) {
+  const hiddenInput = document.getElementById('reg-account-type');
+  if (hiddenInput) hiddenInput.value = type;
+
+  const cardUser = document.getElementById('reg-type-card-user');
+  const cardReseller = document.getElementById('reg-type-card-reseller');
+  const checkUser = document.getElementById('reg-user-check');
+  const checkReseller = document.getElementById('reg-reseller-check');
+  const labelUser = document.getElementById('reg-user-label');
+  const labelReseller = document.getElementById('reg-reseller-label');
+  const resellerSection = document.getElementById('reg-reseller-commitment-section');
+  const btnSubmit = document.getElementById('btn-submit-register');
+
+  if (type === 'reseller') {
+    if (cardUser) {
+      cardUser.style.border = '1px solid var(--slate-200)';
+      cardUser.style.background = '#ffffff';
+    }
+    if (cardReseller) {
+      cardReseller.style.border = '2px solid var(--primary, #4f46e5)';
+      cardReseller.style.background = 'rgba(79,70,229,0.05)';
+    }
+    if (checkUser) checkUser.style.display = 'none';
+    if (checkReseller) checkReseller.style.display = 'inline-block';
+    if (labelUser) labelUser.style.color = 'var(--slate-700)';
+    if (labelReseller) labelReseller.style.color = 'var(--primary, #4f46e5)';
+    if (resellerSection) resellerSection.style.display = 'block';
+    if (btnSubmit) btnSubmit.textContent = 'Register Partner Account & Book Order →';
+    updateResellerOrderEstimate();
+  } else {
+    if (cardUser) {
+      cardUser.style.border = '2px solid var(--primary, #4f46e5)';
+      cardUser.style.background = 'rgba(79,70,229,0.05)';
+    }
+    if (cardReseller) {
+      cardReseller.style.border = '1px solid var(--slate-200)';
+      cardReseller.style.background = '#ffffff';
+    }
+    if (checkUser) checkUser.style.display = 'inline-block';
+    if (checkReseller) checkReseller.style.display = 'none';
+    if (labelUser) labelUser.style.color = 'var(--primary, #4f46e5)';
+    if (labelReseller) labelReseller.style.color = 'var(--slate-700)';
+    if (resellerSection) resellerSection.style.display = 'none';
+    if (btnSubmit) btnSubmit.textContent = 'Create Account & Get Started →';
+  }
+  if (window.lucide) lucide.createIcons();
+};
+
+window.updateResellerOrderEstimate = function() {
+  const channelEl = document.getElementById('reg-reseller-channel');
+  const qtyEl = document.getElementById('reg-reseller-qty');
+  const gstinEl = document.getElementById('reg-reseller-gstin');
+  const estQtyEl = document.getElementById('reseller-est-qty');
+  const estRateEl = document.getElementById('reseller-est-rate');
+  const estTotalEl = document.getElementById('reseller-est-total');
+
+  if (!channelEl || !qtyEl) return;
+  const opt = channelEl.options[channelEl.selectedIndex];
+  const rate = parseFloat(opt?.getAttribute('data-rate') || '0.1200');
+  let qty = parseInt(qtyEl.value, 10);
+  if (isNaN(qty) || qty < 1) qty = 100000;
+
+  const base = qty * rate;
+  const hasGstin = Boolean(gstinEl?.value && gstinEl.value.trim().length >= 10);
+  const gst = hasGstin ? (base * 0.18) : 0;
+  const total = base + gst;
+
+  if (estQtyEl) estQtyEl.textContent = qty.toLocaleString();
+  if (estRateEl) estRateEl.textContent = `₹${rate.toFixed(4)}`;
+  if (estTotalEl) {
+    estTotalEl.textContent = hasGstin ? `₹${Math.round(total).toLocaleString()} (incl. GST)` : `₹${Math.round(total).toLocaleString()}`;
+  }
+};
+
+// --- CLIENT & RESELLER SELF-REGISTRATION FORM SUBMIT ---
 const authFormRegister = document.getElementById('auth-form-register');
 const btnSubmitRegister = document.getElementById('btn-submit-register');
 
 if (authFormRegister) {
   authFormRegister.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const accountType = document.getElementById('reg-account-type')?.value || 'user';
+    const isReseller = accountType === 'reseller';
+
     const fullName = document.getElementById('reg-fullname')?.value.trim();
     const email = document.getElementById('reg-email')?.value.trim();
     const phone = document.getElementById('reg-phone')?.value.trim();
@@ -632,9 +710,26 @@ if (authFormRegister) {
     if (!password || password.length < 8) return showRegError('Password must be at least 8 characters long.');
     if (password !== confirmPassword) return showRegError('Passwords do not match. Please re-enter.');
 
+    let commitmentQty = 0;
+    let commitmentChannel = '';
+    let brandName = '';
+    let gstin = '';
+    let businessAddress = '';
+
+    if (isReseller) {
+      commitmentQty = parseInt(document.getElementById('reg-reseller-qty')?.value, 10);
+      if (isNaN(commitmentQty) || commitmentQty < 100000) {
+        return showRegError('Reseller partner onboarding requires an initial minimum commitment order of 1,00,000 (1 Lakh) credits.');
+      }
+      commitmentChannel = document.getElementById('reg-reseller-channel')?.value || 'gsm_sms_domestic';
+      brandName = document.getElementById('reg-reseller-brand')?.value.trim();
+      gstin = document.getElementById('reg-reseller-gstin')?.value.trim();
+      businessAddress = document.getElementById('reg-reseller-address')?.value.trim();
+    }
+
     if (btnSubmitRegister) {
       btnSubmitRegister.disabled = true;
-      btnSubmitRegister.textContent = 'Creating Account...';
+      btnSubmitRegister.textContent = isReseller ? 'Registering Partner & Generating Order...' : 'Creating Account...';
     }
 
     try {
@@ -646,19 +741,29 @@ if (authFormRegister) {
           phone,
           company_name: companyName,
           password,
-          invite_code: inviteCode || undefined
+          account_type: accountType,
+          commitment_quantity: isReseller ? commitmentQty : undefined,
+          commitment_channel: isReseller ? commitmentChannel : undefined,
+          brand_name: isReseller ? brandName : undefined,
+          gstin: isReseller ? gstin : undefined,
+          business_address: isReseller ? businessAddress : undefined,
+          invite_code: !isReseller ? (inviteCode || undefined) : undefined
         })
       });
 
       setAuthToken(res.token);
-      showToast('success', 'Account Created!', `Welcome to MessageSphere, ${res.user.fullName || res.user.email}!`);
+      if (isReseller) {
+        showToast('success', 'Partner Account Created!', `Welcome to MessageSphere Reseller Network, ${res.user.fullName || res.user.email}! Your 1 Lakh credit onboarding order is awaiting verification.`);
+      } else {
+        showToast('success', 'Account Created!', `Welcome to MessageSphere, ${res.user.fullName || res.user.email}!`);
+      }
       handleLoginSuccess(res.user);
     } catch (err) {
       showRegError(err.message || 'Registration failed.');
     } finally {
       if (btnSubmitRegister) {
         btnSubmitRegister.disabled = false;
-        btnSubmitRegister.textContent = 'Create Account & Get Started →';
+        btnSubmitRegister.textContent = isReseller ? 'Register Partner Account & Book Order →' : 'Create Account & Get Started →';
       }
     }
   });

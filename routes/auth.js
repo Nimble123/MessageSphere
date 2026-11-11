@@ -178,7 +178,7 @@ router.get('/invite/:codeOrDomain', async (req, res) => {
 
 // POST /api/auth/register - Client self-registration via invite link or partner domain
 router.post('/register', registerLimiter, async (req, res) => {
-  const { email, password, full_name, phone, company_name, business_address, gstin, invite_code } = req.body;
+  const { email, password, full_name, phone, company_name, business_address, gstin, invite_code, account_type } = req.body;
 
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
@@ -198,6 +198,8 @@ router.post('/register', registerLimiter, async (req, res) => {
     return res.status(400).json({ error: 'Password must be at least 8 characters long' });
   }
 
+  const isResellerSignup = String(account_type).trim().toLowerCase() === 'reseller';
+
   const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
   let resellerId = null;
   let customRates = null;
@@ -206,6 +208,59 @@ router.post('/register', registerLimiter, async (req, res) => {
   let candidateSlug = String(invite_code || req.query.ref || '').trim().toLowerCase();
   let candidateHost = String(req.body.domain || req.hostname || req.get('host') || '').toLowerCase().split(':')[0];
   if (candidateHost.startsWith('www.')) candidateHost = candidateHost.slice(4);
+
+  const WHOLESALE_BASE_RATES = {
+    gsm_sms_domestic: 0.1200,
+    normal_domestic: 0.1500,
+    cta_domestic: 0.2400,
+    dp_domestic: 0.2800,
+    dp_cta_domestic: 0.3500,
+    own_number_domestic: 0.0800,
+    gsm_sms_international: 1.5000,
+    normal_international: 2.0000,
+    cta_international: 2.5000,
+    dp_international: 2.5000,
+    dp_cta_international: 3.0000,
+    own_number_international: 1.2000
+  };
+
+  let commitmentQty = 0;
+  let commitmentChannel = 'gsm_sms_domestic';
+  let commitmentRate = 0.1200;
+  let baseAmount = 0;
+  let gstAmount = 0;
+  let totalAmount = 0;
+  let cType = 'gsm_sms';
+  let cDest = 'domestic';
+
+  if (isResellerSignup) {
+    const rawQty = req.body.commitment_quantity;
+    if (typeof rawQty === 'string' && /[eE]/.test(rawQty)) {
+      return res.status(400).json({ error: 'Invalid commitment quantity format.' });
+    }
+    commitmentQty = parseInt(rawQty, 10);
+    if (isNaN(commitmentQty) || commitmentQty < 100000) {
+      return res.status(400).json({ error: 'Reseller partner registration requires an initial minimum purchase commitment of 1,00,000 (1 Lakh) credits.' });
+    }
+    if (!Number.isSafeInteger(commitmentQty) || commitmentQty > 100000000) {
+      return res.status(400).json({ error: 'Commitment quantity exceeds maximum permissible limit.' });
+    }
+
+    commitmentChannel = String(req.body.commitment_channel || 'gsm_sms_domestic').trim();
+    if (!WHOLESALE_BASE_RATES[commitmentChannel]) {
+      commitmentChannel = 'gsm_sms_domestic';
+    }
+    commitmentRate = WHOLESALE_BASE_RATES[commitmentChannel];
+    const isIntl = commitmentChannel.endsWith('_international');
+    cDest = isIntl ? 'international' : 'domestic';
+    cType = commitmentChannel.replace(/_(domestic|international)$/, '');
+
+    baseAmount = Number((commitmentQty * commitmentRate).toFixed(2));
+    const gstinVal = String(req.body.gstin || gstin || '').trim().toUpperCase();
+    const hasGst = Boolean(gstinVal && gstinVal.length >= 10);
+    gstAmount = hasGst ? Number((baseAmount * 0.18).toFixed(2)) : 0.00;
+    totalAmount = Number((baseAmount + gstAmount).toFixed(2));
+  }
 
   const client = await getClient();
   try {
@@ -218,65 +273,70 @@ router.post('/register', registerLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Unable to register account with the provided details. Please verify your email or sign in.' });
     }
 
-    if (candidateSlug) {
-      // Strictly match invite_code (never match numeric reseller_id)
-      const rpRes = await client.query(`
-        SELECT rp.reseller_id, rp.brand_name, rp.allow_self_registration, rp.default_rates, u.is_blocked
-        FROM reseller_profiles rp
-        JOIN users u ON u.id = rp.reseller_id
-        WHERE LOWER(rp.invite_code) = LOWER($1)
-      `, [candidateSlug]);
+    if (!isResellerSignup) {
+      if (candidateSlug) {
+        // Strictly match invite_code (never match numeric reseller_id)
+        const rpRes = await client.query(`
+          SELECT rp.reseller_id, rp.brand_name, rp.allow_self_registration, rp.default_rates, u.is_blocked
+          FROM reseller_profiles rp
+          JOIN users u ON u.id = rp.reseller_id
+          WHERE LOWER(rp.invite_code) = LOWER($1)
+        `, [candidateSlug]);
 
-      if (rpRes.rows.length === 0 || rpRes.rows[0].is_blocked) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'The provided invite link is invalid or no longer active.' });
-      }
-
-      if (rpRes.rows[0].allow_self_registration === false) {
-        await client.query('ROLLBACK');
-        return res.status(403).json({ error: 'Self-registration is currently paused by this partner. Please contact their support.' });
-      }
-
-      resellerId = rpRes.rows[0].reseller_id;
-      customRates = rpRes.rows[0].default_rates;
-      partnerBrandName = rpRes.rows[0].brand_name;
-    } else if (candidateHost && candidateHost !== 'localhost' && candidateHost !== '127.0.0.1') {
-      // Custom domain auto-binding strictly requires domain_status = 'Verified'
-      const domainRes = await client.query(`
-        SELECT rp.reseller_id, rp.brand_name, rp.allow_self_registration, rp.default_rates, u.is_blocked
-        FROM reseller_profiles rp
-        JOIN users u ON u.id = rp.reseller_id
-        WHERE (LOWER(rp.custom_domain) = LOWER($1) OR LOWER(rp.custom_domain) = LOWER($2))
-          AND rp.domain_status = 'Verified'
-      `, [candidateHost, `www.${candidateHost}`]);
-
-      if (domainRes.rows.length > 0 && !domainRes.rows[0].is_blocked) {
-        if (domainRes.rows[0].allow_self_registration === false) {
+        if (rpRes.rows.length === 0 || rpRes.rows[0].is_blocked) {
           await client.query('ROLLBACK');
-          return res.status(403).json({ error: 'Self-registration is currently paused on this portal.' });
+          return res.status(400).json({ error: 'The provided invite link is invalid or no longer active.' });
         }
-        resellerId = domainRes.rows[0].reseller_id;
-        customRates = domainRes.rows[0].default_rates;
-        partnerBrandName = domainRes.rows[0].brand_name;
+
+        if (rpRes.rows[0].allow_self_registration === false) {
+          await client.query('ROLLBACK');
+          return res.status(403).json({ error: 'Self-registration is currently paused by this partner. Please contact their support.' });
+        }
+
+        resellerId = rpRes.rows[0].reseller_id;
+        customRates = rpRes.rows[0].default_rates;
+        partnerBrandName = rpRes.rows[0].brand_name;
+      } else if (candidateHost && candidateHost !== 'localhost' && candidateHost !== '127.0.0.1') {
+        // Custom domain auto-binding strictly requires domain_status = 'Verified'
+        const domainRes = await client.query(`
+          SELECT rp.reseller_id, rp.brand_name, rp.allow_self_registration, rp.default_rates, u.is_blocked
+          FROM reseller_profiles rp
+          JOIN users u ON u.id = rp.reseller_id
+          WHERE (LOWER(rp.custom_domain) = LOWER($1) OR LOWER(rp.custom_domain) = LOWER($2))
+            AND rp.domain_status = 'Verified'
+        `, [candidateHost, `www.${candidateHost}`]);
+
+        if (domainRes.rows.length > 0 && !domainRes.rows[0].is_blocked) {
+          if (domainRes.rows[0].allow_self_registration === false) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({ error: 'Self-registration is currently paused on this portal.' });
+          }
+          resellerId = domainRes.rows[0].reseller_id;
+          customRates = domainRes.rows[0].default_rates;
+          partnerBrandName = domainRes.rows[0].brand_name;
+        }
       }
     }
 
     const passwordHash = await hashPassword(password);
-    const taxMode = (gstin && String(gstin).trim()) ? 'with_gst' : 'non_gst';
+    const assignedRole = isResellerSignup ? 'reseller' : 'user';
+    const effectiveGstin = String(req.body.gstin || gstin || '').trim().toUpperCase().slice(0, 20) || null;
+    const taxMode = (effectiveGstin && effectiveGstin.length >= 10) ? 'with_gst' : 'non_gst';
 
     const insertResult = await client.query(`
       INSERT INTO users (email, password_hash, role, reseller_id, full_name, company_name, phone, business_address, gstin, tax_mode, refund_destination)
-      VALUES ($1, $2, 'user', $3, $4, $5, $6, $7, $8, $9, 'user')
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'user')
       RETURNING id, email, role, is_blocked, reseller_id, full_name, company_name, phone, business_address, gstin, tax_mode, refund_destination, created_at
     `, [
       cleanEmail,
       passwordHash,
+      assignedRole,
       resellerId,
       String(full_name).trim().slice(0, 120),
       String(company_name || '').trim().slice(0, 160) || null,
       String(normalizedPhone).slice(0, 30),
       String(business_address || '').trim().slice(0, 2000) || null,
-      String(gstin || '').trim().toUpperCase().slice(0, 20) || null,
+      effectiveGstin,
       taxMode
     ]);
 
@@ -285,15 +345,61 @@ router.post('/register', registerLimiter, async (req, res) => {
     // Seed credits with reseller's default rates or standard system rates
     await initializeUserCredits(client, newUser.id, customRates);
 
+    if (isResellerSignup) {
+      const brandName = String(req.body.brand_name || company_name || full_name).trim().slice(0, 120) || 'Partner Portal';
+      let codeCandidate = brandName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 30);
+      if (!codeCandidate || codeCandidate.length < 3) {
+        codeCandidate = `partner${newUser.id}`;
+      }
+      let finalCode = codeCandidate;
+      let sfx = 1;
+      while (true) {
+        const clash = await client.query('SELECT 1 FROM reseller_profiles WHERE LOWER(invite_code) = LOWER($1)', [finalCode]);
+        if (clash.rows.length === 0) break;
+        sfx++;
+        finalCode = `${codeCandidate}${sfx}`;
+      }
+
+      await client.query(`
+        INSERT INTO reseller_profiles (reseller_id, brand_name, invite_code, allow_self_registration, default_rates)
+        VALUES ($1, $2, $3, TRUE, '{}'::jsonb)
+        ON CONFLICT (reseller_id) DO UPDATE SET brand_name = EXCLUDED.brand_name
+      `, [newUser.id, brandName, finalCode]);
+
+      // Create official onboarding initial commitment order in credit_requests
+      await client.query(`
+        INSERT INTO credit_requests 
+          (user_id, user_email, package_name, credits_requested, credit_type, destination, amount_inr, rate_per_credit, paid_amount, payment_status, utr_number, receipt_url, status, invoice_number, tax_mode, base_amount, gst_amount)
+        VALUES 
+          ($1, $2, $3, $4, $5, $6, $7, $8, 0.00, 'Unpaid', NULL, NULL, 'Pending', 'INV-' || TO_CHAR(CURRENT_DATE, 'YYYY') || '-' || LPAD(nextval('invoice_number_seq')::text, 6, '0'), $9, $10, $11)
+      `, [
+        newUser.id,
+        cleanEmail,
+        `Partner Onboarding Commitment (1 Lakh Min - ${commitmentChannel})`,
+        commitmentQty,
+        cType,
+        cDest,
+        totalAmount,
+        commitmentRate,
+        taxMode,
+        baseAmount,
+        gstAmount
+      ]);
+    }
+
     await logAudit(client, {
       actorId: newUser.id,
       entityType: 'user',
       entityId: newUser.id,
-      action: 'client_self_registered',
+      action: isResellerSignup ? 'reseller_partner_self_registered' : 'client_self_registered',
       details: {
+        role: assignedRole,
         resellerId,
         partnerBrandName,
         inviteCode: candidateSlug || null,
+        commitmentQty: isResellerSignup ? commitmentQty : 0,
+        commitmentChannel: isResellerSignup ? commitmentChannel : null,
+        totalAmount: isResellerSignup ? totalAmount : 0,
         ip: clientIp
       }
     });
@@ -309,7 +415,9 @@ router.post('/register', registerLimiter, async (req, res) => {
     const credits = await getUserCredits(newUser.id);
 
     return res.status(201).json({
-      message: 'Registration successful! Welcome to MessageSphere.',
+      message: isResellerSignup 
+        ? 'Reseller partner registration successful! Your 1 Lakh credit onboarding order is awaiting verification.'
+        : 'Registration successful! Welcome to MessageSphere.',
       token,
       user: {
         id: newUser.id,
@@ -318,6 +426,33 @@ router.post('/register', registerLimiter, async (req, res) => {
         isBlocked: newUser.is_blocked,
         resellerId: newUser.reseller_id,
         fullName: newUser.full_name,
+        companyName: newUser.company_name,
+        phone: newUser.phone,
+        businessAddress: newUser.business_address,
+        gstin: newUser.gstin,
+        taxMode: newUser.tax_mode,
+        createdAt: newUser.created_at,
+        partnerBrandName
+      },
+      credits,
+      onboardingOrder: isResellerSignup ? {
+        channel: commitmentChannel,
+        quantity: commitmentQty,
+        rate: commitmentRate,
+        baseAmount,
+        gstAmount,
+        totalAmount,
+        status: 'Pending'
+      } : null
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Registration error:', err);
+    return res.status(500).json({ error: 'Failed to complete registration. Please try again later.' });
+  } finally {
+    client.release();
+  }
+});
         companyName: newUser.company_name,
         phone: newUser.phone,
         businessAddress: newUser.business_address,
