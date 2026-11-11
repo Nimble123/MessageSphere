@@ -4,7 +4,7 @@
 // ===========================================================================
 require('dotenv').config();
 
-const RENDER_SERVICE_ID = process.env.RENDER_SERVICE_ID || 'srv-dbkrq1mk1f9s73dr2umg';
+const RENDER_SERVICE_ID = (process.env.RENDER_SERVICE_ID || '').trim();
 
 /**
  * Automatically register a reseller's custom domain with Render's infrastructure.
@@ -15,8 +15,8 @@ async function addCustomDomainToRender(domain) {
   if (!apiKey || !RENDER_SERVICE_ID || !domain) {
     return {
       success: false,
-      configured: Boolean(apiKey),
-      reason: apiKey ? 'Domain or Service ID missing' : 'RENDER_API_KEY not configured'
+      configured: Boolean(apiKey && RENDER_SERVICE_ID),
+      reason: !apiKey ? 'RENDER_API_KEY not configured' : (!RENDER_SERVICE_ID ? 'RENDER_SERVICE_ID not configured' : 'Domain missing')
     };
   }
 

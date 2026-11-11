@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { query } = require('../db');
 const { authenticate } = require('../middleware/auth');
-const { calculateSmsMetrics, sanitizeCsvCell } = require('../services/telecom');
+const { calculateSmsMetrics, sanitizeCsvCell, isValidAttachmentUrl } = require('../services/telecom');
 
 // Multer storage for message template media attachments (Image, PDF, Video)
 const uploadDir = path.join(__dirname, '../uploads');
@@ -371,10 +371,14 @@ router.post('/', authenticate, upload.any(), async (req, res) => {
         });
       });
     } else if (req.body.attachment_url) {
+      if (!isValidAttachmentUrl(req.body.attachment_url)) {
+        removeUploadedFiles(req.files);
+        return res.status(400).json({ error: 'Invalid attachment URL: only secure HTTP/HTTPS or local uploaded file URLs are permitted.' });
+      }
       attachments.push({
         slot: 'primary',
         type: req.body.media_type || 'image',
-        url: req.body.attachment_url,
+        url: req.body.attachment_url.trim(),
         filename: req.body.attachment_name || 'starter_media.jpg',
         size: 0
       });
@@ -537,7 +541,15 @@ router.put('/:id', authenticate, upload.any(), async (req, res) => {
       if (existing_attachments) {
         try {
           const parsed = typeof existing_attachments === 'string' ? JSON.parse(existing_attachments) : existing_attachments;
-          if (Array.isArray(parsed)) attachments = parsed;
+          if (Array.isArray(parsed)) {
+            for (const item of parsed) {
+              if (item && item.url && !isValidAttachmentUrl(item.url)) {
+                removeUploadedFiles(req.files);
+                return res.status(400).json({ error: 'Invalid attachment URL found in attachments list.' });
+              }
+            }
+            attachments = parsed;
+          }
         } catch(e) {}
       } else if (!req.files || req.files.length === 0) {
         // If no new files and no explicit existing list, preserve existing attachments

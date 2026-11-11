@@ -49,6 +49,25 @@ const uploadLogo = multer({
 const colorPattern = /^#[0-9A-Fa-f]{6}$/;
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+const RESERVED_DOMAINS = new Set([
+  'localhost',
+  '127.0.0.1',
+  '0.0.0.0',
+  'messagesphere.com',
+  'messagesphere.nmedialabs.in',
+  'nmedialabs.in',
+  'onrender.com',
+  'render.com',
+  'railway.app',
+  'herokuapp.com',
+  'vercel.app',
+  'netlify.app'
+]);
+
+if (process.env.APP_DOMAIN) {
+  RESERVED_DOMAINS.add(process.env.APP_DOMAIN.toLowerCase().trim());
+}
+
 function cleanProfile(body, fallbackName) {
   const brandName = String(body.brand_name || fallbackName || '').trim();
   const accentColor = String(body.accent_color || '#4f46e5').trim();
@@ -64,7 +83,12 @@ function cleanProfile(body, fallbackName) {
     throw new Error('Logo URL must be an HTTPS URL, an uploaded logo (/api/resellers/logo/...), or an image data URI');
   }
   if (supportEmail && !emailPattern.test(supportEmail)) throw new Error('Support email is invalid');
-  if (customDomain && !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(customDomain)) throw new Error('Custom domain is invalid');
+  if (customDomain) {
+    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(customDomain)) throw new Error('Custom domain is invalid');
+    if (RESERVED_DOMAINS.has(customDomain) || customDomain.endsWith('.onrender.com') || customDomain.endsWith('.nmedialabs.in')) {
+      throw new Error(`The domain "${customDomain}" is a platform reserved domain and cannot be claimed.`);
+    }
+  }
   return { brandName, accentColor, logoUrl: logoUrl || null, supportEmail: supportEmail || null, supportPhone: supportPhone.slice(0, 30) || null, customDomain: customDomain || null };
 }
 
@@ -72,7 +96,7 @@ async function resolveResellerId(user) {
   return user.role === 'reseller' ? user.id : user.reseller_id;
 }
 
-// GET /api/resellers/logo/:filename - Publicly serve brand logo with cache headers
+// GET /api/resellers/logo/:filename - Publicly serve brand logo with cache headers and SVG XSS sandbox
 router.get('/logo/:filename', (req, res) => {
   try {
     const safeFilename = path.basename(req.params.filename);
@@ -98,12 +122,26 @@ router.get('/logo/:filename', (req, res) => {
     res.set('Content-Type', mimeTypes[ext] || 'application/octet-stream');
     res.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
     res.set('X-Content-Type-Options', 'nosniff');
+
+    if (ext === '.svg') {
+      res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+      res.set('Content-Disposition', 'inline; filename="logo.svg"');
+    }
+
     return res.sendFile(filePath);
   } catch (err) {
     console.error('Serve logo error:', err);
     return res.status(500).json({ error: 'Failed to serve logo' });
   }
 });
+
+// Helper to validate SVG safety
+function inspectSvgSafety(filePath) {
+  const content = fs.readFileSync(filePath, 'utf8');
+  if (/<script|javascript:|onload|onerror|onclick|onmouseover|href\s*=\s*['"]javascript:/i.test(content)) {
+    throw new Error('Security rejection: SVG file contains embedded scripts or dangerous attributes.');
+  }
+}
 
 // POST /api/resellers/logo - Reseller uploads their brand logo
 router.post('/logo', authenticate, requireRoles('reseller'), (req, res) => {
@@ -115,16 +153,29 @@ router.post('/logo', authenticate, requireRoles('reseller'), (req, res) => {
       return res.status(400).json({ error: 'No logo image file was provided' });
     }
 
+    const ext = path.extname(req.file.filename).toLowerCase();
+    if (ext === '.svg') {
+      try {
+        inspectSvgSafety(req.file.path);
+      } catch (secErr) {
+        fs.unlink(req.file.path, () => {});
+        return res.status(400).json({ error: secErr.message });
+      }
+    }
+
     const logoUrl = `/api/resellers/logo/${req.file.filename}`;
     const client = await getClient();
     try {
       await client.query('BEGIN');
+      const userRes = await client.query('SELECT company_name, email, full_name FROM users WHERE id = $1', [req.user.id]);
+      const defaultBrand = userRes.rows[0]?.company_name || userRes.rows[0]?.full_name || userRes.rows[0]?.email?.split('@')[0] || 'Partner Portal';
+
       const result = await client.query(`
-        INSERT INTO reseller_profiles (reseller_id, logo_url, updated_at)
-        VALUES ($1, $2, NOW())
+        INSERT INTO reseller_profiles (reseller_id, brand_name, logo_url, updated_at)
+        VALUES ($1, $2, $3, NOW())
         ON CONFLICT (reseller_id) DO UPDATE SET logo_url = EXCLUDED.logo_url, updated_at = NOW()
         RETURNING *
-      `, [req.user.id, logoUrl]);
+      `, [req.user.id, defaultBrand, logoUrl]);
 
       await logAudit(client, {
         actorId: req.user.id,
@@ -142,6 +193,7 @@ router.post('/logo', authenticate, requireRoles('reseller'), (req, res) => {
       });
     } catch (dbErr) {
       await client.query('ROLLBACK');
+      if (req.file && req.file.path) fs.unlink(req.file.path, () => {});
       console.error('Update logo db error:', dbErr);
       return res.status(500).json({ error: 'Failed to update brand logo' });
     } finally {
@@ -165,16 +217,29 @@ router.post('/:id/logo', authenticate, requireRoles('admin'), (req, res) => {
       return res.status(400).json({ error: 'No logo image file was provided' });
     }
 
+    const ext = path.extname(req.file.filename).toLowerCase();
+    if (ext === '.svg') {
+      try {
+        inspectSvgSafety(req.file.path);
+      } catch (secErr) {
+        fs.unlink(req.file.path, () => {});
+        return res.status(400).json({ error: secErr.message });
+      }
+    }
+
     const logoUrl = `/api/resellers/logo/${req.file.filename}`;
     const client = await getClient();
     try {
       await client.query('BEGIN');
+      const userRes = await client.query('SELECT company_name, email, full_name FROM users WHERE id = $1', [resellerId]);
+      const defaultBrand = userRes.rows[0]?.company_name || userRes.rows[0]?.full_name || userRes.rows[0]?.email?.split('@')[0] || 'Partner Portal';
+
       const result = await client.query(`
-        INSERT INTO reseller_profiles (reseller_id, logo_url, updated_at)
-        VALUES ($1, $2, NOW())
+        INSERT INTO reseller_profiles (reseller_id, brand_name, logo_url, updated_at)
+        VALUES ($1, $2, $3, NOW())
         ON CONFLICT (reseller_id) DO UPDATE SET logo_url = EXCLUDED.logo_url, updated_at = NOW()
         RETURNING *
-      `, [resellerId, logoUrl]);
+      `, [resellerId, defaultBrand, logoUrl]);
 
       await logAudit(client, {
         actorId: req.user.id,
@@ -192,6 +257,7 @@ router.post('/:id/logo', authenticate, requireRoles('admin'), (req, res) => {
       });
     } catch (dbErr) {
       await client.query('ROLLBACK');
+      if (req.file && req.file.path) fs.unlink(req.file.path, () => {});
       console.error('Admin update logo db error:', dbErr);
       return res.status(500).json({ error: 'Failed to update reseller brand logo' });
     } finally {
@@ -250,7 +316,7 @@ router.get('/branding/resolve', async (req, res) => {
     let rawHost = String(hostQuery || req.hostname || req.get('host') || '').toLowerCase().split(':')[0];
     if (rawHost.startsWith('www.')) rawHost = rawHost.slice(4);
 
-    if (!rawHost || rawHost === 'localhost' || rawHost === '127.0.0.1') {
+    if (!rawHost || RESERVED_DOMAINS.has(rawHost)) {
       return res.json({ custom_branding: false });
     }
 
@@ -259,6 +325,7 @@ router.get('/branding/resolve', async (req, res) => {
       FROM reseller_profiles rp
       JOIN users u ON u.id = rp.reseller_id
       WHERE (LOWER(rp.custom_domain) = LOWER($1) OR LOWER(rp.custom_domain) = LOWER($2))
+        AND rp.domain_status = 'Verified'
         AND u.is_blocked = FALSE
     `, [rawHost, `www.${rawHost}`]);
 

@@ -147,6 +147,31 @@ function sanitizeCsvCell(val) {
   return `"${str.replace(/"/g, '""')}"`;
 }
 
+/**
+ * Strict validator for media/attachment URLs.
+ * Rejects javascript:, data:, quotes, angle brackets, semicolons, and code breakout payloads.
+ * @param {string} url
+ * @returns {boolean}
+ */
+function isValidAttachmentUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (trimmed.startsWith('/api/campaigns/files/')) {
+    return /^\/api\/campaigns\/files\/[a-zA-Z0-9._-]+$/i.test(trimmed);
+  }
+  if (trimmed.startsWith('/api/resellers/logo/')) {
+    return /^\/api\/resellers\/logo\/[a-zA-Z0-9._-]+$/i.test(trimmed);
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    if (/['"`<>;\\\s]/.test(trimmed)) return false;
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 module.exports = {
   GSM_7_REGEX,
   GSM_7_EXTENDED_CHARS,
@@ -154,6 +179,7 @@ module.exports = {
   SMPP_FAILED_STATUSES,
   EMAIL_PATTERN,
   isValidEmail,
+  isValidAttachmentUrl,
   normalizePhoneNumber,
   calculateSmsMetrics,
   sanitizeCsvCell

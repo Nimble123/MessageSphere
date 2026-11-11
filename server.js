@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const path = require('path');
 const { initDB } = require('./db');
 const { initScheduler } = require('./services/scheduler');
@@ -7,6 +8,15 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Gzip/Brotli compression middleware for all eligible responses (> 1KB)
+app.use(compression({
+  threshold: 1024,
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) return false;
+    return compression.filter(req, res);
+  }
+}));
 
 // Reverse proxy trust: Only enable if explicitly configured in environment (e.g., behind Nginx, Cloudflare)
 // Default is false to prevent rate limiter bypass via forged X-Forwarded-For headers
@@ -40,18 +50,8 @@ app.use((req, res, next) => cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Request logging and cache busting
+// Global security & privacy headers
 app.use((req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-  console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);
-  next();
-});
-
-// Static files
-app.use((req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
   res.set('X-Content-Type-Options', 'nosniff');
   res.set('X-Frame-Options', 'DENY');
   res.set('Referrer-Policy', 'same-origin');
@@ -60,7 +60,27 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Static assets with optimized caching (HTML remains fresh, scripts/styles/media are cached)
+app.use(express.static(path.join(__dirname, 'public'), {
+  etag: true,
+  lastModified: true,
+  maxAge: '1h',
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.set('Cache-Control', 'no-cache, must-revalidate');
+    } else {
+      res.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+    }
+  }
+}));
+
+// API Routes: strictly no-store to protect sensitive user and campaign data
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
 
 // API Routes
 app.use('/api/auth', require('./routes/auth'));

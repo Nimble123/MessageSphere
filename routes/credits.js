@@ -259,11 +259,15 @@ async function buildLedgerQuery(req, isExport = false) {
   const limitVal = isExport ? 5000 : (parseInt(limit, 10) || 50);
   const offsetVal = parseInt(offset, 10) || 0;
 
+  const countJoinSql = (search && String(search).trim()) ? `
+    LEFT JOIN users u_from ON ct.from_user_id = u_from.id
+    LEFT JOIN users u_to ON ct.to_user_id = u_to.id
+  ` : '';
+
   const countSql = `
     SELECT COUNT(*) as total_count
     FROM credit_transactions ct
-    LEFT JOIN users u_from ON ct.from_user_id = u_from.id
-    LEFT JOIN users u_to ON ct.to_user_id = u_to.id
+    ${countJoinSql}
     ${whereSql}
   `;
 
@@ -277,8 +281,7 @@ async function buildLedgerQuery(req, isExport = false) {
         COALESCE(SUM(CASE WHEN ct.direction = 'credit' OR (ct.direction IS NULL AND ct.to_user_id IS NOT NULL) THEN ct.amount ELSE 0 END), 0) as total_inflow,
         COALESCE(SUM(CASE WHEN ct.direction = 'debit' OR (ct.direction IS NULL AND ct.from_user_id IS NOT NULL) THEN ct.amount ELSE 0 END), 0) as total_outflow
       FROM credit_transactions ct
-      LEFT JOIN users u_from ON ct.from_user_id = u_from.id
-      LEFT JOIN users u_to ON ct.to_user_id = u_to.id
+      ${countJoinSql}
       ${whereSql}
     `;
     summaryParams = [...params];
@@ -289,8 +292,7 @@ async function buildLedgerQuery(req, isExport = false) {
         COALESCE(SUM(CASE WHEN (ct.direction = 'credit' AND ct.to_user_id = $${paramIdx}) OR (ct.direction IS NULL AND ct.to_user_id = $${paramIdx}) THEN ct.amount ELSE 0 END), 0) as total_inflow,
         COALESCE(SUM(CASE WHEN ct.direction = 'debit' OR (ct.direction = 'credit' AND ct.from_user_id = $${paramIdx} AND ct.to_user_id != $${paramIdx}) OR (ct.direction IS NULL AND ct.from_user_id = $${paramIdx}) THEN ct.amount ELSE 0 END), 0) as total_outflow
       FROM credit_transactions ct
-      LEFT JOIN users u_from ON ct.from_user_id = u_from.id
-      LEFT JOIN users u_to ON ct.to_user_id = u_to.id
+      ${countJoinSql}
       ${whereSql}
     `;
     summaryParams = [...params, viewerUserId];
@@ -317,17 +319,21 @@ async function buildLedgerQuery(req, isExport = false) {
 router.get('/transactions', authenticate, async (req, res) => {
   try {
     const { sql, countSql, countParams, summarySql, summaryParams, params, viewerUserId, limitVal, offsetVal } = await buildLedgerQuery(req, false);
-    const [result, countResult, summaryResult] = await Promise.all([
+    const shouldFetchSummary = offsetVal === 0 || req.query.include_summary === 'true';
+    const queryPromises = [
       query(sql, params),
-      query(countSql, countParams),
-      query(summarySql, summaryParams)
-    ]);
+      query(countSql, countParams)
+    ];
+    if (shouldFetchSummary) {
+      queryPromises.push(query(summarySql, summaryParams));
+    }
+    const [result, countResult, summaryResult] = await Promise.all(queryPromises);
 
     const totalCount = parseInt(countResult.rows[0]?.total_count || 0, 10);
-    const sumRow = summaryResult.rows[0] || {};
-    const totalInflow = Number(sumRow.total_inflow) || 0;
-    const totalOutflow = Number(sumRow.total_outflow) || 0;
-    const totalRefunds = Number(sumRow.total_refunds) || 0;
+    const sumRow = summaryResult ? (summaryResult.rows[0] || {}) : null;
+    const totalInflow = sumRow ? (Number(sumRow.total_inflow) || 0) : null;
+    const totalOutflow = sumRow ? (Number(sumRow.total_outflow) || 0) : null;
+    const totalRefunds = sumRow ? (Number(sumRow.total_refunds) || 0) : null;
 
     const enriched = result.rows.map(tx => {
       const dir = resolveTransactionDirection(tx, viewerUserId, req.user.role);

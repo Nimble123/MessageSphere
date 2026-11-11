@@ -8,12 +8,21 @@ const INSECURE_JWT_PLACEHOLDERS = new Set([
   'change_in_production',
   'messagesphere_super_secret_jwt_key_2026_change_in_production',
   'your_jwt_secret_here',
+  'generate_a_random_32_character_hex_or_base64_secret_here',
   'secret'
 ]);
 
+function isPlaceholderSecret(secret) {
+  if (!secret) return true;
+  const s = secret.trim().toLowerCase();
+  if (INSECURE_JWT_PLACEHOLDERS.has(s)) return true;
+  if (/^(generate|change|placeholder|your_secret|default|example|test|dev)/i.test(s)) return true;
+  return false;
+}
+
 if (process.env.NODE_ENV === 'production') {
   const secret = (process.env.JWT_SECRET || '').trim();
-  if (!secret || INSECURE_JWT_PLACEHOLDERS.has(secret) || secret.length < 32) {
+  if (!secret || isPlaceholderSecret(secret) || secret.length < 32) {
     throw new Error('FATAL SECURITY CONFIGURATION: In production, JWT_SECRET must be set to a strong, unique secret of at least 32 characters (cannot be a default placeholder).');
   }
 }

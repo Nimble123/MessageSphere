@@ -528,43 +528,75 @@ router.post('/groups/:id/bulk-numbers', authenticate, async (req, res) => {
 
 
 
-// GET /api/contacts/blacklist - List blacklisted numbers (Role-aware)
+// GET /api/contacts/blacklist - List blacklisted numbers (Role-aware, paginated & searchable)
 router.get('/blacklist', authenticate, async (req, res) => {
   try {
     const isSuperAdmin = req.user.role === 'admin';
     const isReseller = req.user.role === 'reseller';
 
-    let sql = '';
-    let params = [];
+    const whereClauses = [];
+    const params = [];
+    let paramIdx = 1;
 
     if (isSuperAdmin) {
-      sql = `
-        SELECT b.*, u.email as owner_email, u.role as owner_role
-        FROM blacklist b
-        LEFT JOIN users u ON b.user_id = u.id
-        ORDER BY b.created_at DESC
-      `;
+      if (req.query.user_id) {
+        if (req.query.user_id === '__global__') {
+          whereClauses.push('b.user_id IS NULL');
+        } else {
+          whereClauses.push(`b.user_id = $${paramIdx}`);
+          params.push(parseInt(req.query.user_id, 10));
+          paramIdx++;
+        }
+      }
     } else if (isReseller) {
-      sql = `
-        SELECT b.*, u.email as owner_email, u.role as owner_role
-        FROM blacklist b
-        LEFT JOIN users u ON b.user_id = u.id
-        WHERE b.user_id = $1 OR b.user_id IS NULL OR b.user_id IN (SELECT id FROM users WHERE reseller_id = $1)
-        ORDER BY b.created_at DESC
-      `;
-      params = [req.user.id];
+      whereClauses.push(`(b.user_id = $${paramIdx} OR b.user_id IS NULL OR b.user_id IN (SELECT id FROM users WHERE reseller_id = $${paramIdx}))`);
+      params.push(req.user.id);
+      paramIdx++;
     } else {
-      sql = `
-        SELECT b.*, u.email as owner_email, u.role as owner_role
-        FROM blacklist b
-        LEFT JOIN users u ON b.user_id = u.id
-        WHERE b.user_id = $1
-        ORDER BY b.created_at DESC
-      `;
-      params = [req.user.id];
+      whereClauses.push(`b.user_id = $${paramIdx}`);
+      params.push(req.user.id);
+      paramIdx++;
     }
 
+    if (req.query.search && String(req.query.search).trim()) {
+      const s = `%${String(req.query.search).trim()}%`;
+      whereClauses.push(`(b.phone_number ILIKE $${paramIdx} OR b.reason ILIKE $${paramIdx} OR u.email ILIKE $${paramIdx})`);
+      params.push(s);
+      paramIdx++;
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+    const limit = Math.min(parseInt(req.query.limit, 10) || 500, 5000);
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+
+    const countRes = await query(`
+      SELECT COUNT(*) as total
+      FROM blacklist b
+      LEFT JOIN users u ON b.user_id = u.id
+      ${whereSql}
+    `, params);
+    const total = parseInt(countRes.rows[0]?.total || 0, 10);
+
+    const sql = `
+      SELECT b.*, u.email as owner_email, u.role as owner_role
+      FROM blacklist b
+      LEFT JOIN users u ON b.user_id = u.id
+      ${whereSql}
+      ORDER BY b.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+
     const result = await query(sql, params);
+
+    if (req.query.paginate === 'true') {
+      return res.json({
+        data: result.rows,
+        total,
+        limit,
+        offset
+      });
+    }
+
     return res.json(result.rows);
   } catch (err) {
     console.error('List blacklist error:', err);

@@ -1,5 +1,5 @@
 const { Pool } = require('pg');
-const bcrypt = require('bcryptjs');
+const { hashPassword } = require('./services/hasher');
 require('dotenv').config();
 
 const isRemoteDb = process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('localhost') && !process.env.DATABASE_URL.includes('127.0.0.1');
@@ -7,7 +7,7 @@ const isRemoteDb = process.env.DATABASE_URL && !process.env.DATABASE_URL.include
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || (process.env.NODE_ENV !== 'production' ? 'postgresql://localhost:5432/messagesphere' : undefined),
   ssl: isRemoteDb ? { rejectUnauthorized: process.env.PG_SSL_REJECT_UNAUTHORIZED === 'true' } : false,
-  max: parseInt(process.env.PG_POOL_MAX || '50', 10),
+  max: parseInt(process.env.PG_POOL_MAX || '20', 10),
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000
 });
@@ -376,12 +376,26 @@ async function initDB() {
       ALTER TABLE credit_requests ADD CONSTRAINT credit_requests_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
     `);
 
+    await client.query(`ALTER TABLE credit_requests ADD COLUMN IF NOT EXISTS user_email VARCHAR(255);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_transactions_from_user ON credit_transactions(from_user_id, created_at DESC);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_transactions_from_to ON credit_transactions(from_user_id, to_user_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_campaigns_operator_queue ON campaigns(created_at ASC) WHERE status IN ('Submitted', 'Approved');`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_users_role_reseller ON users(role, reseller_id, created_at DESC);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_blacklist_user_created ON blacklist(user_id, created_at DESC);`);
+
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 1;`);
     await client.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS direction VARCHAR(10) DEFAULT 'credit';`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_transactions_direction ON credit_transactions(direction);`);
     await client.query(`CREATE SEQUENCE IF NOT EXISTS invoice_number_seq START 1001;`);
     await client.query(`ALTER TABLE credit_requests ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(50);`);
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_requests_invoice_no ON credit_requests(invoice_number) WHERE invoice_number IS NOT NULL;`);
+    await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS brand_name VARCHAR(120) NOT NULL DEFAULT 'Partner Portal';`);
+    await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS logo_url TEXT;`);
+    await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS accent_color VARCHAR(7) NOT NULL DEFAULT '#4f46e5';`);
+    await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS support_email VARCHAR(255);`);
+    await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS support_phone VARCHAR(30);`);
+    await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS custom_domain VARCHAR(255);`);
+    await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS domain_status VARCHAR(30) NOT NULL DEFAULT 'Not configured';`);
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_reseller_custom_domain ON reseller_profiles(LOWER(custom_domain)) WHERE custom_domain IS NOT NULL AND custom_domain != '';`);
     await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS invite_code VARCHAR(64);`);
     await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS allow_self_registration BOOLEAN NOT NULL DEFAULT TRUE;`);
@@ -440,7 +454,7 @@ async function initDB() {
         console.warn(`[AUTH] Production environment detected: Default admin account creation skipped. Set explicit ADMIN_PASSWORD or run 'npm run reset-admin' to initialize.`);
       } else {
         console.log(`[AUTH] Seeding initial admin account: ${adminEmail}`);
-        const hash = await bcrypt.hash(adminPassword, 10);
+        const hash = await hashPassword(adminPassword);
         const insertUser = await client.query(`
           INSERT INTO users (email, password_hash, role, token_version)
           VALUES ($1, $2, 'admin', 1)

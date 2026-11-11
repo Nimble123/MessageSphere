@@ -8,7 +8,7 @@ const archiver = require('archiver');
 const { query, getClient } = require('../db');
 const { authenticate, requireRoles } = require('../middleware/auth');
 const { logAudit } = require('../services/audit');
-const { calculateSmsMetrics, normalizePhoneNumber, SMPP_DELIVERED_STATUSES, sanitizeCsvCell } = require('../services/telecom');
+const { calculateSmsMetrics, normalizePhoneNumber, SMPP_DELIVERED_STATUSES, sanitizeCsvCell, isValidAttachmentUrl } = require('../services/telecom');
 const MAX_CAMPAIGN_RECIPIENTS = Number(process.env.MAX_CAMPAIGN_RECIPIENTS || 50000);
 
 // Setup multer storage for campaign attachments and reports
@@ -465,9 +465,9 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
   // Support pre-saved template attachment URL if no new files were uploaded
   const templateAttachmentUrl = (req.body.attachment_url && typeof req.body.attachment_url === 'string') ? req.body.attachment_url.trim() : null;
   if (templateAttachmentUrl) {
-    if (!/^(https?:\/\/|\/api\/campaigns\/files\/|\/uploads\/)/i.test(templateAttachmentUrl)) {
+    if (!isValidAttachmentUrl(templateAttachmentUrl)) {
       removeUploadedFiles(files);
-      return res.status(400).json({ error: 'Invalid attachment URL format.' });
+      return res.status(400).json({ error: 'Invalid attachment URL format or dangerous character detected.' });
     }
     // Cross-tenant protection: verify user has permission to reference this local file
     if (!/^https?:\/\//i.test(templateAttachmentUrl) && req.user.role !== 'admin') {
@@ -775,6 +775,9 @@ router.get('/', authenticate, async (req, res) => {
 
     let listSql = '';
     let params = [];
+    const limit = req.query.limit ? Math.min(parseInt(req.query.limit, 10) || 100, 1000) : (req.query.all === 'true' ? null : 250);
+    const offset = parseInt(req.query.offset, 10) || 0;
+    const paginationClause = limit ? ` LIMIT ${limit} OFFSET ${offset}` : '';
 
     if (req.user.role === 'admin') {
       listSql = `
@@ -785,6 +788,7 @@ router.get('/', authenticate, async (req, res) => {
         JOIN users u ON c.user_id = u.id
         WHERE 1=1 ${channelClause}
         ORDER BY c.created_at DESC
+        ${paginationClause}
       `;
     } else if (req.user.role === 'reseller') {
       listSql = `
@@ -795,6 +799,7 @@ router.get('/', authenticate, async (req, res) => {
         JOIN users u ON c.user_id = u.id
         WHERE (c.user_id = $1 OR u.reseller_id = $1) ${channelClause}
         ORDER BY c.created_at DESC
+        ${paginationClause}
       `;
       params = [req.user.id];
     } else {
@@ -806,6 +811,7 @@ router.get('/', authenticate, async (req, res) => {
         JOIN users u ON c.user_id = u.id
         WHERE c.user_id = $1 ${channelClause}
         ORDER BY c.created_at DESC
+        ${paginationClause}
       `;
       params = [req.user.id];
     }

@@ -1,11 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const { query, getClient, initializeUserCredits } = require('../db');
 const { authenticate, requireRoles, JWT_SECRET } = require('../middleware/auth');
 const { logAudit } = require('../services/audit');
+const { hashPassword, comparePassword } = require('../services/hasher');
+const { isValidEmail, normalizePhoneNumber } = require('../services/telecom');
 
 // Anti-brute force rate limiters
 const loginLimiter = rateLimit({
@@ -80,7 +81,7 @@ router.post('/login', loginLimiter, async (req, res) => {
       return res.status(403).json({ error: 'Your account has been blocked. Please contact support.' });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password_hash);
+    const isMatch = await comparePassword(password, user.password_hash);
     if (!isMatch) {
       await logAudit(null, {
         actorId: user.id,
@@ -130,7 +131,7 @@ router.post('/login', loginLimiter, async (req, res) => {
   }
 });
 
-// GET /api/auth/invite/:codeOrDomain - Public invite & self-registration verification
+// GET /api/auth/invite/:codeOrDomain - Public invite verification (Strict code/domain only, safe sanitized metadata)
 router.get('/invite/:codeOrDomain', async (req, res) => {
   try {
     const rawParam = String(req.params.codeOrDomain || '').trim();
@@ -140,13 +141,14 @@ router.get('/invite/:codeOrDomain', async (req, res) => {
     let cleanParam = rawParam.toLowerCase().replace(/^https?:\/\//i, '').replace(/:\d+$/, '').replace(/\/.*$/, '').trim();
     if (cleanParam.startsWith('www.')) cleanParam = cleanParam.slice(4);
 
+    // Strictly match explicit invite code OR verified custom domain (NEVER raw numeric reseller_id)
     const result = await query(`
-      SELECT rp.reseller_id, rp.brand_name, rp.logo_url, rp.accent_color, rp.support_email, rp.support_phone,
-             rp.custom_domain, rp.domain_status, rp.invite_code, rp.allow_self_registration, rp.default_rates,
-             u.email AS reseller_email, u.company_name, u.is_blocked
+      SELECT rp.brand_name, rp.logo_url, rp.accent_color, rp.support_email, rp.support_phone,
+             rp.custom_domain, rp.domain_status, rp.invite_code, rp.allow_self_registration,
+             u.company_name, u.is_blocked
       FROM reseller_profiles rp
       JOIN users u ON u.id = rp.reseller_id
-      WHERE (LOWER(rp.invite_code) = LOWER($1) OR LOWER(rp.custom_domain) = LOWER($1) OR rp.reseller_id::text = $1)
+      WHERE (LOWER(rp.invite_code) = LOWER($1) OR (LOWER(rp.custom_domain) = LOWER($1) AND rp.domain_status = 'Verified'))
         AND u.is_blocked = FALSE
     `, [cleanParam]);
 
@@ -160,15 +162,13 @@ router.get('/invite/:codeOrDomain', async (req, res) => {
       invite_code: row.invite_code,
       allow_self_registration: row.allow_self_registration !== false,
       reseller: {
-        id: row.reseller_id,
         brand_name: row.brand_name || row.company_name || 'Partner',
         logo_url: row.logo_url,
         accent_color: row.accent_color || '#4f46e5',
         support_email: row.support_email,
         support_phone: row.support_phone,
-        custom_domain: row.custom_domain
-      },
-      default_rates: row.default_rates || {}
+        custom_domain: row.domain_status === 'Verified' ? row.custom_domain : null
+      }
     });
   } catch (err) {
     console.error('Invite lookup error:', err);
@@ -184,16 +184,15 @@ router.post('/register', registerLimiter, async (req, res) => {
     return res.status(400).json({ error: 'Email and password are required' });
   }
   const cleanEmail = String(email).trim().toLowerCase();
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(cleanEmail)) {
+  if (!isValidEmail(cleanEmail)) {
     return res.status(400).json({ error: 'A valid email address is required' });
   }
   if (!full_name || !String(full_name).trim()) {
     return res.status(400).json({ error: 'Full name is required' });
   }
-  const cleanPhone = String(phone || '').replace(/\D/g, '');
-  if (cleanPhone.length < 10) {
-    return res.status(400).json({ error: 'A valid 10-digit mobile number is required' });
+  const normalizedPhone = normalizePhoneNumber(phone, 'domestic') || normalizePhoneNumber(phone, 'international');
+  if (!normalizedPhone || normalizedPhone.length < 10) {
+    return res.status(400).json({ error: 'A valid 10-15 digit mobile number is required' });
   }
   if (String(password).length < 8) {
     return res.status(400).json({ error: 'Password must be at least 8 characters long' });
@@ -212,18 +211,20 @@ router.post('/register', registerLimiter, async (req, res) => {
   try {
     await client.query('BEGIN');
 
+    // Duplicate account check - Consistent response to protect against user enumeration
     const dupCheck = await client.query('SELECT id FROM users WHERE email = $1', [cleanEmail]);
     if (dupCheck.rows.length > 0) {
       await client.query('ROLLBACK');
-      return res.status(409).json({ error: 'An account with this email address already exists. Please sign in instead.' });
+      return res.status(400).json({ error: 'Unable to register account with the provided details. Please verify your email or sign in.' });
     }
 
     if (candidateSlug) {
+      // Strictly match invite_code (never match numeric reseller_id)
       const rpRes = await client.query(`
         SELECT rp.reseller_id, rp.brand_name, rp.allow_self_registration, rp.default_rates, u.is_blocked
         FROM reseller_profiles rp
         JOIN users u ON u.id = rp.reseller_id
-        WHERE LOWER(rp.invite_code) = LOWER($1) OR rp.reseller_id::text = $1
+        WHERE LOWER(rp.invite_code) = LOWER($1)
       `, [candidateSlug]);
 
       if (rpRes.rows.length === 0 || rpRes.rows[0].is_blocked) {
@@ -240,11 +241,13 @@ router.post('/register', registerLimiter, async (req, res) => {
       customRates = rpRes.rows[0].default_rates;
       partnerBrandName = rpRes.rows[0].brand_name;
     } else if (candidateHost && candidateHost !== 'localhost' && candidateHost !== '127.0.0.1') {
+      // Custom domain auto-binding strictly requires domain_status = 'Verified'
       const domainRes = await client.query(`
         SELECT rp.reseller_id, rp.brand_name, rp.allow_self_registration, rp.default_rates, u.is_blocked
         FROM reseller_profiles rp
         JOIN users u ON u.id = rp.reseller_id
         WHERE (LOWER(rp.custom_domain) = LOWER($1) OR LOWER(rp.custom_domain) = LOWER($2))
+          AND rp.domain_status = 'Verified'
       `, [candidateHost, `www.${candidateHost}`]);
 
       if (domainRes.rows.length > 0 && !domainRes.rows[0].is_blocked) {
@@ -258,7 +261,7 @@ router.post('/register', registerLimiter, async (req, res) => {
       }
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await hashPassword(password);
     const taxMode = (gstin && String(gstin).trim()) ? 'with_gst' : 'non_gst';
 
     const insertResult = await client.query(`
@@ -271,7 +274,7 @@ router.post('/register', registerLimiter, async (req, res) => {
       resellerId,
       String(full_name).trim().slice(0, 120),
       String(company_name || '').trim().slice(0, 160) || null,
-      String(phone).trim().slice(0, 30),
+      String(normalizedPhone).slice(0, 30),
       String(business_address || '').trim().slice(0, 2000) || null,
       String(gstin || '').trim().toUpperCase().slice(0, 20) || null,
       taxMode
@@ -325,7 +328,7 @@ router.post('/register', registerLimiter, async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Self-registration error:', err);
-    return res.status(500).json({ error: 'Failed to complete registration: ' + (err.message || 'Database error') });
+    return res.status(500).json({ error: 'Failed to complete registration' });
   } finally {
     client.release();
   }

@@ -294,8 +294,9 @@ function sanitizePhoneNumber(raw, destination = 'domestic') {
 let cachedBlacklistSet = new Set();
 async function ensureBlacklistLoaded() {
   try {
-    const list = await apiFetch('/contacts/blacklist');
-    cachedBlacklistSet = new Set((list || []).map(r => r.phone_number));
+    // Only load latest 500 DND numbers for instant UI typing warning; full 200k+ DND list is strictly enforced on submission by backend
+    const list = await apiFetch('/contacts/blacklist?limit=500');
+    cachedBlacklistSet = new Set((Array.isArray(list) ? list : (list.data || [])).map(r => r.phone_number));
   } catch (e) {
     cachedBlacklistSet = new Set();
   }
@@ -4501,7 +4502,7 @@ function renderCampaignsTable() {
             if (attCount > 0) {
               return `<span style="font-size:0.73rem;display:inline-flex;align-items:center;gap:3px;margin-top:4px;color:#16a34a;font-weight:700;"><i data-lucide="paperclip" style="width:11px;height:11px;"></i> ${attCount} File${attCount > 1 ? 's' : ''} Attached</span>`;
             } else if (c.attachment_url) {
-              return `<button type="button" class="btn-action btn-action-secondary" onclick="viewOrDownloadCampaignAsset('${escapeHtml(c.attachment_url)}')" style="font-size:0.73rem;display:inline-flex;align-items:center;gap:3px;margin-top:4px;color:var(--primary);background:none;border:none;cursor:pointer;padding:0;"><i data-lucide="paperclip" style="width:11px;height:11px;"></i> View Media</button>`;
+              return `<button type="button" class="btn-action btn-action-secondary" data-asset-url="${escapeHtml(c.attachment_url)}" onclick="viewOrDownloadCampaignAsset(this.dataset.assetUrl)" style="font-size:0.73rem;display:inline-flex;align-items:center;gap:3px;margin-top:4px;color:var(--primary);background:none;border:none;cursor:pointer;padding:0;"><i data-lucide="paperclip" style="width:11px;height:11px;"></i> View Media</button>`;
             }
             return '';
           })()}
@@ -7989,7 +7990,8 @@ if (btnExportBlacklistCsv) {
 async function loadBlacklist() {
   if (!blacklistTbody) return;
   try {
-    cachedBlacklist = await apiFetch('/contacts/blacklist');
+    const res = await apiFetch('/contacts/blacklist?limit=1000');
+    cachedBlacklist = Array.isArray(res) ? res : (res.data || []);
 
     // Setup Blacklist Filter for Admin & Reseller
     const blFilter = document.getElementById('blacklist-user-filter');

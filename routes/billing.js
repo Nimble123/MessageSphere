@@ -438,14 +438,18 @@ router.post('/requests/:id/reject', authenticate, requireRoles('admin', 'reselle
 // POST /api/billing/requests/:id/record-payment - Super Admin or Reseller records payment (settles full or partial Khata)
 router.post('/requests/:id/record-payment', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
   const reqId = parseInt(req.params.id, 10);
-  const paymentAmount = parseFloat(req.body.amount);
+  const amtStr = String(req.body.amount || '');
+  if (/[eE]/.test(amtStr)) {
+    return res.status(400).json({ error: 'Scientific notation is not permitted for payment amounts.' });
+  }
+  const paymentAmount = parseFloat(amtStr);
   const paymentMode = String(req.body.payment_mode || 'UPI').trim();
   const utr = String(req.body.utr_number || req.body.reference || '').trim();
   const notes = String(req.body.notes || '').trim();
   const settleFull = Boolean(req.body.settle_full);
 
-  if ((isNaN(paymentAmount) || paymentAmount <= 0) && !settleFull) {
-    return res.status(400).json({ error: 'Valid payment amount greater than zero is required' });
+  if ((isNaN(paymentAmount) || paymentAmount <= 0 || paymentAmount > 99999999) && !settleFull) {
+    return res.status(400).json({ error: 'Valid payment amount between ₹0.01 and ₹99,999,999 is required' });
   }
 
   const client = await getClient();

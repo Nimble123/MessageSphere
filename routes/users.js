@@ -1,17 +1,20 @@
 const express = require('express');
 const router = express.Router();
-const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { query, getClient, initializeUserCredits, CREDIT_TYPES, DESTINATIONS } = require('../db');
 const { authenticate, requireRoles, JWT_SECRET } = require('../middleware/auth');
 const { logAudit } = require('../services/audit');
 const { isValidEmail } = require('../services/telecom');
+const { hashPassword } = require('../services/hasher');
 
 // GET /api/users - List users
 router.get('/', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
   try {
     let usersQuery = '';
     let params = [];
+    const limit = req.query.limit ? Math.min(parseInt(req.query.limit, 10) || 50, 500) : null;
+    const offset = parseInt(req.query.offset, 10) || 0;
+    const paginationClause = limit ? ` LIMIT ${limit} OFFSET ${offset}` : '';
 
     if (req.user.role === 'admin') {
       usersQuery = `
@@ -21,6 +24,7 @@ router.get('/', authenticate, requireRoles('admin', 'reseller'), async (req, res
         LEFT JOIN users r ON u.reseller_id = r.id
         WHERE u.id != $1
         ORDER BY u.created_at DESC
+        ${paginationClause}
       `;
       params = [req.user.id];
     } else {
@@ -31,6 +35,7 @@ router.get('/', authenticate, requireRoles('admin', 'reseller'), async (req, res
         LEFT JOIN users r ON u.reseller_id = r.id
         WHERE u.reseller_id = $1
         ORDER BY u.created_at DESC
+        ${paginationClause}
       `;
       params = [req.user.id];
     }
@@ -392,7 +397,7 @@ router.post('/', authenticate, requireRoles('admin', 'reseller'), async (req, re
       return res.status(400).json({ error: 'User with this email already exists' });
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await hashPassword(password);
     let resellerId = req.user.role === 'reseller' ? req.user.id : null;
     if (req.user.role === 'admin' && assignedRole === 'user' && reseller_id) {
       const resellerCheck = await client.query(`SELECT id FROM users WHERE id = $1 AND role = 'reseller'`, [parseInt(reseller_id, 10)]);
@@ -617,10 +622,14 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
       return res.status(400).json({ error: `Unrecognized channel type or destination for key "${key}".` });
     }
 
-    const amount = parseInt(rawVal, 10);
-    if (isNaN(amount) || amount <= 0 || amount !== Number(rawVal)) {
-      return res.status(400).json({ error: `Credit amount for "${key}" must be a positive integer greater than 0.` });
+    if (typeof rawVal === 'string' && /[eE]/.test(rawVal)) {
+      return res.status(400).json({ error: `Scientific notation is not permitted for credit amounts.` });
     }
+    const num = Number(rawVal);
+    if (!Number.isSafeInteger(num) || num <= 0 || num > 100000000) {
+      return res.status(400).json({ error: `Credit amount for "${key}" must be a positive whole number between 1 and 100,000,000.` });
+    }
+    const amount = num;
 
     validatedItems.push({ key, creditType, destination, amount });
   }
@@ -829,7 +838,16 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
           paidAmount = grossInvoice;
           paymentStatus = 'Paid';
         } else if (paymentStatus === 'partial') {
-          paidAmount = parseFloat(req.body.paid_amount) || 0.00;
+          const pStr = String(req.body.paid_amount || '0');
+          if (/[eE]/.test(pStr)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Scientific notation is not permitted for payment amounts.' });
+          }
+          paidAmount = parseFloat(pStr) || 0.00;
+          if (isNaN(paidAmount) || paidAmount < 0 || paidAmount > 99999999) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Paid amount must be between 0 and 99,999,999.' });
+          }
           if (paidAmount >= grossInvoice && grossInvoice > 0) paymentStatus = 'Paid';
           else if (paidAmount <= 0) paymentStatus = 'Unpaid';
           else paymentStatus = 'Partial';
@@ -995,7 +1013,12 @@ router.delete('/:id', authenticate, requireRoles('admin', 'reseller'), async (re
         action: 'user_deleted',
         details: { email: targetUser.email, role: targetRole, resellerId: targetUser.reseller_id }
       });
-      // Archive user email into related credit transactions before setting user_id null on delete
+      // Archive user email into related invoices and credit transactions before deleting user
+      await client.query(`
+        UPDATE credit_requests
+        SET user_email = COALESCE(user_email, $1)
+        WHERE user_id = $2
+      `, [targetUser.email, targetId]);
       await client.query(`
         UPDATE credit_transactions 
         SET refund_client_email = COALESCE(refund_client_email, $1)
