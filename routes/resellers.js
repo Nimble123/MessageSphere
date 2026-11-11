@@ -92,7 +92,7 @@ const uploadFavicon = multer({
 const colorPattern = /^#[0-9A-Fa-f]{6}$/;
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const PLATFORM_CNAME_TARGET = process.env.APP_CNAME_TARGET || process.env.APP_DOMAIN || 'messagesphere.nmedialabs.in';
+const PLATFORM_CNAME_TARGET = process.env.APP_CNAME_TARGET || 'messagesphere.onrender.com';
 
 const RESERVED_DOMAINS = new Set([
   'localhost',
