@@ -917,6 +917,76 @@ function updateSettingsView() {
     const field = document.getElementById(id);
     if (field) field.value = value;
   });
+
+  // Dedicated Managing Partner Card for client users
+  const partnerCard = document.getElementById('settings-partner-card');
+  if (partnerCard) {
+    if (currentUser.role === 'user' && currentUser.reseller_id) {
+      apiFetch('/resellers/me').then(partner => {
+        if (!partner) {
+          partnerCard.style.display = 'none';
+          return;
+        }
+        partnerCard.style.display = 'block';
+        const brandNameEl = document.getElementById('partner-card-brand-name');
+        const legalEl = document.getElementById('partner-card-legal-entity');
+        const logoImg = document.getElementById('partner-card-logo-img');
+        const avatarEl = document.getElementById('partner-card-avatar');
+        const emailLink = document.getElementById('partner-card-email-link');
+        const emailTxt = document.getElementById('partner-card-email-txt');
+        const phoneLink = document.getElementById('partner-card-phone-link');
+        const phoneTxt = document.getElementById('partner-card-phone-txt');
+        const waLink = document.getElementById('partner-card-wa-link');
+
+        if (brandNameEl) brandNameEl.textContent = partner.brand_name || 'Managing Partner';
+        if (legalEl) legalEl.textContent = partner.company_legal_name || 'Authorized Reseller Partner';
+        if (partner.logo_url) {
+          const safeLogo = sanitizeUrl(partner.logo_url);
+          if (safeLogo !== '#') {
+            if (logoImg) { logoImg.src = safeLogo; logoImg.style.display = 'block'; }
+            if (avatarEl) avatarEl.style.display = 'none';
+          }
+        } else {
+          if (logoImg) logoImg.style.display = 'none';
+          if (avatarEl) {
+            avatarEl.style.display = 'block';
+            avatarEl.textContent = (partner.brand_name || 'P').charAt(0).toUpperCase();
+          }
+        }
+
+        const supportEmail = partner.support_email || 'support@partner.com';
+        if (emailLink) emailLink.href = `mailto:${encodeURIComponent(supportEmail)}`;
+        if (emailTxt) emailTxt.textContent = supportEmail;
+
+        const supportPhone = partner.support_phone || '';
+        if (phoneLink) {
+          if (supportPhone) {
+            phoneLink.href = `tel:${encodeURIComponent(supportPhone.replace(/[^0-9+]/g, ''))}`;
+            if (phoneTxt) phoneTxt.textContent = supportPhone;
+            phoneLink.style.display = 'flex';
+          } else {
+            phoneLink.style.display = 'none';
+          }
+        }
+
+        const waPhone = partner.support_whatsapp || supportPhone;
+        if (waLink) {
+          if (waPhone) {
+            const cleanDigits = waPhone.replace(/[^0-9]/g, '');
+            waLink.href = `https://wa.me/${cleanDigits}?text=${encodeURIComponent('Hello, I am contacting you regarding my messaging portal account balance and service.')}`;
+            waLink.style.display = 'flex';
+          } else {
+            waLink.style.display = 'none';
+          }
+        }
+        if (window.lucide) setTimeout(() => lucide.createIcons(), 30);
+      }).catch(() => {
+        partnerCard.style.display = 'none';
+      });
+    } else {
+      partnerCard.style.display = 'none';
+    }
+  }
 }
 
 const accountProfileForm = document.getElementById('account-profile-form');
@@ -10245,7 +10315,18 @@ window.openRechargeReceiptModal = function(txId) {
       pillEl.style.borderColor = '#bbf7d0';
     }
     if (pillTxt) pillTxt.textContent = 'VERIFIED & CREDITED TO VAULT';
-    if (taxMeta) taxMeta.innerHTML = 'GSTIN: <strong>08AABCM1234F1Z5</strong> &bull; State: 08 (Rajasthan / India) &bull; SAC: <strong>998413</strong>';
+    
+    // Dynamic White-Label Tax Meta & Legal Entity
+    const activeBrand = window.activeBrandProfile;
+    const companyNameEl = document.getElementById('receipt-company-name');
+    if (companyNameEl) {
+      companyNameEl.textContent = activeBrand?.company_legal_name || activeBrand?.brand_name || 'MessageSphere Technologies Pvt Ltd';
+    }
+
+    const brandGstin = activeBrand?.company_gstin || '08AABCM1234F1Z5';
+    const brandAddress = activeBrand?.company_address ? ` &bull; ${escapeHtml(activeBrand.company_address)}` : ' &bull; State: 08 (Rajasthan / India)';
+    if (taxMeta) taxMeta.innerHTML = `GSTIN: <strong>${escapeHtml(brandGstin)}</strong>${brandAddress} &bull; SAC: <strong>998413</strong>`;
+    
     if (unitsLabel) unitsLabel.textContent = 'Credits Credited';
     if (subUnits) subUnits.textContent = 'Direct Telecom Balance Added';
     if (taxHeader) taxHeader.textContent = 'Statutory Tax Breakdown (SAC 998413)';
@@ -10258,17 +10339,19 @@ window.openRechargeReceiptModal = function(txId) {
     setTxt('receipt-total-val', `₹${grossVal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
   }
 
-  setTxt('receipt-tx-id', `MS-REC-${tx.id}`);
+  const activeBrand = window.activeBrandProfile;
+  const brandPrefix = (activeBrand?.brand_name || 'MS').replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase();
+  setTxt('receipt-tx-id', `${brandPrefix}-REC-${tx.id}`);
   setTxt('receipt-timestamp', new Date(tx.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }));
   let voucherNotes = tx.reason || 'Telecom credit allotment approved & verified';
-  let voucherAccount = currentUser?.email || tx.counterparty_email || 'MessageSphere Account';
+  let voucherAccount = currentUser?.email || tx.counterparty_email || 'Verified Account';
   if (currentUser && currentUser.role !== 'admin') {
     voucherNotes = voucherNotes
       .replace(/Allotted by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Telecom Balance Allotment: ')
       .replace(/Deduction by (?:reseller|admin)\s*(?:\([^)]*\))?\s*:\s*/gi, 'Balance Adjustment: ')
       .replace(/\bby reseller\b/gi, 'via Telecom Gateway')
       .replace(/\[Created by [^\]]+ on behalf of account\]/gi, '');
-    voucherAccount = currentUser?.email || 'MessageSphere Account';
+    voucherAccount = currentUser?.email || 'Verified Account';
   }
 
   setTxt('receipt-account', voucherAccount);
@@ -10884,13 +10967,69 @@ if (btnRefreshAudit) btnRefreshAudit.addEventListener('click', loadOperationsAud
 // ==========================================
 // RESELLER NETWORK & WHITE-LABEL BRANDING
 // ==========================================
+function applyThemeAccent(hex) {
+  if (!hex || !/^#[0-9A-Fa-f]{6}$/.test(hex)) return;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  
+  const hoverR = Math.max(0, Math.floor(r * 0.88));
+  const hoverG = Math.max(0, Math.floor(g * 0.88));
+  const hoverB = Math.max(0, Math.floor(b * 0.88));
+  const activeR = Math.max(0, Math.floor(r * 0.76));
+  const activeG = Math.max(0, Math.floor(g * 0.76));
+  const activeB = Math.max(0, Math.floor(b * 0.76));
+  
+  const toHex = (n) => n.toString(16).padStart(2, '0');
+  const hoverHex = `#${toHex(hoverR)}${toHex(hoverG)}${toHex(hoverB)}`;
+  const activeHex = `#${toHex(activeR)}${toHex(activeG)}${toHex(activeB)}`;
+  const lightRgba = `rgba(${r}, ${g}, ${b}, 0.08)`;
+  const borderRgba = `rgba(${r}, ${g}, ${b}, 0.25)`;
+  const glowRgba = `rgba(${r}, ${g}, ${b}, 0.22)`;
+
+  const docEl = document.documentElement.style;
+  docEl.setProperty('--primary', hex);
+  docEl.setProperty('--brand-accent', hex);
+  docEl.setProperty('--primary-hover', hoverHex);
+  docEl.setProperty('--primary-active', activeHex);
+  docEl.setProperty('--primary-light', lightRgba);
+  docEl.setProperty('--primary-border', borderRgba);
+  docEl.setProperty('--primary-glow', glowRgba);
+}
+
+function updatePageFavicon(faviconUrl) {
+  let link = document.querySelector("link[rel~='icon']");
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = 'icon';
+    document.head.appendChild(link);
+  }
+  if (faviconUrl) {
+    const safe = sanitizeUrl(faviconUrl);
+    if (safe !== '#') link.href = safe;
+  }
+}
+
 function applyBrandProfile(profile) {
   if (!profile) return;
-  document.documentElement.style.setProperty('--primary', profile.accent_color || '#4f46e5');
-  document.title = `${profile.brand_name || 'MessageSphere'} | Campaign Operations`;
+  window.activeBrandProfile = profile;
+
+  // 1. Dynamic Theme Accent Engine (Updates CSS custom variables)
+  applyThemeAccent(profile.accent_color || '#4f46e5');
+
+  // 2. Browser Tab Title & Favicon
+  const portalTitle = profile.portal_title || profile.brand_name || 'MessageSphere';
+  document.title = `${portalTitle} | Enterprise Messaging Portal`;
+  if (profile.favicon_url) {
+    updatePageFavicon(profile.favicon_url);
+  }
+
+  // 3. Brand Text Elements
   document.querySelectorAll('.brand-title').forEach(el => { el.textContent = profile.brand_name || 'MessageSphere'; });
   const loginBrand = document.querySelector('#auth-screen .auth-brand span');
   if (loginBrand) loginBrand.textContent = profile.brand_name || 'MessageSphere';
+
+  // 4. Logo Elements
   if (profile.logo_url) {
     const safeLogo = sanitizeUrl(profile.logo_url);
     if (safeLogo !== '#') {
@@ -10909,6 +11048,17 @@ function applyBrandProfile(profile) {
     document.querySelectorAll('.brand-badge').forEach(badge => {
       badge.style.display = 'flex';
     });
+  }
+
+  // 5. White-label support footer links if defined
+  if (profile.help_url) {
+    document.querySelectorAll('.brand-help-link').forEach(a => { a.href = sanitizeUrl(profile.help_url); a.style.display = 'inline'; });
+  }
+  if (profile.terms_url) {
+    document.querySelectorAll('.brand-terms-link').forEach(a => { a.href = sanitizeUrl(profile.terms_url); a.style.display = 'inline'; });
+  }
+  if (profile.privacy_url) {
+    document.querySelectorAll('.brand-privacy-link').forEach(a => { a.href = sanitizeUrl(profile.privacy_url); a.style.display = 'inline'; });
   }
 }
 
@@ -11212,6 +11362,28 @@ function updateAdminLogoPreview(url) {
   }
 }
 
+function updateAdminFaviconPreview(url) {
+  const previewImg = document.getElementById('admin-reseller-favicon-preview-img');
+  const placeholder = document.getElementById('admin-reseller-favicon-preview-placeholder');
+  const btnRemove = document.getElementById('btn-admin-remove-favicon');
+  const safe = sanitizeUrl(url);
+  if (url && safe !== '#') {
+    if (previewImg) {
+      previewImg.src = safe;
+      previewImg.style.display = 'block';
+    }
+    if (placeholder) placeholder.style.display = 'none';
+    if (btnRemove) btnRemove.style.display = 'inline-flex';
+  } else {
+    if (previewImg) {
+      previewImg.src = '';
+      previewImg.style.display = 'none';
+    }
+    if (placeholder) placeholder.style.display = 'block';
+    if (btnRemove) btnRemove.style.display = 'none';
+  }
+}
+
 function updateBrandLogoPreview(url) {
   const previewImg = document.getElementById('brand-logo-preview-img');
   const placeholder = document.getElementById('brand-logo-preview-placeholder');
@@ -11232,6 +11404,108 @@ function updateBrandLogoPreview(url) {
     if (placeholder) placeholder.style.display = 'block';
     if (btnRemove) btnRemove.style.display = 'none';
   }
+  updateBrandLivePreview();
+}
+
+function updateBrandFaviconPreview(url) {
+  const previewImg = document.getElementById('brand-favicon-preview-img');
+  const placeholder = document.getElementById('brand-favicon-preview-placeholder');
+  const btnRemove = document.getElementById('btn-remove-brand-favicon');
+  const safe = sanitizeUrl(url);
+  if (url && safe !== '#') {
+    if (previewImg) {
+      previewImg.src = safe;
+      previewImg.style.display = 'block';
+    }
+    if (placeholder) placeholder.style.display = 'none';
+    if (btnRemove) btnRemove.style.display = 'inline-flex';
+  } else {
+    if (previewImg) {
+      previewImg.src = '';
+      previewImg.style.display = 'none';
+    }
+    if (placeholder) placeholder.style.display = 'block';
+    if (btnRemove) btnRemove.style.display = 'none';
+  }
+  updateBrandLivePreview();
+}
+
+function updateBrandLivePreview() {
+  const brandName = document.getElementById('brand-name')?.value?.trim() || 'Partner Portal';
+  const portalTitle = document.getElementById('brand-portal-title')?.value?.trim() || brandName;
+  const accentColor = document.getElementById('brand-accent')?.value?.trim() || '#4f46e5';
+  const logoUrl = document.getElementById('brand-logo-url')?.value?.trim() || '';
+  const faviconUrl = document.getElementById('brand-favicon-url')?.value?.trim() || '';
+  const customDomain = document.getElementById('brand-custom-domain')?.value?.trim() || 'portal.yourbrand.com';
+  const supportEmail = document.getElementById('brand-support-email')?.value?.trim() || 'support@yourbrand.com';
+  const supportPhone = document.getElementById('brand-support-phone')?.value?.trim() || '+91 9876543210';
+  const supportWhatsapp = document.getElementById('brand-support-whatsapp')?.value?.trim() || '+91 9876543210';
+  const legalName = document.getElementById('brand-legal-name')?.value?.trim() || brandName;
+
+  // Browser Mockup
+  const tabFavicon = document.getElementById('preview-tab-favicon');
+  const tabFaviconPlaceholder = document.getElementById('preview-tab-favicon-placeholder');
+  const safeFav = sanitizeUrl(faviconUrl);
+  if (faviconUrl && safeFav !== '#') {
+    if (tabFavicon) { tabFavicon.src = safeFav; tabFavicon.style.display = 'block'; }
+    if (tabFaviconPlaceholder) tabFaviconPlaceholder.style.display = 'none';
+  } else {
+    if (tabFavicon) tabFavicon.style.display = 'none';
+    if (tabFaviconPlaceholder) tabFaviconPlaceholder.style.display = 'block';
+  }
+
+  const tabTitle = document.getElementById('preview-tab-title');
+  if (tabTitle) tabTitle.textContent = portalTitle;
+
+  const tabDomain = document.getElementById('preview-tab-domain');
+  if (tabDomain) tabDomain.textContent = customDomain.replace(/^https?:\/\//i, '');
+
+  // Navbar Brand
+  const previewBrand = document.getElementById('preview-brand-name');
+  if (previewBrand) previewBrand.textContent = brandName;
+
+  const logoImg = document.getElementById('preview-brand-logo-img');
+  const logoInitial = document.getElementById('preview-brand-logo-initial');
+  const safeLogo = sanitizeUrl(logoUrl);
+  if (logoUrl && safeLogo !== '#') {
+    if (logoImg) { logoImg.src = safeLogo; logoImg.style.display = 'block'; }
+    if (logoInitial) logoInitial.style.display = 'none';
+  } else {
+    if (logoImg) logoImg.style.display = 'none';
+    if (logoInitial) {
+      logoInitial.style.display = 'block';
+      logoInitial.textContent = brandName.charAt(0).toUpperCase();
+    }
+  }
+
+  // Hero Card Accent
+  const heroBox = document.getElementById('preview-hero-box');
+  if (heroBox && /^#[0-9A-Fa-f]{6}$/.test(accentColor)) {
+    heroBox.style.background = `linear-gradient(135deg, ${accentColor} 0%, #0f172a 100%)`;
+  }
+  const heroTitle = document.getElementById('preview-hero-title');
+  if (heroTitle) heroTitle.textContent = `${brandName} Hub`;
+
+  const pillBalance = document.getElementById('preview-pill-balance');
+  if (pillBalance) {
+    pillBalance.style.color = accentColor;
+  }
+
+  // Support Contacts
+  const prevEmail = document.getElementById('preview-support-email');
+  if (prevEmail) prevEmail.textContent = supportEmail;
+
+  const prevPhone = document.getElementById('preview-support-phone');
+  if (prevPhone) prevPhone.textContent = supportPhone;
+
+  const prevWa = document.getElementById('preview-support-whatsapp');
+  if (prevWa) prevWa.textContent = `WhatsApp: ${supportWhatsapp}`;
+
+  // Legal Footer
+  const prevLegal = document.getElementById('preview-legal-entity');
+  if (prevLegal) prevLegal.textContent = legalName;
+
+  if (window.lucide) setTimeout(() => lucide.createIcons(), 30);
 }
 
 window.openAdminResellerBrandModal = function(resellerId) {
@@ -11242,28 +11516,39 @@ window.openAdminResellerBrandModal = function(resellerId) {
   const idInput = document.getElementById('admin-reseller-brand-id');
   const emailEl = document.getElementById('admin-reseller-brand-email');
   const nameInput = document.getElementById('admin-reseller-brand-name');
+  const portalTitleInput = document.getElementById('admin-reseller-brand-portal-title');
   const accentInput = document.getElementById('admin-reseller-brand-accent');
   const colorPicker = document.getElementById('admin-reseller-brand-color-picker');
   const logoInput = document.getElementById('admin-reseller-brand-logo');
+  const faviconInput = document.getElementById('admin-reseller-brand-favicon');
   const domainInput = document.getElementById('admin-reseller-brand-domain');
   const statusSelect = document.getElementById('admin-reseller-brand-status');
   const emailInput = document.getElementById('admin-reseller-brand-support-email');
   const phoneInput = document.getElementById('admin-reseller-brand-support-phone');
+  const waInput = document.getElementById('admin-reseller-brand-support-whatsapp');
+  const legalNameInput = document.getElementById('admin-reseller-brand-legal-name');
+  const gstinInput = document.getElementById('admin-reseller-brand-gstin');
   const statusPill = document.getElementById('admin-reseller-brand-status-pill');
   const btnVerify = document.getElementById('btn-admin-verify-domain');
 
   if (idInput) idInput.value = item.id;
   if (emailEl) emailEl.textContent = `${item.full_name || 'Partner'} (${item.email})`;
   if (nameInput) nameInput.value = item.brand_name || item.company_name || '';
+  if (portalTitleInput) portalTitleInput.value = item.portal_title || '';
   if (accentInput) accentInput.value = item.accent_color || '#4f46e5';
   if (colorPicker) colorPicker.value = item.accent_color || '#4f46e5';
   if (logoInput) logoInput.value = item.logo_url || '';
+  if (faviconInput) faviconInput.value = item.favicon_url || '';
   if (domainInput) domainInput.value = item.custom_domain || '';
   if (statusSelect) statusSelect.value = item.domain_status || 'Not configured';
   if (emailInput) emailInput.value = item.support_email || item.email || '';
   if (phoneInput) phoneInput.value = item.support_phone || item.phone || '';
+  if (waInput) waInput.value = item.support_whatsapp || '';
+  if (legalNameInput) legalNameInput.value = item.company_legal_name || '';
+  if (gstinInput) gstinInput.value = item.company_gstin || '';
 
   updateAdminLogoPreview(item.logo_url);
+  updateAdminFaviconPreview(item.favicon_url);
 
   if (statusPill) {
     const dStatus = item.domain_status || 'Not configured';
@@ -11305,7 +11590,7 @@ if (btnAdminChooseLogo && adminLogoFileInput) {
     formData.append('logo', file);
 
     try {
-      if (adminLogoStatus) adminLogoStatus.textContent = 'Uploading logo...';
+      if (adminLogoStatus) adminLogoStatus.textContent = 'Uploading...';
       const res = await apiFetch(`/resellers/${resellerId}/logo`, {
         method: 'POST',
         body: formData
@@ -11347,17 +11632,78 @@ if (adminLogoInput) {
   });
 }
 
+// Admin favicon file upload handlers
+const btnAdminChooseFavicon = document.getElementById('btn-admin-choose-favicon');
+const adminFaviconFileInput = document.getElementById('admin-reseller-brand-favicon-file');
+const adminFaviconInput = document.getElementById('admin-reseller-brand-favicon');
+const btnAdminRemoveFavicon = document.getElementById('btn-admin-remove-favicon');
+
+if (btnAdminChooseFavicon && adminFaviconFileInput) {
+  btnAdminChooseFavicon.addEventListener('click', () => adminFaviconFileInput.click());
+  adminFaviconFileInput.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    const resellerId = document.getElementById('admin-reseller-brand-id')?.value;
+    if (!file || !resellerId) return;
+
+    const formData = new FormData();
+    formData.append('favicon', file);
+
+    try {
+      const res = await apiFetch(`/resellers/${resellerId}/favicon`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (adminFaviconInput) adminFaviconInput.value = res.favicon_url;
+      updateAdminFaviconPreview(res.favicon_url);
+      showToast('success', 'Favicon Uploaded', 'Reseller favicon updated successfully!');
+      loadResellerNetwork();
+    } catch (err) {
+      showToast('error', 'Favicon Failed', err.message);
+    } finally {
+      adminFaviconFileInput.value = '';
+    }
+  });
+}
+
+if (btnAdminRemoveFavicon) {
+  btnAdminRemoveFavicon.addEventListener('click', async () => {
+    const resellerId = document.getElementById('admin-reseller-brand-id')?.value;
+    if (!resellerId) return;
+    try {
+      await apiFetch(`/resellers/${resellerId}/favicon`, { method: 'DELETE' });
+      if (adminFaviconInput) adminFaviconInput.value = '';
+      updateAdminFaviconPreview('');
+      showToast('success', 'Favicon Removed', 'Reseller favicon removed.');
+      loadResellerNetwork();
+    } catch (err) {
+      showToast('error', 'Failed', err.message);
+    }
+  });
+}
+
+if (adminFaviconInput) {
+  adminFaviconInput.addEventListener('input', () => {
+    updateAdminFaviconPreview(adminFaviconInput.value.trim());
+  });
+}
+
 window.saveAdminResellerBrand = async function() {
   const resellerId = document.getElementById('admin-reseller-brand-id')?.value;
   if (!resellerId) return;
 
   const brandName = document.getElementById('admin-reseller-brand-name')?.value?.trim();
+  const portalTitle = document.getElementById('admin-reseller-brand-portal-title')?.value?.trim() || '';
   const accentColor = document.getElementById('admin-reseller-brand-accent')?.value?.trim() || '#4f46e5';
   const logoUrl = document.getElementById('admin-reseller-brand-logo')?.value?.trim() || '';
+  const faviconUrl = document.getElementById('admin-reseller-brand-favicon')?.value?.trim() || '';
   const customDomain = document.getElementById('admin-reseller-brand-domain')?.value?.trim() || '';
   const domainStatus = document.getElementById('admin-reseller-brand-status')?.value;
   const supportEmail = document.getElementById('admin-reseller-brand-support-email')?.value?.trim() || '';
   const supportPhone = document.getElementById('admin-reseller-brand-support-phone')?.value?.trim() || '';
+  const supportWhatsapp = document.getElementById('admin-reseller-brand-support-whatsapp')?.value?.trim() || '';
+  const companyLegalName = document.getElementById('admin-reseller-brand-legal-name')?.value?.trim() || '';
+  const companyGstin = document.getElementById('admin-reseller-brand-gstin')?.value?.trim() || '';
 
   if (!brandName) {
     showToast('error', 'Brand Name Required', 'Please enter a brand name for this white-label partner.');
@@ -11375,12 +11721,17 @@ window.saveAdminResellerBrand = async function() {
       method: 'PUT',
       body: JSON.stringify({
         brand_name: brandName,
+        portal_title: portalTitle,
         accent_color: accentColor,
         logo_url: logoUrl,
+        favicon_url: faviconUrl,
         custom_domain: customDomain,
         domain_status: domainStatus,
         support_email: supportEmail,
-        support_phone: supportPhone
+        support_phone: supportPhone,
+        support_whatsapp: supportWhatsapp,
+        company_legal_name: companyLegalName,
+        company_gstin: companyGstin
       })
     });
 
@@ -11405,34 +11756,43 @@ window.verifyCurrentResellerDomain = function() {
   verifyResellerDomain(resellerId);
 };
 
-window.verifyResellerDomain = function(resellerId) {
-  window.openActionDialog({
-    title: 'Verify Reseller Domain',
-    message: 'Confirm DNS/hosting CNAME records have been checked and verified for this white-label domain.',
-    icon: 'globe',
-    iconColor: '#059669',
-    iconBg: '#dcfce7',
-    confirmText: 'Mark Domain Verified',
-    confirmClass: 'btn-action-success',
-    showInput: true,
-    inputLabel: 'Verification Notes / DNS Reference',
-    inputValue: 'DNS CNAME verified via dig/nslookup',
-    onConfirm: async ({ input: reason }) => {
-      try {
-        await apiFetch(`/resellers/${resellerId}/domain-status`, { method: 'PATCH', body: JSON.stringify({ status: 'Verified', reason }) });
-        showToast('success', 'Domain Verified', 'The reseller domain is marked verified.');
-        const modal = document.getElementById('modal-admin-reseller-brand');
-        if (modal) modal.style.display = 'none';
-        loadResellerNetwork();
-      } catch (err) { showToast('error', 'Verification Failed', err.message); }
+window.verifyResellerDomain = async function(resellerId) {
+  try {
+    showToast('info', 'Verifying DNS...', 'Running automated DNS resolution test...');
+    const res = await apiFetch(`/resellers/${resellerId}/verify-dns`, { method: 'POST' });
+    if (res.verified) {
+      showToast('success', 'DNS Verified & Active!', res.message || 'Custom domain is mapped and verified.');
+      const modal = document.getElementById('modal-admin-reseller-brand');
+      if (modal) modal.style.display = 'none';
+      loadResellerNetwork();
+    } else {
+      showToast('error', 'DNS Verification Failed', res.error || 'Domain could not be resolved.');
     }
-  });
+  } catch (err) {
+    showToast('error', 'DNS Check Error', err.message);
+  }
 };
 
+// ==========================================
+// RESELLER WHITE-LABEL STUDIO CONTROLS
+// ==========================================
 const brandForm = document.getElementById('reseller-brand-form');
 const brandFields = {
-  brand_name: document.getElementById('brand-name'), accent_color: document.getElementById('brand-accent'), logo_url: document.getElementById('brand-logo-url'),
-  support_email: document.getElementById('brand-support-email'), support_phone: document.getElementById('brand-support-phone'), custom_domain: document.getElementById('brand-custom-domain')
+  brand_name: document.getElementById('brand-name'),
+  portal_title: document.getElementById('brand-portal-title'),
+  accent_color: document.getElementById('brand-accent'),
+  logo_url: document.getElementById('brand-logo-url'),
+  favicon_url: document.getElementById('brand-favicon-url'),
+  support_email: document.getElementById('brand-support-email'),
+  support_phone: document.getElementById('brand-support-phone'),
+  support_whatsapp: document.getElementById('brand-support-whatsapp'),
+  help_url: document.getElementById('brand-help-url'),
+  terms_url: document.getElementById('brand-terms-url'),
+  privacy_url: document.getElementById('brand-privacy-url'),
+  company_legal_name: document.getElementById('brand-legal-name'),
+  company_gstin: document.getElementById('brand-gstin'),
+  company_address: document.getElementById('brand-address'),
+  custom_domain: document.getElementById('brand-custom-domain')
 };
 
 // Reseller logo file upload handlers
@@ -11500,13 +11860,188 @@ if (brandFields.logo_url) {
   });
 }
 
+// Reseller favicon file upload handlers
+const btnChooseBrandFavicon = document.getElementById('btn-choose-brand-favicon');
+const brandFaviconFileInput = document.getElementById('brand-favicon-file');
+const brandFaviconStatus = document.getElementById('brand-favicon-upload-status');
+const btnRemoveBrandFavicon = document.getElementById('btn-remove-brand-favicon');
+
+if (btnChooseBrandFavicon && brandFaviconFileInput) {
+  btnChooseBrandFavicon.addEventListener('click', () => brandFaviconFileInput.click());
+  brandFaviconFileInput.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('favicon', file);
+
+    try {
+      if (brandFaviconStatus) brandFaviconStatus.textContent = 'Uploading...';
+      const res = await apiFetch('/resellers/favicon', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (brandFields.favicon_url) brandFields.favicon_url.value = res.favicon_url;
+      updateBrandFaviconPreview(res.favicon_url);
+      applyBrandProfile(res.profile || { ...res, favicon_url: res.favicon_url });
+      showToast('success', 'Favicon Uploaded', 'Browser favicon updated successfully!');
+      if (brandFaviconStatus) brandFaviconStatus.textContent = '';
+    } catch (err) {
+      if (brandFaviconStatus) brandFaviconStatus.textContent = '';
+      showToast('error', 'Upload Failed', err.message);
+    } finally {
+      brandFaviconFileInput.value = '';
+    }
+  });
+}
+
+if (btnRemoveBrandFavicon) {
+  btnRemoveBrandFavicon.addEventListener('click', async () => {
+    try {
+      await apiFetch('/resellers/favicon', { method: 'DELETE' });
+      if (brandFields.favicon_url) brandFields.favicon_url.value = '';
+      updateBrandFaviconPreview('');
+      showToast('success', 'Favicon Removed', 'Browser favicon reset to default.');
+    } catch (err) {
+      showToast('error', 'Failed', err.message);
+    }
+  });
+}
+
+if (brandFields.favicon_url) {
+  brandFields.favicon_url.addEventListener('input', () => {
+    updateBrandFaviconPreview(brandFields.favicon_url.value.trim());
+  });
+}
+
+// Color picker & Palette Swatch bindings
+const brandAccentInput = document.getElementById('brand-accent');
+const brandColorPicker = document.getElementById('brand-accent-color-picker');
+
+if (brandColorPicker && brandAccentInput) {
+  brandColorPicker.addEventListener('input', () => {
+    brandAccentInput.value = brandColorPicker.value;
+    applyThemeAccent(brandColorPicker.value);
+    updateBrandLivePreview();
+  });
+  brandAccentInput.addEventListener('input', () => {
+    if (/^#[0-9A-Fa-f]{6}$/.test(brandAccentInput.value)) {
+      brandColorPicker.value = brandAccentInput.value;
+      applyThemeAccent(brandAccentInput.value);
+      updateBrandLivePreview();
+    }
+  });
+}
+
+document.querySelectorAll('.brand-palette-chip').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const col = btn.getAttribute('data-color');
+    if (col) {
+      if (brandAccentInput) brandAccentInput.value = col;
+      if (brandColorPicker) brandColorPicker.value = col;
+      applyThemeAccent(col);
+      updateBrandLivePreview();
+    }
+  });
+});
+
+// Live preview binding on all form inputs
+Object.values(brandFields).forEach(field => {
+  if (field) {
+    field.addEventListener('input', updateBrandLivePreview);
+  }
+});
+
+// Self DNS Verification Button
+const btnVerifyMyDomain = document.getElementById('btn-verify-my-domain');
+const btnVerifyTxt = document.getElementById('btn-verify-my-domain-txt');
+if (btnVerifyMyDomain) {
+  btnVerifyMyDomain.addEventListener('click', async () => {
+    const customDomain = document.getElementById('brand-custom-domain')?.value?.trim();
+    if (!customDomain) {
+      showToast('error', 'Domain Missing', 'Please enter a custom domain first before running DNS verification.');
+      return;
+    }
+    try {
+      btnVerifyMyDomain.disabled = true;
+      if (btnVerifyTxt) btnVerifyTxt.textContent = 'Checking DNS...';
+      const res = await apiFetch('/resellers/my-domain/verify', { method: 'POST' });
+      if (res.verified) {
+        showToast('success', 'Domain Verified!', res.message || 'Custom white-label domain is active!');
+        const badge = document.getElementById('brand-domain-status-badge');
+        if (badge) {
+          badge.className = 'status-badge badge-updated';
+          badge.textContent = 'Verified ✓';
+        }
+        const statusEl = document.getElementById('brand-domain-status');
+        if (statusEl) {
+          statusEl.innerHTML = `<span style="color:#059669;font-weight:700;"><i data-lucide="check-circle" style="width:14px;height:14px;display:inline-block;vertical-align:-2px;"></i> Active &amp; Verified:</span> Custom domain is live and serving your white-label portal.`;
+        }
+      } else {
+        showToast('error', 'DNS Check Failed', res.error || 'DNS records did not resolve.');
+      }
+    } catch (err) {
+      showToast('error', 'Verification Failed', err.message);
+    } finally {
+      btnVerifyMyDomain.disabled = false;
+      if (btnVerifyTxt) btnVerifyTxt.textContent = 'Verify DNS Resolution Now';
+      if (window.lucide) setTimeout(() => lucide.createIcons(), 30);
+    }
+  });
+}
+
+// 1-Click Copy CNAME Target
+const btnCopyCname = document.getElementById('btn-copy-cname-target');
+if (btnCopyCname) {
+  btnCopyCname.addEventListener('click', async () => {
+    const targetCode = document.getElementById('brand-cname-target-code')?.textContent || 'messagesphere.nmedialabs.in';
+    try {
+      await navigator.clipboard.writeText(targetCode.trim());
+      btnCopyCname.innerHTML = '<i data-lucide="check" style="width:12px;height:12px;"></i> Copied! ✓';
+      if (window.lucide) lucide.createIcons();
+      showToast('success', 'Target Copied', 'CNAME target copied to clipboard.');
+      setTimeout(() => {
+        btnCopyCname.innerHTML = '<i data-lucide="copy" style="width:12px;height:12px;"></i> Copy CNAME Target';
+        if (window.lucide) lucide.createIcons();
+      }, 2500);
+    } catch (_) {
+      showToast('info', 'CNAME Target', targetCode.trim());
+    }
+  });
+}
+
 async function loadMyBrandProfile() {
   if (!currentUser || currentUser.role !== 'reseller') return;
   const profile = await apiFetch('/resellers/me');
   Object.entries(brandFields).forEach(([key, field]) => { if (field) field.value = profile?.[key] || ''; });
+  
+  if (brandColorPicker && profile?.accent_color) {
+    brandColorPicker.value = profile.accent_color;
+  }
+  
   updateBrandLogoPreview(profile?.logo_url);
+  updateBrandFaviconPreview(profile?.favicon_url);
+
+  const badge = document.getElementById('brand-domain-status-badge');
+  const dStatus = profile?.domain_status || 'Not configured';
+  if (badge) {
+    badge.textContent = dStatus === 'Verified' ? 'Verified ✓' : (dStatus === 'Pending verification' ? 'Pending Verification ⏳' : 'Not Configured');
+    badge.className = `status-badge ${dStatus === 'Verified' ? 'badge-updated' : 'badge-submitted'}`;
+  }
+
   const status = document.getElementById('brand-domain-status');
-  if (status) status.textContent = profile?.custom_domain ? `Domain status: ${profile.domain_status}. Configure DNS with your hosting provider before Super Admin verification.` : 'Add a custom domain when DNS is ready; it will remain pending until Super Admin verifies it.';
+  if (status) {
+    if (dStatus === 'Verified') {
+      status.innerHTML = `<span style="color:#059669;font-weight:700;"><i data-lucide="check-circle" style="width:14px;height:14px;display:inline-block;vertical-align:-2px;"></i> Active &amp; Verified:</span> Your custom domain <code>${escapeHtml(profile?.custom_domain || '')}</code> is active with automatic SSL.`;
+    } else if (profile?.custom_domain) {
+      status.innerHTML = `<span style="color:#d97706;font-weight:700;"><i data-lucide="clock" style="width:14px;height:14px;display:inline-block;vertical-align:-2px;"></i> Pending DNS Verification:</span> Add a CNAME pointing to the target above, then click <strong>Verify DNS Resolution Now</strong>.`;
+    } else {
+      status.textContent = 'Enter your custom subdomain above and save to configure DNS CNAME routing.';
+    }
+  }
+
+  updateBrandLivePreview();
   await loadResellerInviteSettings();
 }
 

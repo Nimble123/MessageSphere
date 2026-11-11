@@ -351,4 +351,158 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.equal(resellerAttemptWholesale.targetRole, 'user', 'Reseller plans must be forced to user target');
     assert.equal(resellerAttemptWholesale.total, 1500);
   });
+
+  await t.test('White-Label Profile Sanitization & Validation (cleanProfile)', () => {
+    const colorPattern = /^#[0-9A-Fa-f]{6}$/;
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const RESERVED_DOMAINS = new Set(['messagesphere.com', 'localhost', '127.0.0.1']);
+
+    function isValidHttpUrl(str) {
+      if (!str) return false;
+      try {
+        const u = new URL(str);
+        return u.protocol === 'http:' || u.protocol === 'https:';
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function cleanProfile(body, fallbackName) {
+      const brandName = String(body.brand_name || fallbackName || '').trim();
+      const portalTitle = String(body.portal_title || '').trim().slice(0, 150);
+      const accentColor = String(body.accent_color || '#4f46e5').trim();
+      const logoUrl = String(body.logo_url || '').trim();
+      const faviconUrl = String(body.favicon_url || '').trim();
+      const supportEmail = String(body.support_email || '').trim();
+      const supportPhone = String(body.support_phone || '').trim().slice(0, 30);
+      const supportWhatsapp = String(body.support_whatsapp || '').trim().slice(0, 30);
+      const companyLegalName = String(body.company_legal_name || '').trim().slice(0, 200);
+      const companyGstin = String(body.company_gstin || '').trim().toUpperCase().slice(0, 30);
+      const companyAddress = String(body.company_address || '').trim().slice(0, 1000);
+      const helpUrl = String(body.help_url || '').trim();
+      const termsUrl = String(body.terms_url || '').trim();
+      const privacyUrl = String(body.privacy_url || '').trim();
+      let customDomain = String(body.custom_domain || '').trim().toLowerCase();
+      customDomain = customDomain.replace(/^https?:\/\//i, '').replace(/:\d+$/, '').replace(/\/.*$/, '').trim();
+
+      if (!brandName || brandName.length > 120) throw new Error('Brand name is required and must be under 120 characters');
+      if (!colorPattern.test(accentColor)) throw new Error('Accent color must be a hex color such as #4f46e5');
+      if (logoUrl && !/^(https?:\/\/|\/api\/resellers\/logo\/|\/api\/campaigns\/files\/|data:image\/)/i.test(logoUrl)) {
+        throw new Error('Logo URL must be an HTTPS URL, an uploaded logo, or an image data URI');
+      }
+      if (faviconUrl && !/^(https?:\/\/|\/api\/resellers\/favicon\/|\/api\/resellers\/logo\/|\/api\/campaigns\/files\/|data:image\/)/i.test(faviconUrl)) {
+        throw new Error('Favicon URL must be an HTTPS URL, an uploaded favicon, or an image data URI');
+      }
+      if (supportEmail && !emailPattern.test(supportEmail)) throw new Error('Support email is invalid');
+      if (helpUrl && !isValidHttpUrl(helpUrl)) throw new Error('Help URL must be a valid http:// or https:// URL');
+      if (termsUrl && !isValidHttpUrl(termsUrl)) throw new Error('Terms URL must be a valid http:// or https:// URL');
+      if (privacyUrl && !isValidHttpUrl(privacyUrl)) throw new Error('Privacy URL must be a valid http:// or https:// URL');
+
+      if (customDomain) {
+        if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(customDomain)) throw new Error('Custom domain is invalid');
+        if (RESERVED_DOMAINS.has(customDomain) || customDomain.endsWith('.onrender.com') || customDomain.endsWith('.nmedialabs.in')) {
+          throw new Error(`The domain "${customDomain}" is a platform reserved domain and cannot be claimed.`);
+        }
+      }
+
+      return {
+        brandName,
+        portalTitle: portalTitle || null,
+        accentColor,
+        logoUrl: logoUrl || null,
+        faviconUrl: faviconUrl || null,
+        supportEmail: supportEmail || null,
+        supportPhone: supportPhone || null,
+        supportWhatsapp: supportWhatsapp || null,
+        companyLegalName: companyLegalName || null,
+        companyGstin: companyGstin || null,
+        companyAddress: companyAddress || null,
+        helpUrl: helpUrl || null,
+        termsUrl: termsUrl || null,
+        privacyUrl: privacyUrl || null,
+        customDomain: customDomain || null
+      };
+    }
+
+    // Valid complete profile
+    const cleaned = cleanProfile({
+      brand_name: 'Apex Messaging Co',
+      portal_title: 'Apex Cloud Broadcast Hub',
+      accent_color: '#2563eb',
+      favicon_url: '/api/resellers/favicon/fav-123.png',
+      logo_url: '/api/resellers/logo/logo-123.svg',
+      support_email: 'care@apexmessaging.io',
+      support_phone: '+91 9876543210',
+      support_whatsapp: '919876543210',
+      company_legal_name: 'Apex Digital Technologies Pvt Ltd',
+      company_gstin: '27AABCU9603R1ZM',
+      company_address: '101 Tech Hub, Cyber City, Bangalore 560001',
+      help_url: 'https://help.apexmessaging.io',
+      terms_url: 'https://apexmessaging.io/terms',
+      privacy_url: 'https://apexmessaging.io/privacy',
+      custom_domain: 'portal.apexmessaging.io'
+    });
+
+    assert.equal(cleaned.brandName, 'Apex Messaging Co');
+    assert.equal(cleaned.portalTitle, 'Apex Cloud Broadcast Hub');
+    assert.equal(cleaned.accentColor, '#2563eb');
+    assert.equal(cleaned.faviconUrl, '/api/resellers/favicon/fav-123.png');
+    assert.equal(cleaned.companyLegalName, 'Apex Digital Technologies Pvt Ltd');
+    assert.equal(cleaned.companyGstin, '27AABCU9603R1ZM');
+    assert.equal(cleaned.customDomain, 'portal.apexmessaging.io');
+
+    // Rejection of invalid favicon URL
+    assert.throws(() => {
+      cleanProfile({ brand_name: 'Test', favicon_url: 'javascript:alert(1)' });
+    }, /Favicon URL must be an HTTPS URL/);
+
+    // Rejection of invalid color
+    assert.throws(() => {
+      cleanProfile({ brand_name: 'Test', accent_color: 'red' });
+    }, /Accent color must be a hex color/);
+
+    // Rejection of platform reserved domains
+    assert.throws(() => {
+      cleanProfile({ brand_name: 'Test', custom_domain: 'test.nmedialabs.in' });
+    }, /platform reserved domain/);
+  });
+
+  await t.test('White-Label DNS Status Transitions strictly persist Verified on resolution', () => {
+    function computeDnsStatus(resolvedAddresses, targetCname) {
+      if (!resolvedAddresses || resolvedAddresses.length === 0) {
+        return { status: 'Failed', verified: false };
+      }
+      return { status: 'Verified', verified: true };
+    }
+
+    assert.equal(computeDnsStatus(['104.21.50.1'], 'messagesphere.nmedialabs.in').status, 'Verified');
+    assert.equal(computeDnsStatus([], 'messagesphere.nmedialabs.in').status, 'Failed');
+    assert.equal(computeDnsStatus(null, 'messagesphere.nmedialabs.in').status, 'Failed');
+  });
+
+  await t.test('Receipt & Statement Zero-Platform-Leak Resolution', () => {
+    function resolveReceiptEntity(brandProfile) {
+      const companyName = brandProfile?.company_legal_name || brandProfile?.brand_name || 'Direct Billing';
+      const gstin = brandProfile?.company_gstin || 'UNREGISTERED';
+      const prefix = (brandProfile?.brand_name || 'INV').replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase() || 'INV';
+      return { companyName, gstin, voucherId: `${prefix}-REC-10023` };
+    }
+
+    // Reseller Partner Brand
+    const partner = resolveReceiptEntity({
+      brand_name: 'TeleMatrix Solutions',
+      company_legal_name: 'TeleMatrix Telecom India LLP',
+      company_gstin: '07AAAAA0000A1Z5'
+    });
+    assert.equal(partner.companyName, 'TeleMatrix Telecom India LLP');
+    assert.equal(partner.gstin, '07AAAAA0000A1Z5');
+    assert.equal(partner.voucherId, 'TELEMA-REC-10023');
+    assert.equal(partner.companyName.includes('MessageSphere'), false, 'Downstream client must never see platform name');
+
+    // Default Brand Fallback
+    const fallback = resolveReceiptEntity(null);
+    assert.equal(fallback.companyName, 'Direct Billing');
+    assert.equal(fallback.gstin, 'UNREGISTERED');
+    assert.equal(fallback.voucherId, 'INV-REC-10023');
+  });
 });

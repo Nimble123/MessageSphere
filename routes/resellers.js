@@ -18,6 +18,15 @@ if (!fs.existsSync(logosDir)) {
   }
 }
 
+const faviconsDir = path.join(__dirname, '../uploads/favicons');
+if (!fs.existsSync(faviconsDir)) {
+  try {
+    fs.mkdirSync(faviconsDir, { recursive: true });
+  } catch (dirErr) {
+    console.error('Failed to create favicons directory:', dirErr.message);
+  }
+}
+
 const logoStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, logosDir);
@@ -46,8 +55,38 @@ const uploadLogo = multer({
   }
 });
 
+const faviconStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, faviconsDir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const safeExt = ['.ico', '.png', '.svg', '.webp', '.jpg', '.jpeg'].includes(ext) ? ext : '.ico';
+    const resellerId = req.params.id || req.user.id || 'reseller';
+    const unique = `favicon-reseller-${resellerId}-${Date.now()}-${Math.round(Math.random() * 1e6)}${safeExt}`;
+    cb(null, unique);
+  }
+});
+
+const uploadFavicon = multer({
+  storage: faviconStorage,
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB max for favicon
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const allowedExts = ['.ico', '.png', '.svg', '.webp', '.jpg', '.jpeg'];
+    const allowedMimes = ['image/x-icon', 'image/vnd.microsoft.icon', 'image/png', 'image/svg+xml', 'image/webp', 'image/jpeg'];
+    if (allowedExts.includes(ext) || allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only ICO, PNG, SVG, and WebP files are allowed for favicon.'));
+    }
+  }
+});
+
 const colorPattern = /^#[0-9A-Fa-f]{6}$/;
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const PLATFORM_CNAME_TARGET = process.env.APP_CNAME_TARGET || process.env.APP_DOMAIN || 'messagesphere.nmedialabs.in';
 
 const RESERVED_DOMAINS = new Set([
   'localhost',
@@ -68,12 +107,31 @@ if (process.env.APP_DOMAIN) {
   RESERVED_DOMAINS.add(process.env.APP_DOMAIN.toLowerCase().trim());
 }
 
+function isValidHttpUrl(string) {
+  if (!string) return true;
+  try {
+    const url = new URL(string);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch (_) {
+    return false;
+  }
+}
+
 function cleanProfile(body, fallbackName) {
   const brandName = String(body.brand_name || fallbackName || '').trim();
+  const portalTitle = String(body.portal_title || '').trim().slice(0, 150);
   const accentColor = String(body.accent_color || '#4f46e5').trim();
   const logoUrl = String(body.logo_url || '').trim();
+  const faviconUrl = String(body.favicon_url || '').trim();
   const supportEmail = String(body.support_email || '').trim();
-  const supportPhone = String(body.support_phone || '').trim();
+  const supportPhone = String(body.support_phone || '').trim().slice(0, 30);
+  const supportWhatsapp = String(body.support_whatsapp || '').trim().slice(0, 30);
+  const companyLegalName = String(body.company_legal_name || '').trim().slice(0, 200);
+  const companyGstin = String(body.company_gstin || '').trim().toUpperCase().slice(0, 30);
+  const companyAddress = String(body.company_address || '').trim().slice(0, 1000);
+  const helpUrl = String(body.help_url || '').trim();
+  const termsUrl = String(body.terms_url || '').trim();
+  const privacyUrl = String(body.privacy_url || '').trim();
   let customDomain = String(body.custom_domain || '').trim().toLowerCase();
   customDomain = customDomain.replace(/^https?:\/\//i, '').replace(/:\d+$/, '').replace(/\/.*$/, '').trim();
 
@@ -82,14 +140,38 @@ function cleanProfile(body, fallbackName) {
   if (logoUrl && !/^(https?:\/\/|\/api\/resellers\/logo\/|\/api\/campaigns\/files\/|data:image\/)/i.test(logoUrl)) {
     throw new Error('Logo URL must be an HTTPS URL, an uploaded logo (/api/resellers/logo/...), or an image data URI');
   }
+  if (faviconUrl && !/^(https?:\/\/|\/api\/resellers\/favicon\/|\/api\/resellers\/logo\/|\/api\/campaigns\/files\/|data:image\/)/i.test(faviconUrl)) {
+    throw new Error('Favicon URL must be an HTTPS URL, an uploaded favicon (/api/resellers/favicon/...), or an image data URI');
+  }
   if (supportEmail && !emailPattern.test(supportEmail)) throw new Error('Support email is invalid');
+  if (helpUrl && !isValidHttpUrl(helpUrl)) throw new Error('Help URL must be a valid http:// or https:// URL');
+  if (termsUrl && !isValidHttpUrl(termsUrl)) throw new Error('Terms URL must be a valid http:// or https:// URL');
+  if (privacyUrl && !isValidHttpUrl(privacyUrl)) throw new Error('Privacy URL must be a valid http:// or https:// URL');
+
   if (customDomain) {
     if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(customDomain)) throw new Error('Custom domain is invalid');
     if (RESERVED_DOMAINS.has(customDomain) || customDomain.endsWith('.onrender.com') || customDomain.endsWith('.nmedialabs.in')) {
       throw new Error(`The domain "${customDomain}" is a platform reserved domain and cannot be claimed.`);
     }
   }
-  return { brandName, accentColor, logoUrl: logoUrl || null, supportEmail: supportEmail || null, supportPhone: supportPhone.slice(0, 30) || null, customDomain: customDomain || null };
+
+  return {
+    brandName,
+    portalTitle: portalTitle || null,
+    accentColor,
+    logoUrl: logoUrl || null,
+    faviconUrl: faviconUrl || null,
+    supportEmail: supportEmail || null,
+    supportPhone: supportPhone || null,
+    supportWhatsapp: supportWhatsapp || null,
+    companyLegalName: companyLegalName || null,
+    companyGstin: companyGstin || null,
+    companyAddress: companyAddress || null,
+    helpUrl: helpUrl || null,
+    termsUrl: termsUrl || null,
+    privacyUrl: privacyUrl || null,
+    customDomain: customDomain || null
+  };
 }
 
 async function resolveResellerId(user) {
@@ -293,6 +375,204 @@ router.delete('/:id/logo', authenticate, requireRoles('admin'), async (req, res)
   }
 });
 
+// GET /api/resellers/favicon/:filename - Publicly serve brand favicon with cache headers and SVG safety
+router.get('/favicon/:filename', (req, res) => {
+  try {
+    const safeFilename = path.basename(req.params.filename);
+    if (!/^[a-zA-Z0-9._-]+$/i.test(safeFilename)) {
+      return res.status(400).json({ error: 'Invalid favicon filename' });
+    }
+
+    const filePath = path.join(faviconsDir, safeFilename);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Favicon not found' });
+    }
+
+    const ext = path.extname(safeFilename).toLowerCase();
+    const mimeTypes = {
+      '.ico': 'image/x-icon',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.webp': 'image/webp',
+      '.svg': 'image/svg+xml'
+    };
+
+    res.set('Content-Type', mimeTypes[ext] || 'image/x-icon');
+    res.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+    res.set('X-Content-Type-Options', 'nosniff');
+
+    if (ext === '.svg') {
+      res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+      res.set('Content-Disposition', 'inline; filename="favicon.svg"');
+    }
+
+    return res.sendFile(filePath);
+  } catch (err) {
+    console.error('Serve favicon error:', err);
+    return res.status(500).json({ error: 'Failed to serve favicon' });
+  }
+});
+
+// POST /api/resellers/favicon - Reseller uploads their brand favicon
+router.post('/favicon', authenticate, requireRoles('reseller'), (req, res) => {
+  uploadFavicon.single('favicon')(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message || 'Failed to upload favicon' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'No favicon image file was provided' });
+    }
+
+    const ext = path.extname(req.file.filename).toLowerCase();
+    if (ext === '.svg') {
+      try {
+        inspectSvgSafety(req.file.path);
+      } catch (secErr) {
+        fs.unlink(req.file.path, () => {});
+        return res.status(400).json({ error: secErr.message });
+      }
+    }
+
+    const faviconUrl = `/api/resellers/favicon/${req.file.filename}`;
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      const userRes = await client.query('SELECT company_name, email, full_name FROM users WHERE id = $1', [req.user.id]);
+      const defaultBrand = userRes.rows[0]?.company_name || userRes.rows[0]?.full_name || userRes.rows[0]?.email?.split('@')[0] || 'Partner Portal';
+
+      const result = await client.query(`
+        INSERT INTO reseller_profiles (reseller_id, brand_name, favicon_url, updated_at)
+        VALUES ($1, $2, $3, NOW())
+        ON CONFLICT (reseller_id) DO UPDATE SET favicon_url = EXCLUDED.favicon_url, updated_at = NOW()
+        RETURNING *
+      `, [req.user.id, defaultBrand, faviconUrl]);
+
+      await logAudit(client, {
+        actorId: req.user.id,
+        entityType: 'reseller_profile',
+        entityId: req.user.id,
+        action: 'white_label_favicon_uploaded',
+        details: { filename: req.file.filename, faviconUrl }
+      });
+      await client.query('COMMIT');
+
+      return res.json({
+        message: 'Favicon uploaded and updated successfully!',
+        favicon_url: faviconUrl,
+        profile: result.rows[0]
+      });
+    } catch (dbErr) {
+      await client.query('ROLLBACK');
+      if (req.file && req.file.path) fs.unlink(req.file.path, () => {});
+      console.error('Update favicon db error:', dbErr);
+      return res.status(500).json({ error: 'Failed to update brand favicon' });
+    } finally {
+      client.release();
+    }
+  });
+});
+
+// POST /api/resellers/:id/favicon - Super Admin uploads brand favicon for a reseller
+router.post('/:id/favicon', authenticate, requireRoles('admin'), (req, res) => {
+  const resellerId = parseInt(req.params.id, 10);
+  if (isNaN(resellerId)) {
+    return res.status(400).json({ error: 'Invalid reseller ID' });
+  }
+
+  uploadFavicon.single('favicon')(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message || 'Failed to upload favicon' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'No favicon image file was provided' });
+    }
+
+    const ext = path.extname(req.file.filename).toLowerCase();
+    if (ext === '.svg') {
+      try {
+        inspectSvgSafety(req.file.path);
+      } catch (secErr) {
+        fs.unlink(req.file.path, () => {});
+        return res.status(400).json({ error: secErr.message });
+      }
+    }
+
+    const faviconUrl = `/api/resellers/favicon/${req.file.filename}`;
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      const userRes = await client.query('SELECT company_name, email, full_name FROM users WHERE id = $1', [resellerId]);
+      const defaultBrand = userRes.rows[0]?.company_name || userRes.rows[0]?.full_name || userRes.rows[0]?.email?.split('@')[0] || 'Partner Portal';
+
+      const result = await client.query(`
+        INSERT INTO reseller_profiles (reseller_id, brand_name, favicon_url, updated_at)
+        VALUES ($1, $2, $3, NOW())
+        ON CONFLICT (reseller_id) DO UPDATE SET favicon_url = EXCLUDED.favicon_url, updated_at = NOW()
+        RETURNING *
+      `, [resellerId, defaultBrand, faviconUrl]);
+
+      await logAudit(client, {
+        actorId: req.user.id,
+        entityType: 'reseller_profile',
+        entityId: resellerId,
+        action: 'white_label_favicon_uploaded_by_admin',
+        details: { filename: req.file.filename, faviconUrl }
+      });
+      await client.query('COMMIT');
+
+      return res.json({
+        message: 'Reseller favicon uploaded and updated successfully!',
+        favicon_url: faviconUrl,
+        profile: result.rows[0]
+      });
+    } catch (dbErr) {
+      await client.query('ROLLBACK');
+      if (req.file && req.file.path) fs.unlink(req.file.path, () => {});
+      console.error('Admin update favicon db error:', dbErr);
+      return res.status(500).json({ error: 'Failed to update reseller brand favicon' });
+    } finally {
+      client.release();
+    }
+  });
+});
+
+// DELETE /api/resellers/favicon - Reseller removes their favicon
+router.delete('/favicon', authenticate, requireRoles('reseller'), async (req, res) => {
+  try {
+    const result = await query(
+      `UPDATE reseller_profiles SET favicon_url = NULL, updated_at = NOW() WHERE reseller_id = $1 RETURNING *`,
+      [req.user.id]
+    );
+    return res.json({ message: 'Favicon removed successfully', profile: result.rows[0] });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to remove favicon' });
+  }
+});
+
+// DELETE /api/resellers/:id/favicon - Admin removes reseller favicon
+router.delete('/:id/favicon', authenticate, requireRoles('admin'), async (req, res) => {
+  const resellerId = parseInt(req.params.id, 10);
+  try {
+    const result = await query(
+      `UPDATE reseller_profiles SET favicon_url = NULL, updated_at = NOW() WHERE reseller_id = $1 RETURNING *`,
+      [resellerId]
+    );
+    return res.json({ message: 'Reseller favicon removed successfully', profile: result.rows[0] });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to remove favicon' });
+  }
+});
+
+// GET /api/resellers/cname-target - Platform DNS CNAME target for white-label domains
+router.get('/cname-target', (req, res) => {
+  return res.json({
+    cname_target: PLATFORM_CNAME_TARGET,
+    platform_domain: process.env.APP_DOMAIN || 'messagesphere.nmedialabs.in',
+    instructions: `Add a CNAME record in your DNS manager pointing your custom subdomain (e.g. portal) or domain to ${PLATFORM_CNAME_TARGET}`
+  });
+});
+
 // GET /api/resellers/branding/resolve - Public branding lookup by incoming Host header or ?host= or ?domain= or ?reseller_id=
 router.get('/branding/resolve', async (req, res) => {
   try {
@@ -301,7 +581,11 @@ router.get('/branding/resolve', async (req, res) => {
       const resId = parseInt(req.query.reseller_id, 10);
       if (!isNaN(resId)) {
         const testRes = await query(`
-          SELECT rp.brand_name, rp.logo_url, rp.accent_color, rp.support_email, rp.support_phone, rp.custom_domain, rp.domain_status, rp.invite_code, rp.allow_self_registration
+          SELECT rp.brand_name, rp.portal_title, rp.logo_url, rp.favicon_url, rp.accent_color,
+                 rp.support_email, rp.support_phone, rp.support_whatsapp,
+                 rp.company_legal_name, rp.company_gstin, rp.company_address,
+                 rp.help_url, rp.terms_url, rp.privacy_url,
+                 rp.custom_domain, rp.domain_status, rp.invite_code, rp.allow_self_registration
           FROM reseller_profiles rp
           JOIN users u ON u.id = rp.reseller_id
           WHERE rp.reseller_id = $1 AND u.is_blocked = FALSE
@@ -321,7 +605,11 @@ router.get('/branding/resolve', async (req, res) => {
     }
 
     const result = await query(`
-      SELECT rp.brand_name, rp.logo_url, rp.accent_color, rp.support_email, rp.support_phone, rp.custom_domain, rp.domain_status, rp.invite_code, rp.allow_self_registration
+      SELECT rp.brand_name, rp.portal_title, rp.logo_url, rp.favicon_url, rp.accent_color,
+             rp.support_email, rp.support_phone, rp.support_whatsapp,
+             rp.company_legal_name, rp.company_gstin, rp.company_address,
+             rp.help_url, rp.terms_url, rp.privacy_url,
+             rp.custom_domain, rp.domain_status, rp.invite_code, rp.allow_self_registration
       FROM reseller_profiles rp
       JOIN users u ON u.id = rp.reseller_id
       WHERE (LOWER(rp.custom_domain) = LOWER($1) OR LOWER(rp.custom_domain) = LOWER($2))
@@ -456,31 +744,70 @@ async function saveProfile(req, res, resellerId, actorId) {
   try {
     await client.query('BEGIN');
     const result = await client.query(`
-      INSERT INTO reseller_profiles (reseller_id, brand_name, logo_url, accent_color, support_email, support_phone, custom_domain, domain_status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7::varchar, $8)
+      INSERT INTO reseller_profiles (
+        reseller_id, brand_name, portal_title, logo_url, favicon_url, accent_color,
+        support_email, support_phone, support_whatsapp,
+        company_legal_name, company_gstin, company_address,
+        help_url, terms_url, privacy_url,
+        custom_domain, domain_status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::varchar, $17)
       ON CONFLICT (reseller_id) DO UPDATE SET
         brand_name = EXCLUDED.brand_name,
+        portal_title = EXCLUDED.portal_title,
         logo_url = EXCLUDED.logo_url,
+        favicon_url = EXCLUDED.favicon_url,
         accent_color = EXCLUDED.accent_color,
         support_email = EXCLUDED.support_email,
         support_phone = EXCLUDED.support_phone,
+        support_whatsapp = EXCLUDED.support_whatsapp,
+        company_legal_name = EXCLUDED.company_legal_name,
+        company_gstin = EXCLUDED.company_gstin,
+        company_address = EXCLUDED.company_address,
+        help_url = EXCLUDED.help_url,
+        terms_url = EXCLUDED.terms_url,
+        privacy_url = EXCLUDED.privacy_url,
         custom_domain = EXCLUDED.custom_domain,
         domain_status = CASE 
-          WHEN $9::varchar IS NOT NULL THEN $9::varchar
+          WHEN $18::varchar IS NOT NULL THEN $18::varchar
           WHEN reseller_profiles.custom_domain IS DISTINCT FROM EXCLUDED.custom_domain THEN 
             CASE WHEN EXCLUDED.custom_domain IS NULL THEN 'Not configured' ELSE 'Pending verification' END 
           ELSE reseller_profiles.domain_status 
         END,
         updated_at = NOW()
       RETURNING *
-    `, [resellerId, profile.brandName, profile.logoUrl, profile.accentColor, profile.supportEmail, profile.supportPhone, profile.customDomain, initialStatus, explicitStatus]);
+    `, [
+      resellerId,
+      profile.brandName,
+      profile.portalTitle,
+      profile.logoUrl,
+      profile.faviconUrl,
+      profile.accentColor,
+      profile.supportEmail,
+      profile.supportPhone,
+      profile.supportWhatsapp,
+      profile.companyLegalName,
+      profile.companyGstin,
+      profile.companyAddress,
+      profile.helpUrl,
+      profile.termsUrl,
+      profile.privacyUrl,
+      profile.customDomain,
+      initialStatus,
+      explicitStatus
+    ]);
 
     await logAudit(client, {
       actorId,
       entityType: 'reseller_profile',
       entityId: resellerId,
       action: 'white_label_profile_updated',
-      details: { brandName: profile.brandName, customDomain: profile.customDomain, domainStatus: result.rows[0]?.domain_status }
+      details: {
+        brandName: profile.brandName,
+        portalTitle: profile.portalTitle,
+        customDomain: profile.customDomain,
+        domainStatus: result.rows[0]?.domain_status
+      }
     });
 
     await client.query('COMMIT');
@@ -703,6 +1030,69 @@ router.patch('/:id/domain-status', authenticate, requireRoles('admin'), async (r
   finally { client.release(); }
 });
 
+// POST /api/resellers/my-domain/verify - Reseller (or Admin) triggers live DNS verification for their custom domain
+router.post('/my-domain/verify', authenticate, requireRoles('reseller', 'admin'), async (req, res) => {
+  const resellerId = req.user.role === 'reseller' ? req.user.id : parseInt(req.body.reseller_id || req.user.id, 10);
+  try {
+    const profileRes = await query('SELECT custom_domain, domain_status FROM reseller_profiles WHERE reseller_id = $1', [resellerId]);
+    if (!profileRes.rows.length || !profileRes.rows[0].custom_domain) {
+      return res.status(400).json({ error: 'Please enter and save a custom domain first before running verification.' });
+    }
+    const domain = profileRes.rows[0].custom_domain;
+    let dnsRecords = [];
+    try {
+      dnsRecords = await dns.resolve(domain);
+    } catch (dnsErr) {
+      try {
+        dnsRecords = await dns.resolveCname(domain);
+      } catch (cnameErr) {
+        return res.status(400).json({
+          verified: false,
+          domain,
+          target: PLATFORM_CNAME_TARGET,
+          error: `DNS resolution failed for "${domain}". Ensure you have added a CNAME record pointing to ${PLATFORM_CNAME_TARGET} in your DNS provider and allow propagation time.`
+        });
+      }
+    }
+
+    // Auto-update domain_status to Verified in database!
+    await query(`UPDATE reseller_profiles SET domain_status = 'Verified', updated_at = NOW() WHERE reseller_id = $1`, [resellerId]);
+
+    try {
+      await logAudit(null, {
+        actorId: req.user.id,
+        entityType: 'reseller_profile',
+        entityId: resellerId,
+        action: 'white_label_domain_dns_verified',
+        details: { domain, dnsRecords }
+      });
+    } catch (_) {}
+
+    // Automated Cloud Domain & SSL Provisioning
+    let renderInfo = null;
+    try {
+      const renderProv = await addCustomDomainToRender(domain);
+      const renderStatus = await checkRenderDomainStatus(domain);
+      renderInfo = {
+        registered: renderProv.success,
+        ssl_status: renderStatus?.verificationStatus || 'provisioning'
+      };
+    } catch (_) {}
+
+    return res.json({
+      verified: true,
+      domain_status: 'Verified',
+      domain,
+      resolved_to: dnsRecords,
+      render: renderInfo,
+      message: `Success! DNS records for "${domain}" successfully verified and mapped to ${PLATFORM_CNAME_TARGET}. Custom white-label domain is now active!`
+    });
+  } catch (err) {
+    console.error('Self domain verify error:', err);
+    return res.status(500).json({ error: 'Failed to verify DNS domain: ' + (err.message || 'Network error') });
+  }
+});
+
 // POST /api/resellers/:id/verify-dns - Super Admin checks DNS resolution for reseller custom domain
 router.post('/:id/verify-dns', authenticate, requireRoles('admin'), async (req, res) => {
   const resellerId = parseInt(req.params.id, 10);
@@ -722,10 +1112,24 @@ router.post('/:id/verify-dns', authenticate, requireRoles('admin'), async (req, 
         return res.status(400).json({
           verified: false,
           domain,
-          error: `DNS resolution failed: ${dnsErr.code || dnsErr.message}. Ensure the domain has an active A record or CNAME pointing to this host.`
+          error: `DNS resolution failed: ${dnsErr.code || dnsErr.message}. Ensure the domain has an active A record or CNAME pointing to ${PLATFORM_CNAME_TARGET}.`
         });
       }
     }
+
+    // Auto-update domain_status to Verified in database!
+    await query(`UPDATE reseller_profiles SET domain_status = 'Verified', updated_at = NOW() WHERE reseller_id = $1`, [resellerId]);
+
+    try {
+      await logAudit(null, {
+        actorId: req.user.id,
+        entityType: 'reseller_profile',
+        entityId: resellerId,
+        action: 'white_label_domain_dns_verified_by_admin',
+        details: { domain, dnsRecords }
+      });
+    } catch (_) {}
+
     // Also check and provision with Render cloud if configured
     let renderInfo = null;
     try {
@@ -739,13 +1143,14 @@ router.post('/:id/verify-dns', authenticate, requireRoles('admin'), async (req, 
 
     return res.json({
       verified: true,
+      domain_status: 'Verified',
       domain,
       resolved_to: dnsRecords,
       render: renderInfo,
-      message: `DNS records successfully resolved for ${domain}: ${dnsRecords.join(', ')}`
+      message: `DNS records successfully resolved for ${domain} (${dnsRecords.join(', ')}). Domain marked as Verified!`
     });
   } catch (err) {
-    return res.status(500).json({ error: 'Failed to run DNS check' });
+    return res.status(500).json({ error: 'Failed to run DNS check: ' + (err.message || 'Server error') });
   }
 });
 

@@ -4154,54 +4154,306 @@
         </section>
 
         <section id="view-branding" class="app-view">
-          <div style="max-width:760px;">
-            <div class="card">
-              <div class="card-header"><div><div class="card-title">Your white-label brand</div><div class="card-desc">Your clients will see this identity after they sign in through your reseller account.</div></div></div>
-              <div class="card-body">
-                <form id="reseller-brand-form" onsubmit="return false;">
-                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-                    <div class="form-group"><label>Brand name</label><input id="brand-name" class="form-input" maxlength="120" placeholder="Your company name"></div>
-                    <div class="form-group"><label>Accent colour</label><input id="brand-accent" class="form-input" pattern="^#[0-9A-Fa-f]{6}$" placeholder="#4f46e5"></div>
+          <!-- White-Label Studio Header -->
+          <div style="margin-bottom: 22px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+              <div>
+                <h2 style="font-size: 1.45rem; font-weight: 800; color: #0f172a; margin: 0; letter-spacing: -0.02em; display:flex; align-items:center; gap:10px;">
+                  <i data-lucide="palette" style="width:24px;height:24px;color:var(--primary);"></i>
+                  <span>White-Label Brand Studio & Custom Domain Engine</span>
+                </h2>
+                <div style="font-size: 0.84rem; color: #64748b; margin-top: 4px;">
+                  Fully rebrand your client-facing portal: custom domain with live DNS verification, brand logo & favicon, bespoke theme palettes, and GST-compliant invoice vouchers.
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span id="brand-domain-status-badge" class="status-badge badge-submitted" style="font-size:0.8rem;padding:5px 12px;">
+                  Not Configured
+                </span>
+              </div>
+            </div>
+          </div>
 
-                    <!-- Enhanced Brand Logo Upload Section -->
-                    <div class="form-group" style="grid-column: 1 / -1; margin-bottom: 4px;">
-                      <label style="font-weight: 600; display: flex; justify-content: space-between; align-items: center;">
-                        <span>Brand Logo</span>
-                        <span style="font-size: 0.75rem; font-weight: 400; color: var(--slate-500);">PNG, JPG, WebP, SVG (Max 5MB)</span>
+          <!-- 2-Column Responsive Studio Layout -->
+          <div style="display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.95fr); gap: 24px; align-items: start;">
+            
+            <!-- LEFT COLUMN: CONFIGURATION CONTROLS -->
+            <div style="display:flex; flex-direction:column; gap:20px;">
+              
+              <!-- Form Wrapper for All Brand Fields -->
+              <form id="reseller-brand-form" onsubmit="return false;">
+                
+                <!-- CARD 1: BRAND IDENTITY & PALETTE -->
+                <div class="card" style="margin-bottom: 20px;">
+                  <div class="card-header" style="border-bottom:1px solid #f1f5f9;padding:16px 20px;">
+                    <div>
+                      <div class="card-title" style="font-size:0.98rem;font-weight:700;display:flex;align-items:center;gap:8px;">
+                        <i data-lucide="sparkles" style="width:16px;height:16px;color:var(--primary);"></i>
+                        <span>1. Brand Identity & Visual Styling</span>
+                      </div>
+                      <div class="card-desc" style="font-size:0.77rem;color:#64748b;">Name, tagline, browser favicon, and primary color palette.</div>
+                    </div>
+                  </div>
+                  <div class="card-body" style="padding:20px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                      
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.82rem;font-weight:700;color:#1e293b;">Brand / Portal Name *</label>
+                        <input id="brand-name" class="form-input" maxlength="120" placeholder="e.g. Exhume Messaging" required>
+                        <small style="font-size:0.72rem;color:#64748b;margin-top:3px;display:block;">Displayed on top navigation, login screen, and page headers.</small>
+                      </div>
+
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.82rem;font-weight:700;color:#1e293b;">Portal Tagline / Title</label>
+                        <input id="brand-portal-title" class="form-input" maxlength="150" placeholder="e.g. Enterprise Cloud Messaging & Broadcast">
+                        <small style="font-size:0.72rem;color:#64748b;margin-top:3px;display:block;">Appears on browser tabs and client welcome screen.</small>
+                      </div>
+
+                    </div>
+
+                    <!-- Theme Accent Color with Presets -->
+                    <div style="margin-top:16px;padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+                      <label style="font-size:0.82rem;font-weight:700;color:#1e293b;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <span>Primary Theme Accent Color</span>
+                        <span style="font-size:0.74rem;font-weight:400;color:#64748b;">Dynamically colors buttons, active tabs, glowing accents & badges</span>
                       </label>
-                      <div style="display: flex; gap: 14px; align-items: center; margin-top: 6px; padding: 12px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px;">
-                        <div id="brand-logo-preview-box" style="width: 68px; height: 68px; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
-                          <img id="brand-logo-preview-img" src="" alt="Brand Logo Preview" style="max-width: 100%; max-height: 100%; object-fit: contain; display: none;" />
-                          <i id="brand-logo-preview-placeholder" data-lucide="image" style="width: 26px; height: 26px; color: #94a3b8;"></i>
+                      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                          <input type="color" id="brand-accent-color-picker" style="width:42px;height:42px;padding:2px;border:1px solid #cbd5e1;border-radius:8px;cursor:pointer;background:#fff;" value="#4f46e5">
+                          <input id="brand-accent" class="form-input" pattern="^#[0-9A-Fa-f]{6}$" placeholder="#4f46e5" style="width:110px;font-family:monospace;font-weight:700;text-transform:uppercase;" value="#4f46e5">
                         </div>
-                        <div style="flex: 1;">
-                          <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap;">
-                            <input type="file" id="brand-logo-file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif" style="display: none;">
-                            <button type="button" id="btn-choose-brand-logo" class="btn-action btn-action-primary" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 0.82rem;">
-                              <i data-lucide="upload" style="width: 14px; height: 14px;"></i> Upload Logo File
-                            </button>
-                            <button type="button" id="btn-remove-brand-logo" class="btn-action btn-action-secondary" style="display: none; align-items: center; gap: 6px; padding: 7px 12px; font-size: 0.82rem; color: #dc2626;">
-                              <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i> Remove
-                            </button>
-                            <span id="brand-logo-upload-status" style="font-size: 0.8rem; color: #64748b;"></span>
-                          </div>
-                          <div style="display: flex; align-items: center; gap: 6px;">
-                            <span style="font-size: 0.75rem; color: #64748b; white-space: nowrap;">Or image URL:</span>
-                            <input id="brand-logo-url" type="text" class="form-input" style="padding: 5px 10px; font-size: 0.8rem;" placeholder="https://... or uploaded /api/resellers/logo/...">
-                          </div>
+                        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-left:8px;border-left:1px solid #cbd5e1;">
+                          <span style="font-size:0.72rem;font-weight:600;color:#64748b;margin-right:2px;">Presets:</span>
+                          <button type="button" class="brand-palette-chip" data-color="#4f46e5" style="width:24px;height:24px;border-radius:50%;background:#4f46e5;border:2px solid #fff;box-shadow:0 0 0 1px #cbd5e1;cursor:pointer;" title="Indigo"></button>
+                          <button type="button" class="brand-palette-chip" data-color="#059669" style="width:24px;height:24px;border-radius:50%;background:#059669;border:2px solid #fff;box-shadow:0 0 0 1px #cbd5e1;cursor:pointer;" title="Emerald"></button>
+                          <button type="button" class="brand-palette-chip" data-color="#2563eb" style="width:24px;height:24px;border-radius:50%;background:#2563eb;border:2px solid #fff;box-shadow:0 0 0 1px #cbd5e1;cursor:pointer;" title="Blue"></button>
+                          <button type="button" class="brand-palette-chip" data-color="#7c3aed" style="width:24px;height:24px;border-radius:50%;background:#7c3aed;border:2px solid #fff;box-shadow:0 0 0 1px #cbd5e1;cursor:pointer;" title="Violet"></button>
+                          <button type="button" class="brand-palette-chip" data-color="#e11d48" style="width:24px;height:24px;border-radius:50%;background:#e11d48;border:2px solid #fff;box-shadow:0 0 0 1px #cbd5e1;cursor:pointer;" title="Rose"></button>
+                          <button type="button" class="brand-palette-chip" data-color="#d97706" style="width:24px;height:24px;border-radius:50%;background:#d97706;border:2px solid #fff;box-shadow:0 0 0 1px #cbd5e1;cursor:pointer;" title="Amber"></button>
+                          <button type="button" class="brand-palette-chip" data-color="#0891b2" style="width:24px;height:24px;border-radius:50%;background:#0891b2;border:2px solid #fff;box-shadow:0 0 0 1px #cbd5e1;cursor:pointer;" title="Cyan"></button>
+                          <button type="button" class="brand-palette-chip" data-color="#0f172a" style="width:24px;height:24px;border-radius:50%;background:#0f172a;border:2px solid #fff;box-shadow:0 0 0 1px #cbd5e1;cursor:pointer;" title="Midnight Dark"></button>
                         </div>
                       </div>
                     </div>
 
-                    <div class="form-group"><label>Support email</label><input id="brand-support-email" type="email" class="form-input" placeholder="support@yourbrand.com"></div>
-                    <div class="form-group"><label>Support phone</label><input id="brand-support-phone" class="form-input" placeholder="+91..."></div>
-                    <div class="form-group" style="grid-column: 1 / -1;"><label>Custom domain</label><input id="brand-custom-domain" class="form-input" placeholder="portal.yourbrand.com"></div>
+                    <!-- Logo & Favicon Side by Side -->
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px;">
+                      
+                      <!-- Brand Logo Upload -->
+                      <div style="padding:14px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px;">
+                        <label style="font-size:0.8rem;font-weight:700;color:#1e293b;display:flex;justify-content:space-between;margin-bottom:8px;">
+                          <span>Brand Logo</span>
+                          <span style="font-size:0.7rem;font-weight:400;color:#64748b;">PNG, SVG, WebP (Max 5MB)</span>
+                        </label>
+                        <div style="display:flex;gap:12px;align-items:center;">
+                          <div id="brand-logo-preview-box" style="width:58px;height:58px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;">
+                            <img id="brand-logo-preview-img" src="" alt="Brand Logo Preview" style="max-width:100%;max-height:100%;object-fit:contain;display:none;" />
+                            <i id="brand-logo-preview-placeholder" data-lucide="image" style="width:22px;height:22px;color:#94a3b8;"></i>
+                          </div>
+                          <div style="flex:1;">
+                            <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
+                              <input type="file" id="brand-logo-file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif" style="display:none;">
+                              <button type="button" id="btn-choose-brand-logo" class="btn-action btn-action-primary" style="padding:5px 10px;font-size:0.76rem;display:inline-flex;align-items:center;gap:4px;">
+                                <i data-lucide="upload" style="width:12px;height:12px;"></i> Upload Logo
+                              </button>
+                              <button type="button" id="btn-remove-brand-logo" class="btn-action btn-action-secondary" style="display:none;padding:5px 8px;font-size:0.76rem;color:#dc2626;">
+                                <i data-lucide="trash-2" style="width:12px;height:12px;"></i>
+                              </button>
+                              <span id="brand-logo-upload-status" style="font-size:0.72rem;color:#64748b;"></span>
+                            </div>
+                            <input id="brand-logo-url" type="text" class="form-input" style="padding:4px 8px;font-size:0.75rem;" placeholder="Or image URL (https://...)">
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Browser Favicon Upload -->
+                      <div style="padding:14px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px;">
+                        <label style="font-size:0.8rem;font-weight:700;color:#1e293b;display:flex;justify-content:space-between;margin-bottom:8px;">
+                          <span>Browser Tab Favicon</span>
+                          <span style="font-size:0.7rem;font-weight:400;color:#64748b;">.ico, .png, .svg (32×32px)</span>
+                        </label>
+                        <div style="display:flex;gap:12px;align-items:center;">
+                          <div id="brand-favicon-preview-box" style="width:58px;height:58px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;">
+                            <img id="brand-favicon-preview-img" src="" alt="Favicon Preview" style="max-width:32px;max-height:32px;object-fit:contain;display:none;" />
+                            <i id="brand-favicon-preview-placeholder" data-lucide="bookmark" style="width:22px;height:22px;color:#94a3b8;"></i>
+                          </div>
+                          <div style="flex:1;">
+                            <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
+                              <input type="file" id="brand-favicon-file" accept="image/x-icon,image/vnd.microsoft.icon,image/png,image/svg+xml,image/webp" style="display:none;">
+                              <button type="button" id="btn-choose-brand-favicon" class="btn-action btn-action-primary" style="padding:5px 10px;font-size:0.76rem;display:inline-flex;align-items:center;gap:4px;">
+                                <i data-lucide="upload" style="width:12px;height:12px;"></i> Upload Favicon
+                              </button>
+                              <button type="button" id="btn-remove-brand-favicon" class="btn-action btn-action-secondary" style="display:none;padding:5px 8px;font-size:0.76rem;color:#dc2626;">
+                                <i data-lucide="trash-2" style="width:12px;height:12px;"></i>
+                              </button>
+                              <span id="brand-favicon-upload-status" style="font-size:0.72rem;color:#64748b;"></span>
+                            </div>
+                            <input id="brand-favicon-url" type="text" class="form-input" style="padding:4px 8px;font-size:0.75rem;" placeholder="Or favicon URL (https://...)">
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+
                   </div>
-                  <div id="brand-domain-status" style="font-size:0.82rem;color:var(--slate-500);margin:4px 0 14px;"></div>
-                  <button type="submit" class="btn-primary" style="max-width:220px;">Save white-label brand</button>
-                </form>
-              </div>
-            </div>
+                </div>
+
+                <!-- CARD 2: SUPPORT CHANNELS & CUSTOMER LINKS -->
+                <div class="card" style="margin-bottom: 20px;">
+                  <div class="card-header" style="border-bottom:1px solid #f1f5f9;padding:16px 20px;">
+                    <div>
+                      <div class="card-title" style="font-size:0.98rem;font-weight:700;display:flex;align-items:center;gap:8px;">
+                        <i data-lucide="headset" style="width:16px;height:16px;color:var(--primary);"></i>
+                        <span>2. Support Channels & Customer Care</span>
+                      </div>
+                      <div class="card-desc" style="font-size:0.77rem;color:#64748b;">Direct support touchpoints for your clients.</div>
+                    </div>
+                  </div>
+                  <div class="card-body" style="padding:20px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
+                      
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.8rem;font-weight:700;color:#1e293b;">Support Email</label>
+                        <input id="brand-support-email" type="email" class="form-input" placeholder="support@yourbrand.com">
+                      </div>
+
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.8rem;font-weight:700;color:#1e293b;">Support Phone</label>
+                        <input id="brand-support-phone" class="form-input" placeholder="+91 9876543210">
+                      </div>
+
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.8rem;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:4px;">
+                          <i data-lucide="message-circle" style="width:13px;height:13px;color:#10b981;"></i>
+                          <span>Support WhatsApp</span>
+                        </label>
+                        <input id="brand-support-whatsapp" class="form-input" placeholder="+91 9876543210">
+                      </div>
+
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:14px;">
+                      
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.8rem;font-weight:700;color:#1e293b;">Help Center / Docs URL</label>
+                        <input id="brand-help-url" type="url" class="form-input" placeholder="https://help.yourbrand.com">
+                      </div>
+
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.8rem;font-weight:700;color:#1e293b;">Terms of Service URL</label>
+                        <input id="brand-terms-url" type="url" class="form-input" placeholder="https://yourbrand.com/terms">
+                      </div>
+
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.8rem;font-weight:700;color:#1e293b;">Privacy Policy URL</label>
+                        <input id="brand-privacy-url" type="url" class="form-input" placeholder="https://yourbrand.com/privacy">
+                      </div>
+
+                    </div>
+                  </div>
+                </div>
+
+                <!-- CARD 3: LEGAL ENTITY & INVOICE VOUCHERS -->
+                <div class="card" style="margin-bottom: 20px;">
+                  <div class="card-header" style="border-bottom:1px solid #f1f5f9;padding:16px 20px;">
+                    <div>
+                      <div class="card-title" style="font-size:0.98rem;font-weight:700;display:flex;align-items:center;gap:8px;">
+                        <i data-lucide="receipt" style="width:16px;height:16px;color:#10b981;"></i>
+                        <span>3. Legal Business Entity & Tax Invoicing (Receipts)</span>
+                      </div>
+                      <div class="card-desc" style="font-size:0.77rem;color:#64748b;">
+                        These statutory details are printed on wallet recharge vouchers and statements downloaded by your clients.
+                      </div>
+                    </div>
+                  </div>
+                  <div class="card-body" style="padding:20px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                      
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.8rem;font-weight:700;color:#1e293b;">Registered Business / Firm Name</label>
+                        <input id="brand-legal-name" class="form-input" maxlength="200" placeholder="e.g. Acme Communications LLP">
+                        <small style="font-size:0.72rem;color:#64748b;margin-top:3px;display:block;">Replaces platform corporate name on all client tax receipts.</small>
+                      </div>
+
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.8rem;font-weight:700;color:#1e293b;">GSTIN / Tax Registration ID</label>
+                        <input id="brand-gstin" class="form-input" maxlength="30" placeholder="e.g. 27AAAAA0000A1Z5" style="text-transform:uppercase;">
+                        <small style="font-size:0.72rem;color:#64748b;margin-top:3px;display:block;">Printed on client tax invoices (SAC 998413 Telecom Service).</small>
+                      </div>
+
+                    </div>
+
+                    <div class="form-group" style="margin-top:14px;margin-bottom:0;">
+                      <label style="font-size:0.8rem;font-weight:700;color:#1e293b;">Registered Office Billing Address</label>
+                      <textarea id="brand-address" class="form-input" rows="2" maxlength="1000" placeholder="Suite 400, Commercial Towers, City, State, PIN"></textarea>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- CARD 4: CUSTOM DOMAIN & LIVE DNS VERIFICATION ENGINE -->
+                <div class="card" style="margin-bottom: 20px;">
+                  <div class="card-header" style="border-bottom:1px solid #f1f5f9;padding:16px 20px;">
+                    <div>
+                      <div class="card-title" style="font-size:0.98rem;font-weight:700;display:flex;align-items:center;gap:8px;">
+                        <i data-lucide="globe" style="width:16px;height:16px;color:#2563eb;"></i>
+                        <span>4. Custom Domain & DNS Engine</span>
+                      </div>
+                      <div class="card-desc" style="font-size:0.77rem;color:#64748b;">
+                        Host your client portal on your own domain with automated SSL encryption.
+                      </div>
+                    </div>
+                  </div>
+                  <div class="card-body" style="padding:20px;">
+                    
+                    <div class="form-group" style="margin-bottom:14px;">
+                      <label style="font-size:0.82rem;font-weight:700;color:#1e293b;">Custom Subdomain / FQDN *</label>
+                      <input id="brand-custom-domain" class="form-input" placeholder="portal.yourcompany.com" style="font-weight:600;">
+                      <small style="font-size:0.74rem;color:#64748b;margin-top:3px;display:block;">
+                        Enter your desired subdomain (e.g. <code>portal.yourbrand.com</code> or <code>messages.clientportal.in</code>).
+                      </small>
+                    </div>
+
+                    <!-- DNS Guidance Card with 1-Click Copy -->
+                    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:14px 16px;margin-bottom:16px;">
+                      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                        <div style="font-size:0.82rem;font-weight:700;color:#0369a1;display:flex;align-items:center;gap:6px;">
+                          <i data-lucide="network" style="width:15px;height:15px;"></i>
+                          <span>Required DNS CNAME Record</span>
+                        </div>
+                        <button type="button" id="btn-copy-cname-target" class="btn-action" style="background:#fff;color:#0284c7;border:1px solid #bae6fd;padding:3px 9px;font-size:0.74rem;border-radius:5px;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+                          <i data-lucide="copy" style="width:12px;height:12px;"></i> Copy CNAME Target
+                        </button>
+                      </div>
+                      <div style="font-size:0.77rem;color:#0369a1;margin-top:6px;line-height:1.5;">
+                        In your DNS Manager (Cloudflare, GoDaddy, Hostinger, AWS Route53), add this record:
+                      </div>
+                      <div style="margin-top:8px;padding:8px 12px;background:#ffffff;border:1px solid #e0f2fe;border-radius:6px;display:flex;align-items:center;justify-content:space-between;gap:8px;font-family:monospace;font-size:0.8rem;color:#0f172a;">
+                        <div>
+                          <span style="color:#64748b;">Type:</span> <strong>CNAME</strong> &nbsp;&bull;&nbsp;
+                          <span style="color:#64748b;">Host:</span> <strong>portal</strong> &nbsp;&bull;&nbsp;
+                          <span style="color:#64748b;">Points to:</span> <strong id="brand-cname-target-code" style="color:#0284c7;">messagesphere.nmedialabs.in</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div id="brand-domain-status" style="font-size:0.8rem;color:var(--slate-600);margin-bottom:16px;"></div>
+
+                    <!-- Action Bar -->
+                    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding-top:14px;border-top:1px solid #f1f5f9;">
+                      <button type="submit" id="btn-save-brand-identity" class="btn-primary" style="padding:9px 22px;font-size:0.88rem;display:inline-flex;align-items:center;gap:8px;font-weight:700;">
+                        <i data-lucide="save" style="width:16px;height:16px;"></i> Save Brand & Domain Settings
+                      </button>
+
+                      <button type="button" id="btn-verify-my-domain" class="btn-action btn-action-success" style="padding:9px 18px;font-size:0.84rem;display:inline-flex;align-items:center;gap:6px;font-weight:700;">
+                        <i data-lucide="refresh-cw" style="width:14px;height:14px;"></i>
+                        <span id="btn-verify-my-domain-txt">Verify DNS Resolution Now</span>
+                      </button>
+                    </div>
+
+                  </div>
+                </div>
+
+              </form>
 
             <!-- Client Invite & Self-Registration Engine Card -->
             <div class="card" style="margin-top:20px;">
@@ -4307,8 +4559,115 @@
                 </form>
               </div>
             </div>
-          </div>
-        </section>
+
+          </div> <!-- /LEFT COLUMN -->
+
+          <!-- RIGHT COLUMN: STICKY LIVE BRAND STUDIO MOCKUP -->
+          <div style="position: sticky; top: 20px;">
+            <div class="card" style="box-shadow: 0 10px 25px -5px rgba(0,0,0,0.08), 0 8px 10px -6px rgba(0,0,0,0.04); border: 1px solid #e2e8f0; overflow:hidden;">
+              
+              <div class="card-header" style="background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:12px 18px;display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <div style="width:10px;height:10px;border-radius:50%;background:#10b981;"></div>
+                  <span style="font-size:0.82rem;font-weight:700;color:#0f172a;">Live Interactive Preview</span>
+                </div>
+                <span style="font-size:0.72rem;color:#64748b;font-weight:600;background:#e2e8f0;padding:2px 8px;border-radius:12px;">Real-Time</span>
+              </div>
+
+              <!-- BROWSER WINDOW MOCKUP -->
+              <div style="background:#ffffff;padding:0;">
+                
+                <!-- Browser Frame Title Bar -->
+                <div style="background:#0f172a;padding:8px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #1e293b;">
+                  <div style="display:flex;align-items:center;gap:5px;">
+                    <div style="width:9px;height:9px;border-radius:50%;background:#ef4444;"></div>
+                    <div style="width:9px;height:9px;border-radius:50%;background:#f59e0b;"></div>
+                    <div style="width:9px;height:9px;border-radius:50%;background:#10b981;"></div>
+                  </div>
+                  
+                  <!-- Browser Tab Mockup -->
+                  <div style="background:#1e293b;border-radius:6px 6px 0 0;padding:4px 10px;display:flex;align-items:center;gap:6px;max-width:220px;overflow:hidden;">
+                    <img id="preview-tab-favicon" src="" alt="" style="width:14px;height:14px;display:none;object-fit:contain;" />
+                    <i id="preview-tab-favicon-placeholder" data-lucide="bookmark" style="width:12px;height:12px;color:#94a3b8;flex-shrink:0;"></i>
+                    <span id="preview-tab-title" style="font-size:0.72rem;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;">
+                      Partner Portal
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Browser URL Address Bar -->
+                <div style="background:#1e293b;padding:6px 14px;border-bottom:1px solid #334155;display:flex;align-items:center;gap:8px;">
+                  <div style="background:#0f172a;border-radius:5px;padding:3px 10px;flex:1;display:flex;align-items:center;gap:6px;font-size:0.72rem;font-family:monospace;color:#94a3b8;">
+                    <i data-lucide="lock" style="width:11px;height:11px;color:#10b981;"></i>
+                    <span style="color:#64748b;">https://</span>
+                    <strong id="preview-tab-domain" style="color:#f8fafc;">portal.yourbrand.com</strong>
+                  </div>
+                </div>
+
+                <!-- Mock Portal Page Content -->
+                <div style="padding:16px;background:#f8fafc;min-height:360px;">
+                  
+                  <!-- Mock Portal Navbar -->
+                  <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                      <div id="preview-brand-logo-box" style="width:28px;height:28px;border-radius:6px;background:var(--primary,#4f46e5);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.85rem;overflow:hidden;">
+                        <img id="preview-brand-logo-img" src="" alt="Brand" style="max-width:100%;max-height:100%;object-fit:contain;display:none;" />
+                        <span id="preview-brand-logo-initial">P</span>
+                      </div>
+                      <span id="preview-brand-name" style="font-size:0.9rem;font-weight:800;color:#0f172a;">Partner Portal</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <span id="preview-pill-balance" style="font-size:0.68rem;font-weight:700;padding:2px 7px;border-radius:4px;background:#eef2ff;color:var(--primary,#4f46e5);">
+                        50,000 Credits
+                      </span>
+                    </div>
+                  </div>
+
+                  <!-- Mock Client Dashboard Hero -->
+                  <div id="preview-hero-box" style="background:linear-gradient(135deg, var(--primary, #4f46e5) 0%, #1e1b4b 100%);border-radius:10px;padding:16px;color:#ffffff;margin-bottom:14px;">
+                    <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.5px;color:rgba(255,255,255,0.7);font-weight:600;">Client Control Center</div>
+                    <div id="preview-hero-title" style="font-size:1.05rem;font-weight:800;margin-top:4px;">Enterprise Broadcast Hub</div>
+                    <div id="preview-hero-desc" style="font-size:0.75rem;color:rgba(255,255,255,0.85);margin-top:2px;">Launch verified WhatsApp & GSM SMS campaigns with carrier routing.</div>
+                    <div style="margin-top:12px;display:flex;gap:8px;">
+                      <span style="font-size:0.72rem;font-weight:700;background:#ffffff;color:#0f172a;padding:5px 12px;border-radius:6px;display:inline-block;">New Campaign</span>
+                      <span style="font-size:0.72rem;font-weight:600;background:rgba(255,255,255,0.15);color:#fff;padding:5px 10px;border-radius:6px;display:inline-block;">View Wallet</span>
+                    </div>
+                  </div>
+
+                  <!-- Mock Support Strip -->
+                  <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:14px;">
+                    <div style="font-size:0.72rem;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:6px;">Your Dedicated Support Contacts</div>
+                    <div style="display:flex;flex-direction:column;gap:5px;font-size:0.75rem;">
+                      <div style="display:flex;align-items:center;gap:6px;color:#334155;">
+                        <i data-lucide="mail" style="width:12px;height:12px;color:var(--primary,#4f46e5);"></i>
+                        <span id="preview-support-email">support@yourbrand.com</span>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:6px;color:#334155;">
+                        <i data-lucide="phone" style="width:12px;height:12px;color:var(--primary,#4f46e5);"></i>
+                        <span id="preview-support-phone">+91 9876543210</span>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:6px;color:#059669;font-weight:700;">
+                        <i data-lucide="message-circle" style="width:12px;height:12px;color:#10b981;"></i>
+                        <span id="preview-support-whatsapp">WhatsApp Chat Available</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Mock Legal Footer (Zero Platform Leak) -->
+                  <div style="text-align:center;padding:10px 6px;font-size:0.68rem;color:#94a3b8;border-top:1px dashed #e2e8f0;">
+                    <div>Powered by <strong id="preview-legal-entity" style="color:#64748b;">Your Company Legal Entity</strong></div>
+                    <div style="margin-top:2px;">&copy; 2026 All Rights Reserved &bull; End-to-End Encrypted Telecom Network</div>
+                  </div>
+
+                </div>
+
+              </div>
+
+            </div>
+          </div> <!-- /RIGHT COLUMN -->
+
+        </div> <!-- /2-Column Grid -->
+      </section>
 
         <section id="view-operations" class="app-view">
           <div class="card" style="margin-bottom:18px;">
@@ -4357,6 +4716,45 @@
 
         <section id="view-settings" class="app-view">
           <div style="max-width:680px;">
+
+            <!-- MANAGING PARTNER & DEDICATED SUPPORT CARD (CLIENT VIEW) -->
+            <div class="card" id="settings-partner-card" style="display:none;margin-bottom:20px;border-left:4px solid var(--primary);box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+              <div class="card-header" style="border-bottom:1px solid #f1f5f9;padding:16px 20px;">
+                <div>
+                  <div class="card-title" style="display:flex;align-items:center;gap:8px;font-size:1rem;font-weight:700;">
+                    <i data-lucide="shield-check" style="width:18px;height:18px;color:var(--primary);"></i>
+                    <span>Managing Partner & Dedicated Support</span>
+                  </div>
+                  <div class="card-desc" style="font-size:0.77rem;color:#64748b;">
+                    Your messaging credits and account are managed directly by this authorized partner firm.
+                  </div>
+                </div>
+              </div>
+              <div class="card-body" style="padding:20px;">
+                <div style="display:flex;align-items:center;gap:16px;padding:14px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;margin-bottom:16px;">
+                  <div id="partner-card-logo-box" style="width:52px;height:52px;border-radius:10px;background:#ffffff;border:1px solid #cbd5e1;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;">
+                    <img id="partner-card-logo-img" src="" alt="Partner Logo" style="max-width:100%;max-height:100%;object-fit:contain;display:none;" />
+                    <span id="partner-card-avatar" style="font-weight:800;font-size:1.3rem;color:var(--primary);">P</span>
+                  </div>
+                  <div style="flex:1;">
+                    <div style="font-size:1.05rem;font-weight:800;color:#0f172a;" id="partner-card-brand-name">Partner Name</div>
+                    <div style="font-size:0.78rem;color:#64748b;margin-top:2px;" id="partner-card-legal-entity">Authorized Enterprise Reseller Partner</div>
+                  </div>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(170px, 1fr));gap:10px;">
+                  <a id="partner-card-email-link" href="#" class="btn-action btn-action-secondary" style="justify-content:center;display:flex;align-items:center;gap:6px;padding:8px 12px;text-decoration:none;font-size:0.8rem;font-weight:600;">
+                    <i data-lucide="mail" style="width:14px;height:14px;color:var(--primary);"></i> <span id="partner-card-email-txt">Email Support</span>
+                  </a>
+                  <a id="partner-card-phone-link" href="#" class="btn-action btn-action-secondary" style="justify-content:center;display:flex;align-items:center;gap:6px;padding:8px 12px;text-decoration:none;font-size:0.8rem;font-weight:600;">
+                    <i data-lucide="phone" style="width:14px;height:14px;color:var(--primary);"></i> <span id="partner-card-phone-txt">Call Support</span>
+                  </a>
+                  <a id="partner-card-wa-link" href="#" target="_blank" class="btn-action" style="justify-content:center;display:flex;align-items:center;gap:6px;padding:8px 12px;text-decoration:none;font-size:0.8rem;background:#10b981;color:#fff;border:none;font-weight:700;">
+                    <i data-lucide="message-circle" style="width:14px;height:14px;"></i> <span>WhatsApp Support</span>
+                  </a>
+                </div>
+              </div>
+            </div>
+
             <div class="card">
               <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
                 <div>
@@ -6181,9 +6579,16 @@
         <form id="admin-reseller-brand-form" onsubmit="return false;">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
             <div class="form-group">
-              <label style="font-size:0.8rem;font-weight:600;color:#334155;">Brand Name</label>
+              <label style="font-size:0.8rem;font-weight:600;color:#334155;">Brand Name *</label>
               <input type="text" id="admin-reseller-brand-name" class="form-input" placeholder="e.g. Acme Telecom" maxlength="120" required>
             </div>
+            <div class="form-group">
+              <label style="font-size:0.8rem;font-weight:600;color:#334155;">Portal Tagline / Title</label>
+              <input type="text" id="admin-reseller-brand-portal-title" class="form-input" placeholder="e.g. Enterprise Messaging Hub" maxlength="150">
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:10px;">
             <div class="form-group">
               <label style="font-size:0.8rem;font-weight:600;color:#334155;">Theme Accent Color</label>
               <div style="display:flex;align-items:center;gap:8px;">
@@ -6191,30 +6596,61 @@
                 <input type="text" id="admin-reseller-brand-accent" class="form-input" placeholder="#4f46e5" pattern="^#[0-9A-Fa-f]{6}$" value="#4f46e5" oninput="if (/^#[0-9A-Fa-f]{6}$/.test(this.value)) document.getElementById('admin-reseller-brand-color-picker').value = this.value">
               </div>
             </div>
+            <div class="form-group">
+              <label style="font-size:0.8rem;font-weight:600;color:#334155;">Support WhatsApp</label>
+              <input type="text" id="admin-reseller-brand-support-whatsapp" class="form-input" placeholder="+91 9876543210">
+            </div>
           </div>
 
-          <div class="form-group" style="margin-top:12px;">
-            <label style="font-size:0.8rem;font-weight:600;color:#334155;display:flex;justify-content:space-between;align-items:center;">
-              <span>Partner Brand Logo</span>
-              <span style="font-size:0.72rem;font-weight:400;color:#64748b;">PNG, JPG, WebP, SVG (Max 5MB)</span>
-            </label>
-            <div style="display:flex;gap:12px;align-items:center;margin-top:6px;padding:10px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;">
-              <div id="admin-reseller-logo-preview-box" style="width:56px;height:56px;border-radius:6px;border:1px solid #e2e8f0;background:#ffffff;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;">
-                <img id="admin-reseller-logo-preview-img" src="" alt="Reseller Logo Preview" style="max-width:100%;max-height:100%;object-fit:contain;display:none;" />
-                <i id="admin-reseller-logo-preview-placeholder" data-lucide="image" style="width:24px;height:24px;color:#94a3b8;"></i>
-              </div>
-              <div style="flex:1;">
-                <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
-                  <input type="file" id="admin-reseller-brand-logo-file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif" style="display:none;">
-                  <button type="button" id="btn-admin-choose-logo" class="btn-action btn-action-primary" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;font-size:0.8rem;">
-                    <i data-lucide="upload" style="width:13px;height:13px;"></i> Upload Logo File
-                  </button>
-                  <button type="button" id="btn-admin-remove-logo" class="btn-action btn-action-secondary" style="display:none;align-items:center;gap:5px;padding:6px 10px;font-size:0.8rem;color:#dc2626;">
-                    <i data-lucide="trash-2" style="width:13px;height:13px;"></i> Remove
-                  </button>
-                  <span id="admin-reseller-logo-upload-status" style="font-size:0.75rem;color:#64748b;"></span>
+          <!-- Logo & Favicon in Admin Modal -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px;">
+            <div class="form-group">
+              <label style="font-size:0.8rem;font-weight:600;color:#334155;display:flex;justify-content:space-between;align-items:center;">
+                <span>Partner Brand Logo</span>
+                <span style="font-size:0.7rem;color:#64748b;">PNG, SVG (5MB)</span>
+              </label>
+              <div style="display:flex;gap:10px;align-items:center;margin-top:4px;padding:8px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:6px;">
+                <div id="admin-reseller-logo-preview-box" style="width:48px;height:48px;border-radius:6px;border:1px solid #e2e8f0;background:#ffffff;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;">
+                  <img id="admin-reseller-logo-preview-img" src="" alt="Logo" style="max-width:100%;max-height:100%;object-fit:contain;display:none;" />
+                  <i id="admin-reseller-logo-preview-placeholder" data-lucide="image" style="width:20px;height:20px;color:#94a3b8;"></i>
                 </div>
-                <input type="text" id="admin-reseller-brand-logo" class="form-input" style="padding:5px 10px;font-size:0.8rem;" placeholder="https://... or /api/resellers/logo/...">
+                <div style="flex:1;">
+                  <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+                    <input type="file" id="admin-reseller-brand-logo-file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif" style="display:none;">
+                    <button type="button" id="btn-admin-choose-logo" class="btn-action btn-action-primary" style="padding:4px 8px;font-size:0.72rem;">
+                      Upload
+                    </button>
+                    <button type="button" id="btn-admin-remove-logo" class="btn-action btn-action-secondary" style="display:none;padding:4px 6px;font-size:0.72rem;color:#dc2626;">
+                      Remove
+                    </button>
+                  </div>
+                  <input type="text" id="admin-reseller-brand-logo" class="form-input" style="padding:4px 8px;font-size:0.72rem;" placeholder="Or URL">
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label style="font-size:0.8rem;font-weight:600;color:#334155;display:flex;justify-content:space-between;align-items:center;">
+                <span>Browser Favicon</span>
+                <span style="font-size:0.7rem;color:#64748b;">.ico, .png</span>
+              </label>
+              <div style="display:flex;gap:10px;align-items:center;margin-top:4px;padding:8px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:6px;">
+                <div id="admin-reseller-favicon-preview-box" style="width:48px;height:48px;border-radius:6px;border:1px solid #e2e8f0;background:#ffffff;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;">
+                  <img id="admin-reseller-favicon-preview-img" src="" alt="Favicon" style="max-width:28px;max-height:28px;object-fit:contain;display:none;" />
+                  <i id="admin-reseller-favicon-preview-placeholder" data-lucide="bookmark" style="width:20px;height:20px;color:#94a3b8;"></i>
+                </div>
+                <div style="flex:1;">
+                  <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+                    <input type="file" id="admin-reseller-brand-favicon-file" accept="image/x-icon,image/png,image/svg+xml,image/webp" style="display:none;">
+                    <button type="button" id="btn-admin-choose-favicon" class="btn-action btn-action-primary" style="padding:4px 8px;font-size:0.72rem;">
+                      Upload
+                    </button>
+                    <button type="button" id="btn-admin-remove-favicon" class="btn-action btn-action-secondary" style="display:none;padding:4px 6px;font-size:0.72rem;color:#dc2626;">
+                      Remove
+                    </button>
+                  </div>
+                  <input type="text" id="admin-reseller-brand-favicon" class="form-input" style="padding:4px 8px;font-size:0.72rem;" placeholder="Or URL">
+                </div>
               </div>
             </div>
           </div>
@@ -6234,20 +6670,19 @@
             </div>
           </div>
 
-          <!-- DNS Guidance Card -->
-          <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px 14px;margin-top:14px;">
-            <div style="display:flex;align-items:center;gap:6px;color:#0369a1;font-size:0.8rem;font-weight:700;">
-              <i data-lucide="info" style="width:14px;height:14px;"></i> DNS CNAME Configuration
+          <!-- Legal & Receipt Voucher Meta -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px;">
+            <div class="form-group">
+              <label style="font-size:0.8rem;font-weight:600;color:#334155;">Legal Firm Name (For Receipts)</label>
+              <input type="text" id="admin-reseller-brand-legal-name" class="form-input" placeholder="e.g. Acme Communications LLP">
             </div>
-            <div style="font-size:0.75rem;color:#0369a1;margin-top:4px;line-height:1.4;">
-              Ask the partner to create a CNAME record in their DNS provider (Cloudflare, GoDaddy, AWS Route53):<br>
-              <code style="background:#e0f2fe;padding:2px 6px;border-radius:4px;font-family:monospace;font-weight:600;color:#0284c7;display:inline-block;margin-top:3px;">
-                Type: CNAME &nbsp;|&nbsp; Name: &lt;subdomain&gt; &nbsp;|&nbsp; Target: messagesphere.nmedialabs.in
-              </code>
+            <div class="form-group">
+              <label style="font-size:0.8rem;font-weight:600;color:#334155;">Company GSTIN</label>
+              <input type="text" id="admin-reseller-brand-gstin" class="form-input" placeholder="e.g. 27ABCDE1234F1Z5">
             </div>
           </div>
 
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px;">
             <div class="form-group">
               <label style="font-size:0.8rem;font-weight:600;color:#334155;">Support Email</label>
               <input type="email" id="admin-reseller-brand-support-email" class="form-input" placeholder="support@partnerbrand.com">
@@ -7488,7 +7923,7 @@
 
       <div class="modal-body-saas" id="receipt-printable-area" style="padding: 24px; background: #ffffff;">
         <div style="text-align: center; border-bottom: 2px dashed #e2e8f0; padding-bottom: 16px; margin-bottom: 16px;">
-          <div style="font-size: 1.3rem; font-weight: 900; color: #0f172a; letter-spacing: -0.5px;">MessageSphere Technologies Pvt Ltd</div>
+          <div id="receipt-company-name" style="font-size: 1.3rem; font-weight: 900; color: #0f172a; letter-spacing: -0.5px;">MessageSphere Technologies Pvt Ltd</div>
           <div id="receipt-company-tax-meta" style="font-size: 0.74rem; color: #475569; margin-top: 2px;">GSTIN: <strong>08AABCM1234F1Z5</strong> &bull; State: 08 (Rajasthan / India) &bull; SAC: <strong>998413</strong></div>
           <div style="margin-top: 10px; display: inline-flex; align-items: center; gap: 4px; background: #ecfdf5; color: #059669; font-weight: 800; font-size: 0.72rem; padding: 3px 12px; border-radius: 20px; border: 1px solid #bbf7d0;" id="receipt-status-pill">
             <i data-lucide="check" style="width:12px;height:12px;"></i> <span id="receipt-status-text">VERIFIED & CREDITED TO VAULT</span>

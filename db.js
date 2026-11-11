@@ -425,6 +425,15 @@ async function initDB() {
     await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS allow_self_registration BOOLEAN NOT NULL DEFAULT TRUE;`);
     await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS default_rates JSONB DEFAULT '{}'::jsonb;`);
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_reseller_invite_code ON reseller_profiles(LOWER(invite_code)) WHERE invite_code IS NOT NULL AND invite_code != '';`);
+    await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS favicon_url TEXT;`);
+    await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS portal_title VARCHAR(150);`);
+    await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS company_legal_name VARCHAR(200);`);
+    await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS company_gstin VARCHAR(30);`);
+    await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS company_address TEXT;`);
+    await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS support_whatsapp VARCHAR(30);`);
+    await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS help_url TEXT;`);
+    await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS terms_url TEXT;`);
+    await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS privacy_url TEXT;`);
 
     // Backfill clean invite codes for any reseller profiles missing one
     const unseededInvites = await client.query(`SELECT reseller_id, brand_name FROM reseller_profiles WHERE invite_code IS NULL OR invite_code = ''`);
