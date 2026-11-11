@@ -617,37 +617,41 @@ window.setRegAccountType = function(type) {
 
   if (type === 'reseller') {
     if (cardUser) {
-      cardUser.style.border = '1px solid var(--slate-200)';
+      cardUser.style.border = '1px solid #cbd5e1';
       cardUser.style.background = '#ffffff';
     }
     if (cardReseller) {
-      cardReseller.style.border = '2px solid var(--primary, #4f46e5)';
-      cardReseller.style.background = 'rgba(79,70,229,0.05)';
+      cardReseller.style.border = '2px solid #4f46e5';
+      cardReseller.style.background = 'rgba(79,70,229,0.06)';
     }
     if (checkUser) checkUser.style.display = 'none';
     if (checkReseller) checkReseller.style.display = 'inline-block';
-    if (labelUser) labelUser.style.color = 'var(--slate-700)';
-    if (labelReseller) labelReseller.style.color = 'var(--primary, #4f46e5)';
+    if (labelUser) labelUser.style.color = '#334155';
+    if (labelReseller) labelReseller.style.color = '#4f46e5';
     if (resellerSection) resellerSection.style.display = 'block';
     if (btnSubmit) btnSubmit.textContent = 'Register Partner Account & Book Order →';
-    updateResellerOrderEstimate();
+    if (typeof window.updateResellerOrderEstimate === 'function') {
+      window.updateResellerOrderEstimate();
+    }
   } else {
     if (cardUser) {
-      cardUser.style.border = '2px solid var(--primary, #4f46e5)';
-      cardUser.style.background = 'rgba(79,70,229,0.05)';
+      cardUser.style.border = '2px solid #4f46e5';
+      cardUser.style.background = 'rgba(79,70,229,0.06)';
     }
     if (cardReseller) {
-      cardReseller.style.border = '1px solid var(--slate-200)';
+      cardReseller.style.border = '1px solid #cbd5e1';
       cardReseller.style.background = '#ffffff';
     }
     if (checkUser) checkUser.style.display = 'inline-block';
     if (checkReseller) checkReseller.style.display = 'none';
-    if (labelUser) labelUser.style.color = 'var(--primary, #4f46e5)';
-    if (labelReseller) labelReseller.style.color = 'var(--slate-700)';
+    if (labelUser) labelUser.style.color = '#4f46e5';
+    if (labelReseller) labelReseller.style.color = '#334155';
     if (resellerSection) resellerSection.style.display = 'none';
     if (btnSubmit) btnSubmit.textContent = 'Create Account & Get Started →';
   }
-  if (window.lucide) lucide.createIcons();
+  if (window.lucide && typeof lucide.createIcons === 'function') {
+    try { lucide.createIcons(); } catch (_) {}
+  }
 };
 
 window.updateResellerOrderEstimate = function() {
@@ -970,6 +974,9 @@ async function handleInviteUrlState() {
     const refCode = params.get('ref') || params.get('invite');
     const isSignup = window.location.pathname.includes('/signup') || window.location.pathname.includes('/register') || params.has('signup') || params.has('register');
 
+    const refBanner = document.getElementById('auth-referral-banner');
+    const accTypeGroup = document.getElementById('reg-account-type-group');
+
     if (refCode) {
       const inviteRes = await fetch(`/api/auth/invite/${encodeURIComponent(refCode)}`);
       if (inviteRes.ok) {
@@ -981,12 +988,15 @@ async function handleInviteUrlState() {
           const inviteInput = document.getElementById('reg-invite-code');
           if (inviteInput) inviteInput.value = inviteData.invite_code || refCode;
 
-          const refBanner = document.getElementById('auth-referral-banner');
           const partnerNameEl = document.getElementById('auth-partner-name');
           if (refBanner && partnerNameEl) {
             partnerNameEl.textContent = inviteData.reseller?.brand_name || 'Partner';
             refBanner.style.display = 'flex';
           }
+
+          // If invited by a reseller, register strictly as a client under that reseller
+          if (accTypeGroup) accTypeGroup.style.display = 'none';
+          if (window.setRegAccountType) window.setRegAccountType('user');
 
           if (inviteData.allow_self_registration === false) {
             const errBox = document.getElementById('reg-error-box');
@@ -1001,6 +1011,10 @@ async function handleInviteUrlState() {
         }
       }
     }
+
+    // Default: on platform domain with no referral code, strictly hide partner banner and show account type selector
+    if (refBanner) refBanner.style.display = 'none';
+    if (accTypeGroup) accTypeGroup.style.display = 'block';
 
     if (isSignup) {
       window.switchAuthMode('register');
@@ -10899,18 +10913,25 @@ async function resolveHostBranding() {
     const res = await fetch('/api/resellers/branding/resolve');
     if (!res.ok) return;
     const data = await res.json();
+    const refBanner = document.getElementById('auth-referral-banner');
+    const accTypeGroup = document.getElementById('reg-account-type-group');
+
     if (data && data.custom_branding && data.branding) {
       applyBrandProfile(data.branding);
       if (data.branding.invite_code) {
         const inviteInput = document.getElementById('reg-invite-code');
         if (inviteInput && !inviteInput.value) inviteInput.value = data.branding.invite_code;
-        const refBanner = document.getElementById('auth-referral-banner');
         const partnerNameEl = document.getElementById('auth-partner-name');
         if (refBanner && partnerNameEl) {
           partnerNameEl.textContent = data.branding.brand_name || 'Partner';
           refBanner.style.display = 'flex';
         }
+        if (accTypeGroup) accTypeGroup.style.display = 'none';
+        if (window.setRegAccountType) window.setRegAccountType('user');
       }
+    } else {
+      if (refBanner) refBanner.style.display = 'none';
+      if (accTypeGroup) accTypeGroup.style.display = 'block';
     }
   } catch (_) {}
 }
