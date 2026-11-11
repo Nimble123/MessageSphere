@@ -66,7 +66,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
   lastModified: true,
   maxAge: '1h',
   setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.html')) {
+    if (filePath.endsWith('.html') || filePath.endsWith('.js')) {
       res.set('Cache-Control', 'no-cache, must-revalidate');
     } else {
       res.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');

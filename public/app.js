@@ -6321,7 +6321,7 @@ document.addEventListener('click', (e) => {
   'modal-user-360', 'modal-action-dialog', 'modal-create-group', 'modal-edit-group', 
   'modal-merge-groups', 'modal-add-blacklist', 'modal-create-template', 'modal-edit-template',
   'modal-preview-template', 'modal-starter-templates', 'modal-request-header', 'modal-billing-order',
-  'modal-recharge-receipt', 'modal-admin-reseller-brand', 'modal-create-plan'
+  'modal-recharge-receipt', 'modal-admin-reseller-brand', 'modal-create-plan', 'modal-render-cloud-config'
 ].forEach(setupModal);
 
 // Create User Modal
@@ -11788,7 +11788,7 @@ window.forceVerifyCurrentResellerDomain = async function() {
   }
 };
 
-window.openRenderCloudConfigModal = async function() {
+async function openRenderCloudConfigModal() {
   const modal = document.getElementById('modal-render-cloud-config');
   if (!modal) return;
 
@@ -11842,7 +11842,16 @@ window.openRenderCloudConfigModal = async function() {
     }
     if (statusDesc) statusDesc.textContent = err.message;
   }
-};
+}
+window.openRenderCloudConfigModal = openRenderCloudConfigModal;
+
+const btnOpenRenderSslModal = document.getElementById('btn-open-render-ssl-modal');
+if (btnOpenRenderSslModal) {
+  btnOpenRenderSslModal.addEventListener('click', (e) => {
+    e.preventDefault();
+    openRenderCloudConfigModal();
+  });
+}
 
 window.saveRenderCloudConfig = async function() {
   const apiKeyInput = document.getElementById('render-api-key-input');
