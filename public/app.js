@@ -451,6 +451,7 @@ window.switchView = function(viewId) {
       'view-templates': { title: 'Message Templates', breadcrumb: 'MessageSphere / Content / Templates' },
       'view-wallet': { title: 'Credit Wallets & Ledger Statement', breadcrumb: 'MessageSphere / Billing / Passbook' },
       'view-billing': { title: 'Top-up Requests & Orders', breadcrumb: 'MessageSphere / Billing / Orders' },
+      'view-plans': { title: 'Credit Plans & Pricing Packages', breadcrumb: 'MessageSphere / Billing / Plans' },
       'view-users': { title: 'User & Reseller Management', breadcrumb: 'MessageSphere / Administration / Users' },
       'view-operations': { title: 'Operations Audit & Controls', breadcrumb: 'MessageSphere / Administration / Operations Audit' },
       'view-resellers': { title: 'Reseller Network', breadcrumb: 'MessageSphere / Administration / Resellers' },
@@ -493,6 +494,7 @@ window.switchView = function(viewId) {
   if (viewId === 'view-contacts') { loadContactGroups(); loadBlacklist(); }
   if (viewId === 'view-templates') loadTemplates();
   if (viewId === 'view-billing') loadBillingOrders();
+  if (viewId === 'view-plans') loadCreditPlans();
   if (viewId === 'view-operations') loadOperationsAudit();
   if (viewId === 'view-resellers') loadResellerNetwork();
   if (viewId === 'view-branding') loadMyBrandProfile();
@@ -6249,7 +6251,7 @@ document.addEventListener('click', (e) => {
   'modal-user-360', 'modal-action-dialog', 'modal-create-group', 'modal-edit-group', 
   'modal-merge-groups', 'modal-add-blacklist', 'modal-create-template', 'modal-edit-template',
   'modal-preview-template', 'modal-starter-templates', 'modal-request-header', 'modal-billing-order',
-  'modal-recharge-receipt', 'modal-admin-reseller-brand'
+  'modal-recharge-receipt', 'modal-admin-reseller-brand', 'modal-create-plan'
 ].forEach(setupModal);
 
 // Create User Modal
@@ -13988,6 +13990,652 @@ window.deleteSmsCampaign = async function(id) {
   } catch(err) {
     showToast('error', 'Delete Failed', err.message);
   }
+};
+
+// ==========================================
+// CREDIT PLANS & PRICING PACKAGES
+// ==========================================
+let cachedCreditPlans = [];
+let currentPlanCategory = 'all';
+let currentPlanChannelFilter = 'all';
+window.cachedCreditPlans = cachedCreditPlans;
+window.currentPlanCategory = currentPlanCategory;
+window.currentPlanChannelFilter = currentPlanChannelFilter;
+
+function getPlanChannelLabel(type) {
+  const map = {
+    'gsm_sms': 'GSM Bulk SMS',
+    'normal': 'WhatsApp Normal Text',
+    'cta': 'WhatsApp Interactive CTA',
+    'dp': 'WhatsApp DP Media',
+    'dp_cta': 'WhatsApp DP + CTA Combo',
+    'own_number': 'Dedicated Virtual SIM'
+  };
+  return map[type] || type || 'Messaging';
+}
+
+function getPlanChannelIcon(type) {
+  const map = {
+    'gsm_sms': 'radio',
+    'normal': 'message-circle',
+    'cta': 'mouse-pointer-click',
+    'dp': 'image',
+    'dp_cta': 'sparkles',
+    'own_number': 'smartphone'
+  };
+  return map[type] || 'package';
+}
+
+window.filterPlansByChannel = function(ch, btn) {
+  currentPlanChannelFilter = ch || 'all';
+  window.currentPlanChannelFilter = currentPlanChannelFilter;
+  document.querySelectorAll('.plan-filter-pill').forEach(b => {
+    b.classList.remove('active');
+    b.style.fontWeight = '600';
+  });
+  if (btn) {
+    btn.classList.add('active');
+    btn.style.fontWeight = '700';
+  }
+  renderCreditPlansGrid();
+};
+
+window.switchPlanCategory = function(cat) {
+  currentPlanCategory = cat || 'all';
+  window.currentPlanCategory = currentPlanCategory;
+  const btns = document.querySelectorAll('.plan-scope-btn');
+  btns.forEach(b => {
+    if (b.dataset.scope === currentPlanCategory) {
+      b.style.background = '#4f46e5';
+      b.style.color = '#fff';
+      b.style.fontWeight = '700';
+    } else {
+      b.style.background = 'transparent';
+      b.style.color = '#475569';
+      b.style.fontWeight = '600';
+    }
+  });
+
+  const hintEl = document.getElementById('plans-scope-hint');
+  if (hintEl) {
+    if (currentUser?.role === 'admin') {
+      if (cat === 'all') hintEl.textContent = 'Showing all configured retail & wholesale credit plans.';
+      else if (cat === 'user') hintEl.textContent = 'Retail credit packages available for direct client accounts.';
+      else if (cat === 'reseller') hintEl.textContent = 'Wholesale volume packs for Reseller Partners (Min 1,00,000 qty).';
+    } else if (currentUser?.role === 'reseller') {
+      if (cat === 'wholesale') hintEl.textContent = 'Wholesale credit packages provided by Super Admin to stock your partner wallet.';
+      else if (cat === 'client_plans') hintEl.textContent = 'Custom credit plans created for your downstream clients.';
+    }
+  }
+
+  renderCreditPlansGrid();
+};
+
+window.loadCreditPlans = async function() {
+  if (!currentUser) return;
+  const container = document.getElementById('plans-grid-container');
+  if (!container) return;
+
+  const btnCreate = document.getElementById('btn-create-plan-modal');
+  const scopeStrip = document.getElementById('plans-scope-strip');
+  const scopeButtons = document.getElementById('plans-scope-buttons');
+
+  const isAdmin = currentUser.role === 'admin';
+  const isReseller = currentUser.role === 'reseller';
+
+  if (btnCreate) {
+    btnCreate.style.display = (isAdmin || isReseller) ? 'inline-flex' : 'none';
+  }
+
+  if (scopeStrip && scopeButtons) {
+    if (isAdmin) {
+      scopeStrip.style.display = 'flex';
+      scopeButtons.innerHTML = `
+        <button type="button" class="plan-scope-btn" data-scope="all" onclick="switchPlanCategory('all')" style="padding: 5px 12px; font-size: 0.74rem; font-weight: ${currentPlanCategory === 'all' ? '700' : '600'}; background: ${currentPlanCategory === 'all' ? '#4f46e5' : 'transparent'}; color: ${currentPlanCategory === 'all' ? '#fff' : '#475569'}; border-radius: 6px; border: none; cursor: pointer;">
+          All Plans
+        </button>
+        <button type="button" class="plan-scope-btn" data-scope="user" onclick="switchPlanCategory('user')" style="padding: 5px 12px; font-size: 0.74rem; font-weight: ${currentPlanCategory === 'user' ? '700' : '600'}; background: ${currentPlanCategory === 'user' ? '#4f46e5' : 'transparent'}; color: ${currentPlanCategory === 'user' ? '#fff' : '#475569'}; border-radius: 6px; border: none; cursor: pointer;">
+          Direct Clients (Retail)
+        </button>
+        <button type="button" class="plan-scope-btn" data-scope="reseller" onclick="switchPlanCategory('reseller')" style="padding: 5px 12px; font-size: 0.74rem; font-weight: ${currentPlanCategory === 'reseller' ? '700' : '600'}; background: ${currentPlanCategory === 'reseller' ? '#4f46e5' : 'transparent'}; color: ${currentPlanCategory === 'reseller' ? '#fff' : '#475569'}; border-radius: 6px; border: none; cursor: pointer;">
+          Reseller Wholesale (1L+)
+        </button>
+      `;
+    } else if (isReseller) {
+      scopeStrip.style.display = 'flex';
+      if (currentPlanCategory === 'all' || currentPlanCategory === 'user' || currentPlanCategory === 'reseller') {
+        currentPlanCategory = 'wholesale';
+        window.currentPlanCategory = 'wholesale';
+      }
+      scopeButtons.innerHTML = `
+        <button type="button" class="plan-scope-btn" data-scope="wholesale" onclick="switchPlanCategory('wholesale')" style="padding: 5px 12px; font-size: 0.74rem; font-weight: ${currentPlanCategory === 'wholesale' ? '700' : '600'}; background: ${currentPlanCategory === 'wholesale' ? '#4f46e5' : 'transparent'}; color: ${currentPlanCategory === 'wholesale' ? '#fff' : '#475569'}; border-radius: 6px; border: none; cursor: pointer;">
+          Wholesale Plans (From Admin)
+        </button>
+        <button type="button" class="plan-scope-btn" data-scope="client_plans" onclick="switchPlanCategory('client_plans')" style="padding: 5px 12px; font-size: 0.74rem; font-weight: ${currentPlanCategory === 'client_plans' ? '700' : '600'}; background: ${currentPlanCategory === 'client_plans' ? '#4f46e5' : 'transparent'}; color: ${currentPlanCategory === 'client_plans' ? '#fff' : '#475569'}; border-radius: 6px; border: none; cursor: pointer;">
+          My Client Plans
+        </button>
+      `;
+    } else {
+      scopeStrip.style.display = 'none';
+    }
+  }
+
+  container.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--slate-400);">Loading available plans...</div>`;
+
+  try {
+    const plansData = await apiFetch('/billing/plans');
+    cachedCreditPlans = plansData;
+    window.cachedCreditPlans = cachedCreditPlans;
+    renderCreditPlansGrid();
+  } catch (err) {
+    container.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #ef4444;">Failed to load credit plans: ${escapeHtml(err.message)}</div>`;
+  }
+};
+
+window.renderCreditPlansGrid = function() {
+  const container = document.getElementById('plans-grid-container');
+  if (!container) return;
+
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  const isReseller = currentUser && currentUser.role === 'reseller';
+
+  let listToDisplay = [];
+
+  if (isAdmin) {
+    const all = Array.isArray(cachedCreditPlans) ? cachedCreditPlans : [];
+    if (currentPlanCategory === 'user') {
+      listToDisplay = all.filter(p => p.target_role === 'user');
+    } else if (currentPlanCategory === 'reseller') {
+      listToDisplay = all.filter(p => p.target_role === 'reseller');
+    } else {
+      listToDisplay = all;
+    }
+  } else if (isReseller) {
+    const wholesale = (cachedCreditPlans && cachedCreditPlans.wholesale_plans) || [];
+    const myClient = (cachedCreditPlans && cachedCreditPlans.my_client_plans) || [];
+    if (currentPlanCategory === 'client_plans') {
+      listToDisplay = myClient;
+    } else {
+      listToDisplay = wholesale;
+    }
+  } else {
+    listToDisplay = Array.isArray(cachedCreditPlans) ? cachedCreditPlans : [];
+  }
+
+  if (currentPlanChannelFilter && currentPlanChannelFilter !== 'all') {
+    listToDisplay = listToDisplay.filter(p => p.credit_type === currentPlanChannelFilter);
+  }
+
+  if (listToDisplay.length === 0) {
+    container.innerHTML = `
+      <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; background: #fff; border-radius: 12px; border: 1.5px dashed #cbd5e1;">
+        <div style="width: 48px; height: 48px; border-radius: 50%; background: #eef2ff; color: #6366f1; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px;">
+          <i data-lucide="package-open" style="width: 24px; height: 24px;"></i>
+        </div>
+        <h4 style="font-size: 1.05rem; font-weight: 700; color: #1e293b; margin: 0 0 6px 0;">No credit plans found</h4>
+        <p style="font-size: 0.8rem; color: #64748b; margin: 0 0 16px 0; max-width: 400px; margin-inline: auto;">
+          ${(isAdmin || isReseller) ? 'No packages found matching this category or channel. Create custom plans to give clients or resellers pre-configured credit packs.' : 'No credit plans currently available. Please contact your account manager for custom volume allocations.'}
+        </p>
+        ${(isAdmin || isReseller) ? `
+          <button type="button" class="btn-action btn-action-primary" onclick="openCreatePlanModal()" style="padding: 8px 18px; font-weight: 700; background: #4f46e5; color: #fff;">
+            <i data-lucide="plus-circle" style="width: 15px; height: 15px;"></i> Create New Plan
+          </button>
+        ` : ''}
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
+
+  container.innerHTML = listToDisplay.map(plan => {
+    const isWholesale = plan.target_role === 'reseller';
+    const isOwner = currentUser && (currentUser.id === plan.created_by || isAdmin);
+    const channelIcon = getPlanChannelIcon(plan.credit_type);
+    const channelLabel = getPlanChannelLabel(plan.credit_type);
+    const destLabel = plan.destination === 'international' ? 'International Route' : 'Domestic (India)';
+
+    const borderStyle = plan.is_active ? (isWholesale ? 'border-color: #d8b4fe;' : 'border-color: #c7d2fe;') : 'border-color: #e2e8f0; opacity: 0.75;';
+
+    return `
+      <div class="card plan-card" style="border-radius: 14px; border: 1.5px solid; ${borderStyle} background: #ffffff; padding: 22px; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.2s ease-in-out; box-shadow: 0 2px 5px rgba(0,0,0,0.03); position: relative;">
+        
+        <div>
+          <!-- Top Row: Channel Badge & Tags -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
+            <span style="font-size: 0.72rem; font-weight: 700; background: #eef2ff; color: #4338ca; padding: 4px 10px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid #c7d2fe;">
+              <i data-lucide="${channelIcon}" style="width: 12px; height: 12px;"></i> ${escapeHtml(channelLabel)}
+            </span>
+            
+            <div style="display: flex; align-items: center; gap: 5px;">
+              ${plan.badge_text ? `
+                <span style="font-size: 0.68rem; font-weight: 800; background: #fef3c7; color: #92400e; padding: 3px 8px; border-radius: 20px; border: 1px solid #fde68a; text-transform: uppercase; letter-spacing: 0.3px;">
+                  ${escapeHtml(plan.badge_text)}
+                </span>
+              ` : ''}
+
+              ${(isAdmin || isReseller) ? `
+                <span style="font-size: 0.66rem; font-weight: 700; padding: 2px 7px; border-radius: 20px; ${plan.is_active ? 'background: #dcfce7; color: #15803d;' : 'background: #fee2e2; color: #b91c1c;'}">
+                  ${plan.is_active ? 'Active' : 'Inactive'}
+                </span>
+              ` : ''}
+            </div>
+          </div>
+
+          <!-- Target Role Tag for Admins/Resellers -->
+          ${(isAdmin || (isReseller && currentPlanCategory === 'all')) ? `
+            <div style="margin-bottom: 10px;">
+              ${isWholesale ? `
+                <span style="background: #fae8ff; color: #86198f; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 12px; border: 1px solid #f0abfc; display: inline-flex; align-items: center; gap: 3px;">
+                  <i data-lucide="network" style="width: 11px; height: 11px;"></i> Reseller Wholesale (Min 1L)
+                </span>
+              ` : `
+                <span style="background: #e0f2fe; color: #0369a1; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 12px; border: 1px solid #bae6fd; display: inline-flex; align-items: center; gap: 3px;">
+                  <i data-lucide="user" style="width: 11px; height: 11px;"></i> Direct Client Retail
+                </span>
+              `}
+            </div>
+          ` : ''}
+
+          <!-- Plan Title -->
+          <h3 style="font-size: 1.12rem; font-weight: 800; color: #0f172a; margin: 0 0 6px 0; line-height: 1.3;">
+            ${escapeHtml(plan.plan_name)}
+          </h3>
+
+          <!-- Description -->
+          <p style="font-size: 0.77rem; color: #64748b; margin: 0 0 16px 0; min-height: 32px; line-height: 1.45;">
+            ${escapeHtml(plan.description || `${destLabel} with carrier telecom routing and real-time delivery reports.`)}
+          </p>
+
+          <!-- Pricing & Credit Details Box -->
+          <div style="background: ${isWholesale ? '#faf5ff' : '#f8fafc'}; border: 1px solid ${isWholesale ? '#e9d5ff' : '#e2e8f0'}; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;">
+            <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px;">
+              <span style="font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Package Price</span>
+              <span style="font-size: 0.72rem; color: #475569; font-weight: 600;">${destLabel}</span>
+            </div>
+            
+            <div style="display: flex; align-items: baseline; justify-content: space-between;">
+              <div style="font-size: 1.55rem; font-weight: 900; color: ${isWholesale ? '#6b21a8' : '#1e1b4b'}; letter-spacing: -0.5px;">
+                ₹${Number(plan.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <div style="text-align: right;">
+                <div style="font-size: 0.8rem; font-weight: 700; color: #0f172a;">
+                  ₹${Number(plan.rate_per_credit).toFixed(4)} <span style="font-size: 0.68rem; font-weight: 500; color: #64748b;">/ credit</span>
+                </div>
+                <div style="font-size: 0.68rem; color: #64748b;">
+                  (${(Number(plan.rate_per_credit) * 100).toFixed(1)} paise)
+                </div>
+              </div>
+            </div>
+
+            <!-- Credits Quantity Highlight -->
+            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed ${isWholesale ? '#e9d5ff' : '#cbd5e1'}; display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-size: 0.75rem; color: #475569; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+                <i data-lucide="layers" style="width: 12px; height: 12px; color: #6366f1;"></i> Volume:
+              </span>
+              <strong style="font-size: 0.92rem; color: #0f172a; font-weight: 800;">
+                ${Number(plan.credits).toLocaleString()} Credits
+              </strong>
+            </div>
+          </div>
+
+          ${(isAdmin && plan.creator_email) ? `
+            <div style="font-size: 0.68rem; color: #94a3b8; margin-bottom: 14px;">
+              Created by: <strong>${escapeHtml(plan.creator_email)}</strong> (${escapeHtml(plan.creator_role || 'admin')})
+            </div>
+          ` : ''}
+        </div>
+
+        <!-- Action Buttons -->
+        <div>
+          ${((currentUser.role === 'user' && !isOwner) || (isReseller && isWholesale)) ? `
+            <button type="button" class="btn-action btn-action-primary" onclick="orderCreditPlan(${plan.id})" style="width: 100%; justify-content: center; font-weight: 700; padding: 10px 14px; ${isWholesale ? 'background: #7c3aed;' : 'background: #4f46e5;'} color: #fff; box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);">
+              <i data-lucide="shopping-cart" style="width: 15px; height: 15px;"></i> ${isWholesale ? 'Order Wholesale Pack' : 'Order Now & Top-up'}
+            </button>
+          ` : ''}
+
+          ${(isOwner) ? `
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <button type="button" class="btn-action btn-action-secondary" onclick="openCreatePlanModal(${plan.id})" style="flex: 1; justify-content: center; font-size: 0.76rem; padding: 7px 10px; font-weight: 600;">
+                <i data-lucide="edit-3" style="width: 13px; height: 13px;"></i> Edit
+              </button>
+              
+              <button type="button" class="btn-action btn-action-secondary" onclick="toggleCreditPlanStatus(${plan.id})" title="${plan.is_active ? 'Pause Plan' : 'Activate Plan'}" style="font-size: 0.76rem; padding: 7px 10px; font-weight: 600; color: ${plan.is_active ? '#475569' : '#059669'};">
+                <i data-lucide="${plan.is_active ? 'pause' : 'play'}" style="width: 13px; height: 13px;"></i>
+              </button>
+
+              <button type="button" class="btn-action btn-action-danger" onclick="deleteCreditPlan(${plan.id})" title="Delete Plan" style="padding: 7px 10px;">
+                <i data-lucide="trash-2" style="width: 13px; height: 13px;"></i>
+              </button>
+
+              ${(isReseller && isWholesale) ? `
+                <button type="button" class="btn-action btn-action-primary" onclick="orderCreditPlan(${plan.id})" title="Re-order" style="padding: 7px 10px; background: #7c3aed; color: #fff;">
+                  <i data-lucide="shopping-cart" style="width: 13px; height: 13px;"></i>
+                </button>
+              ` : ''}
+            </div>
+          ` : ''}
+        </div>
+
+      </div>
+    `;
+  }).join('');
+
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
+};
+
+window.openCreatePlanModal = function(planId = null) {
+  const modal = document.getElementById('modal-create-plan');
+  if (!modal) return;
+
+  const role = currentUser ? currentUser.role : 'user';
+  if (role !== 'admin' && role !== 'reseller') {
+    showToast('error', 'Access Denied', 'Only administrators and resellers can create plans.');
+    return;
+  }
+
+  const targetGroup = document.getElementById('plan-target-audience-group');
+  const radioUser = document.querySelector('input[name="plan_target_role"][value="user"]');
+  const radioReseller = document.querySelector('input[name="plan_target_role"][value="reseller"]');
+  const titleEl = document.getElementById('modal-plan-title');
+
+  if (role === 'reseller') {
+    if (targetGroup) targetGroup.style.display = 'none';
+    if (radioUser) radioUser.checked = true;
+    if (radioReseller) radioReseller.checked = false;
+  } else {
+    if (targetGroup) targetGroup.style.display = 'block';
+  }
+
+  if (planId) {
+    let plan = null;
+    if (Array.isArray(cachedCreditPlans)) {
+      plan = cachedCreditPlans.find(p => p.id === planId);
+    } else if (cachedCreditPlans && typeof cachedCreditPlans === 'object') {
+      const all = [...(cachedCreditPlans.wholesale_plans || []), ...(cachedCreditPlans.my_client_plans || [])];
+      plan = all.find(p => p.id === planId);
+    }
+    if (!plan) {
+      showToast('error', 'Error', 'Plan not found.');
+      return;
+    }
+
+    if (titleEl) titleEl.textContent = 'Edit Credit Plan';
+    document.getElementById('plan-form-id').value = plan.id;
+    document.getElementById('plan-form-name').value = plan.plan_name || '';
+    document.getElementById('plan-form-channel').value = plan.credit_type || 'gsm_sms';
+    document.getElementById('plan-form-dest').value = plan.destination || 'domestic';
+    document.getElementById('plan-form-credits').value = plan.credits || 50000;
+    document.getElementById('plan-form-rate').value = plan.rate_per_credit || '0.1200';
+    document.getElementById('plan-form-badge').value = plan.badge_text || '';
+    document.getElementById('plan-form-status').value = plan.is_active ? 'true' : 'false';
+    document.getElementById('plan-form-desc').value = plan.description || '';
+
+    if (plan.target_role === 'reseller' && radioReseller) {
+      radioReseller.checked = true;
+      if (radioUser) radioUser.checked = false;
+    } else {
+      if (radioUser) radioUser.checked = true;
+      if (radioReseller) radioReseller.checked = false;
+    }
+  } else {
+    if (titleEl) titleEl.textContent = 'Create Credit Plan';
+    document.getElementById('plan-form-id').value = '';
+    document.getElementById('plan-form-name').value = '';
+    document.getElementById('plan-form-channel').value = 'gsm_sms';
+    document.getElementById('plan-form-dest').value = 'domestic';
+    
+    if (role === 'admin' && radioReseller && radioReseller.checked) {
+      document.getElementById('plan-form-credits').value = 100000;
+      document.getElementById('plan-form-rate').value = '0.0900';
+    } else {
+      document.getElementById('plan-form-credits').value = 50000;
+      document.getElementById('plan-form-rate').value = '0.1200';
+    }
+    document.getElementById('plan-form-badge').value = '';
+    document.getElementById('plan-form-status').value = 'true';
+    document.getElementById('plan-form-desc').value = '';
+  }
+
+  onPlanTargetRoleChange();
+  calculatePlanTotal();
+  modal.style.display = 'flex';
+  if (window.lucide) window.lucide.createIcons();
+};
+
+window.onPlanTargetRoleChange = function() {
+  const radioReseller = document.querySelector('input[name="plan_target_role"][value="reseller"]');
+  const isResellerTarget = radioReseller && radioReseller.checked;
+  const creditsInput = document.getElementById('plan-form-credits');
+  const hintEl = document.getElementById('plan-qty-hint');
+  const lblUser = document.getElementById('lbl-plan-target-user');
+  const lblReseller = document.getElementById('lbl-plan-target-reseller');
+
+  if (isResellerTarget) {
+    if (lblReseller) {
+      lblReseller.style.border = '2px solid #4f46e5';
+      lblReseller.style.background = 'rgba(79,70,229,0.05)';
+    }
+    if (lblUser) {
+      lblUser.style.border = '1px solid #cbd5e1';
+      lblUser.style.background = '#fff';
+    }
+    if (creditsInput) {
+      creditsInput.min = 100000;
+      if (parseInt(creditsInput.value, 10) < 100000) {
+        creditsInput.value = 100000;
+      }
+    }
+    if (hintEl) hintEl.textContent = 'Wholesale package: Minimum 1,00,000 credits';
+  } else {
+    if (lblUser) {
+      lblUser.style.border = '2px solid #4f46e5';
+      lblUser.style.background = 'rgba(79,70,229,0.05)';
+    }
+    if (lblReseller) {
+      lblReseller.style.border = '1px solid #cbd5e1';
+      lblReseller.style.background = '#fff';
+    }
+    if (creditsInput) {
+      creditsInput.min = 100;
+    }
+    if (hintEl) hintEl.textContent = 'Standard retail package';
+  }
+  calculatePlanTotal();
+};
+
+window.onPlanChannelChange = function() {
+  const channel = document.getElementById('plan-form-channel')?.value;
+  const rateInput = document.getElementById('plan-form-rate');
+  const radioReseller = document.querySelector('input[name="plan_target_role"][value="reseller"]');
+  const isWholesale = radioReseller && radioReseller.checked;
+
+  const retailRates = {
+    'gsm_sms': 0.12,
+    'normal': 0.10,
+    'cta': 0.15,
+    'dp': 0.18,
+    'dp_cta': 0.22,
+    'own_number': 0.08
+  };
+  const wholesaleRates = {
+    'gsm_sms': 0.09,
+    'normal': 0.08,
+    'cta': 0.11,
+    'dp': 0.14,
+    'dp_cta': 0.16,
+    'own_number': 0.06
+  };
+
+  const currentRate = parseFloat(rateInput?.value);
+  if (rateInput && (!currentRate || [0.12, 0.10, 0.15, 0.18, 0.22, 0.08, 0.09, 0.11, 0.14, 0.16, 0.06].includes(currentRate))) {
+    const table = isWholesale ? wholesaleRates : retailRates;
+    rateInput.value = (table[channel] || 0.12).toFixed(4);
+  }
+
+  calculatePlanTotal();
+};
+
+window.calculatePlanTotal = function() {
+  const qty = parseInt(document.getElementById('plan-form-credits')?.value || 0, 10);
+  const rate = parseFloat(document.getElementById('plan-form-rate')?.value || 0);
+  const total = Math.round(qty * rate * 100) / 100;
+
+  const previewQty = document.getElementById('calc-preview-qty');
+  const previewRate = document.getElementById('calc-preview-rate');
+  const previewTotal = document.getElementById('calc-preview-total');
+
+  if (previewQty) previewQty.textContent = Number(qty || 0).toLocaleString();
+  if (previewRate) previewRate.textContent = Number(rate || 0).toFixed(4);
+  if (previewTotal) previewTotal.textContent = `₹${Number(total || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+window.saveCreditPlan = async function() {
+  const btn = document.getElementById('btn-save-plan');
+  const planId = document.getElementById('plan-form-id')?.value;
+  const planName = document.getElementById('plan-form-name')?.value.trim();
+  const channel = document.getElementById('plan-form-channel')?.value;
+  const destination = document.getElementById('plan-form-dest')?.value;
+  const credits = parseInt(document.getElementById('plan-form-credits')?.value, 10);
+  const rate = parseFloat(document.getElementById('plan-form-rate')?.value);
+  const badge = document.getElementById('plan-form-badge')?.value.trim();
+  const isActive = document.getElementById('plan-form-status')?.value === 'true';
+  const description = document.getElementById('plan-form-desc')?.value.trim();
+
+  const radioReseller = document.querySelector('input[name="plan_target_role"][value="reseller"]');
+  const targetRole = (currentUser.role === 'admin' && radioReseller && radioReseller.checked) ? 'reseller' : 'user';
+
+  if (!planName) {
+    showToast('error', 'Validation Error', 'Please enter a plan title.');
+    return;
+  }
+  if (isNaN(credits) || credits < 100) {
+    showToast('error', 'Validation Error', 'Credits quantity must be at least 100.');
+    return;
+  }
+  if (targetRole === 'reseller' && credits < 100000) {
+    showToast('error', 'Validation Error', 'Wholesale plans for resellers require a minimum of 1,00,000 credits.');
+    return;
+  }
+  if (isNaN(rate) || rate <= 0) {
+    showToast('error', 'Validation Error', 'Please enter a valid rate per message.');
+    return;
+  }
+
+  const payload = {
+    plan_name: planName,
+    credit_type: channel,
+    destination: destination,
+    credits: credits,
+    rate_per_credit: rate,
+    total_amount: Math.round(credits * rate * 100) / 100,
+    badge_text: badge || null,
+    is_active: isActive,
+    description: description || null,
+    target_role: targetRole
+  };
+
+  try {
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving Plan...'; }
+
+    let res;
+    if (planId) {
+      res = await apiFetch(`/billing/plans/${planId}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+      showToast('success', 'Plan Updated', res.message || 'Plan updated successfully.');
+    } else {
+      res = await apiFetch('/billing/plans', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      showToast('success', 'Plan Created', res.message || 'Plan created successfully.');
+    }
+
+    const modal = document.getElementById('modal-create-plan');
+    if (modal) modal.style.display = 'none';
+    await loadCreditPlans();
+
+  } catch (err) {
+    showToast('error', 'Save Failed', err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save Plan'; }
+  }
+};
+
+window.toggleCreditPlanStatus = async function(planId) {
+  try {
+    const res = await apiFetch(`/billing/plans/${planId}/toggle`, { method: 'PATCH' });
+    showToast('success', 'Plan Status Updated', res.message || 'Status toggled');
+    loadCreditPlans();
+  } catch (err) {
+    showToast('error', 'Status Change Failed', err.message);
+  }
+};
+
+window.deleteCreditPlan = function(planId) {
+  window.openActionDialog({
+    title: `Delete Credit Plan #${planId}`,
+    message: 'Are you sure you want to delete this credit plan? Existing top-up invoices will remain intact.',
+    icon: 'trash-2',
+    iconColor: '#dc2626',
+    iconBg: '#fee2e2',
+    confirmText: 'Delete Plan',
+    confirmClass: 'btn-action-danger',
+    onConfirm: async () => {
+      try {
+        const res = await apiFetch(`/billing/plans/${planId}`, { method: 'DELETE' });
+        showToast('success', 'Plan Deleted', res.message || 'Plan deleted');
+        loadCreditPlans();
+      } catch (err) {
+        showToast('error', 'Delete Failed', err.message);
+      }
+    }
+  });
+};
+
+window.orderCreditPlan = function(planId) {
+  let plan = null;
+  if (Array.isArray(cachedCreditPlans)) {
+    plan = cachedCreditPlans.find(p => p.id === planId);
+  } else if (cachedCreditPlans && typeof cachedCreditPlans === 'object') {
+    const all = [...(cachedCreditPlans.wholesale_plans || []), ...(cachedCreditPlans.my_client_plans || [])];
+    plan = all.find(p => p.id === planId);
+  }
+
+  if (!plan) {
+    showToast('error', 'Error', 'Plan not found');
+    return;
+  }
+
+  window.openActionDialog({
+    title: `Order Plan: ${plan.plan_name}`,
+    message: `Book ${Number(plan.credits).toLocaleString()} ${getPlanChannelLabel(plan.credit_type)} credits at ₹${Number(plan.rate_per_credit).toFixed(4)}/credit.\n\nTotal Plan Price: ₹${Number(plan.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Tax calculated at settlement based on GST profile).`,
+    icon: 'shopping-cart',
+    iconColor: '#4f46e5',
+    iconBg: '#e0e7ff',
+    confirmText: 'Confirm & Place Order',
+    confirmClass: 'btn-action-primary',
+    showInput: true,
+    inputLabel: 'Payment Reference / Bank UTR / Note (Optional)',
+    inputValue: 'ONLINE_TOPUP',
+    onConfirm: async ({ input: notes }) => {
+      try {
+        const res = await apiFetch(`/billing/plans/${plan.id}/order`, {
+          method: 'POST',
+          body: JSON.stringify({ notes: notes || 'PLAN_ORDER' })
+        });
+        showToast('success', 'Order Submitted', res.message || 'Credit top-up order generated.');
+        if (typeof switchView === 'function') {
+          switchView('view-billing');
+        }
+      } catch (err) {
+        showToast('error', 'Order Failed', err.message);
+      }
+    }
+  });
 };
 
 // Helper to escape HTML

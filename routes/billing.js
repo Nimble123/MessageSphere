@@ -621,4 +621,413 @@ router.post('/requests/:id/record-payment', authenticate, requireRoles('admin', 
   }
 });
 
+// ==========================================
+// CREDIT PLANS & PRICING PACKAGES API
+// ==========================================
+
+// GET /api/billing/plans - List credit plans
+router.get('/plans', authenticate, async (req, res) => {
+  try {
+    const role = req.user.role;
+    const { scope, target_role, credit_type, destination } = req.query;
+
+    if (role === 'admin') {
+      let conditions = [];
+      let params = [];
+
+      if (target_role && ['user', 'reseller'].includes(target_role)) {
+        params.push(target_role);
+        conditions.push(`cp.target_role = $${params.length}`);
+      }
+      if (credit_type && CREDIT_TYPES.includes(credit_type)) {
+        params.push(credit_type);
+        conditions.push(`cp.credit_type = $${params.length}`);
+      }
+      if (destination && DESTINATIONS.includes(destination)) {
+        params.push(destination);
+        conditions.push(`cp.destination = $${params.length}`);
+      }
+
+      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+      const sql = `
+        SELECT cp.*, u.email as creator_email, u.role as creator_role, u.company_name as creator_company
+        FROM credit_plans cp
+        JOIN users u ON cp.created_by = u.id
+        ${whereClause}
+        ORDER BY cp.target_role DESC, cp.credit_type ASC, cp.credits ASC
+      `;
+      const result = await query(sql, params);
+      return res.json(result.rows);
+
+    } else if (role === 'reseller') {
+      if (scope === 'wholesale' || scope === 'buy') {
+        // Wholesale plans from Super Admin to purchase
+        const sql = `
+          SELECT cp.*, u.email as creator_email
+          FROM credit_plans cp
+          JOIN users u ON cp.created_by = u.id
+          WHERE cp.target_role = 'reseller' AND cp.is_active = TRUE
+          ORDER BY cp.credit_type ASC, cp.credits ASC
+        `;
+        const result = await query(sql);
+        return res.json(result.rows);
+      } else if (scope === 'client_plans' || scope === 'manage') {
+        // Plans created by this reseller for their clients
+        const sql = `
+          SELECT cp.*, u.email as creator_email
+          FROM credit_plans cp
+          JOIN users u ON cp.created_by = u.id
+          WHERE cp.created_by = $1 AND cp.target_role = 'user'
+          ORDER BY cp.created_at DESC
+        `;
+        const result = await query(sql, [req.user.id]);
+        return res.json(result.rows);
+      } else {
+        // Return both wholesale plans & reseller's own client plans
+        const wholesaleRes = await query(`
+          SELECT cp.*, u.email as creator_email
+          FROM credit_plans cp
+          JOIN users u ON cp.created_by = u.id
+          WHERE cp.target_role = 'reseller' AND cp.is_active = TRUE
+          ORDER BY cp.credit_type ASC, cp.credits ASC
+        `);
+        const clientPlansRes = await query(`
+          SELECT cp.*, u.email as creator_email
+          FROM credit_plans cp
+          JOIN users u ON cp.created_by = u.id
+          WHERE cp.created_by = $1 AND cp.target_role = 'user'
+          ORDER BY cp.created_at DESC
+        `, [req.user.id]);
+
+        return res.json({
+          wholesale_plans: wholesaleRes.rows,
+          my_client_plans: clientPlansRes.rows
+        });
+      }
+
+    } else {
+      // Standard Client (user)
+      if (req.user.reseller_id) {
+        // Check if managing reseller created custom plans
+        const resellerPlansRes = await query(`
+          SELECT cp.*, u.email as creator_email
+          FROM credit_plans cp
+          JOIN users u ON cp.created_by = u.id
+          WHERE cp.created_by = $1 AND cp.target_role = 'user' AND cp.is_active = TRUE
+          ORDER BY cp.credit_type ASC, cp.credits ASC
+        `, [req.user.reseller_id]);
+
+        if (resellerPlansRes.rows.length > 0) {
+          return res.json(resellerPlansRes.rows);
+        }
+      }
+
+      // Default platform user plans created by admin
+      const platformPlansRes = await query(`
+        SELECT cp.*, u.email as creator_email
+        FROM credit_plans cp
+        JOIN users u ON cp.created_by = u.id
+        WHERE cp.target_role = 'user' AND cp.is_active = TRUE
+        ORDER BY cp.credit_type ASC, cp.credits ASC
+      `);
+      return res.json(platformPlansRes.rows);
+    }
+
+  } catch (err) {
+    console.error('List credit plans error:', err);
+    return res.status(500).json({ error: 'Failed to load credit plans' });
+  }
+});
+
+// POST /api/billing/plans - Create a new credit plan
+router.post('/plans', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  const {
+    plan_name,
+    description,
+    credit_type,
+    destination = 'domestic',
+    credits,
+    rate_per_credit,
+    badge_text
+  } = req.body;
+
+  let target_role = String(req.body.target_role || 'user').toLowerCase().trim();
+
+  // Permission enforcement on target_role
+  if (req.user.role === 'reseller') {
+    target_role = 'user'; // Resellers can only create plans for their downstream clients
+  } else if (!['user', 'reseller'].includes(target_role)) {
+    target_role = 'user';
+  }
+
+  const name = String(plan_name || '').trim();
+  if (!name || name.length < 2 || name.length > 150) {
+    return res.status(400).json({ error: 'Plan name is required and must be between 2 and 150 characters' });
+  }
+
+  if (!CREDIT_TYPES.includes(credit_type)) {
+    return res.status(400).json({ error: `Invalid channel. Must be one of: ${CREDIT_TYPES.join(', ')}` });
+  }
+
+  if (!DESTINATIONS.includes(destination)) {
+    return res.status(400).json({ error: `Invalid destination. Must be one of: ${DESTINATIONS.join(', ')}` });
+  }
+
+  const qty = parseInt(credits, 10);
+  if (!Number.isSafeInteger(qty) || qty < 100 || qty > 100000000) {
+    return res.status(400).json({ error: 'Credits quantity must be a positive number between 100 and 100,000,000' });
+  }
+
+  if (target_role === 'reseller' && qty < 100000) {
+    return res.status(400).json({ error: 'Wholesale reseller plans require a minimum quantity of 1,00,000 credits' });
+  }
+
+  const rate = parseFloat(rate_per_credit);
+  if (isNaN(rate) || rate <= 0 || rate > 100) {
+    return res.status(400).json({ error: 'Rate per credit must be a valid positive amount in INR (e.g. 0.1200)' });
+  }
+
+  let totalAmt = parseFloat(req.body.total_amount);
+  if (isNaN(totalAmt) || totalAmt <= 0) {
+    totalAmt = Math.round(qty * rate * 100) / 100;
+  }
+
+  const badge = String(badge_text || '').trim().slice(0, 50) || null;
+  const desc = String(description || '').trim().slice(0, 500) || null;
+  const isActive = req.body.is_active !== false;
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    const insertSql = `
+      INSERT INTO credit_plans (
+        created_by, target_role, plan_name, description, credit_type, destination,
+        credits, rate_per_credit, total_amount, badge_text, is_active
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      RETURNING *
+    `;
+    const result = await client.query(insertSql, [
+      req.user.id, target_role, name, desc, credit_type, destination,
+      qty, rate, totalAmt, badge, isActive
+    ]);
+
+    const createdPlan = result.rows[0];
+
+    await logAudit(client, {
+      actorId: req.user.id,
+      entityType: 'credit_plan',
+      entityId: createdPlan.id,
+      action: 'credit_plan_created',
+      details: {
+        plan_name: name,
+        target_role,
+        credit_type,
+        destination,
+        credits: qty,
+        rate_per_credit: rate,
+        total_amount: totalAmt
+      }
+    });
+
+    await client.query('COMMIT');
+    return res.status(201).json({
+      message: `Credit Plan "${name}" created successfully.`,
+      plan: createdPlan
+    });
+
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Create credit plan error:', err);
+    return res.status(500).json({ error: 'Failed to create credit plan' });
+  } finally {
+    client.release();
+  }
+});
+
+// PUT /api/billing/plans/:id - Update existing plan
+router.put('/plans/:id', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  const planId = parseInt(req.params.id, 10);
+  if (isNaN(planId)) return res.status(400).json({ error: 'Invalid plan ID' });
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    const planCheck = await client.query(`SELECT * FROM credit_plans WHERE id = $1 FOR UPDATE`, [planId]);
+    if (planCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Plan not found' });
+    }
+
+    const existingPlan = planCheck.rows[0];
+
+    // Ownership check: Admin can update any admin plan; Reseller can ONLY update their own plans
+    if (req.user.role !== 'admin' && existingPlan.created_by !== req.user.id) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Permission denied: You can only edit your own plans' });
+    }
+
+    const name = req.body.plan_name ? String(req.body.plan_name).trim().slice(0, 150) : existingPlan.plan_name;
+    const desc = req.body.description !== undefined ? String(req.body.description).trim().slice(0, 500) || null : existingPlan.description;
+    const cType = req.body.credit_type && CREDIT_TYPES.includes(req.body.credit_type) ? req.body.credit_type : existingPlan.credit_type;
+    const dest = req.body.destination && DESTINATIONS.includes(req.body.destination) ? req.body.destination : existingPlan.destination;
+    
+    let qty = parseInt(req.body.credits, 10);
+    if (isNaN(qty) || qty <= 0) qty = existingPlan.credits;
+
+    let rate = parseFloat(req.body.rate_per_credit);
+    if (isNaN(rate) || rate <= 0) rate = parseFloat(existingPlan.rate_per_credit);
+
+    let totalAmt = parseFloat(req.body.total_amount);
+    if (isNaN(totalAmt) || totalAmt <= 0) totalAmt = Math.round(qty * rate * 100) / 100;
+
+    const badge = req.body.badge_text !== undefined ? (String(req.body.badge_text).trim().slice(0, 50) || null) : existingPlan.badge_text;
+    const isActive = req.body.is_active !== undefined ? Boolean(req.body.is_active) : existingPlan.is_active;
+
+    let targetRole = existingPlan.target_role;
+    if (req.user.role === 'admin' && req.body.target_role && ['user', 'reseller'].includes(req.body.target_role)) {
+      targetRole = req.body.target_role;
+    }
+
+    const updateSql = `
+      UPDATE credit_plans
+      SET plan_name = $1, description = $2, credit_type = $3, destination = $4,
+          credits = $5, rate_per_credit = $6, total_amount = $7, badge_text = $8,
+          is_active = $9, target_role = $10, updated_at = NOW()
+      WHERE id = $11
+      RETURNING *
+    `;
+    const updateRes = await client.query(updateSql, [
+      name, desc, cType, dest, qty, rate, totalAmt, badge, isActive, targetRole, planId
+    ]);
+
+    await logAudit(client, {
+      actorId: req.user.id,
+      entityType: 'credit_plan',
+      entityId: planId,
+      action: 'credit_plan_updated',
+      details: { plan_name: name, credits: qty, rate_per_credit: rate, total_amount: totalAmt }
+    });
+
+    await client.query('COMMIT');
+    return res.json({ message: 'Plan updated successfully', plan: updateRes.rows[0] });
+
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Update plan error:', err);
+    return res.status(500).json({ error: 'Failed to update plan' });
+  } finally {
+    client.release();
+  }
+});
+
+// PATCH /api/billing/plans/:id/toggle - Toggle active status
+router.patch('/plans/:id/toggle', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  const planId = parseInt(req.params.id, 10);
+  if (isNaN(planId)) return res.status(400).json({ error: 'Invalid plan ID' });
+
+  try {
+    const planCheck = await query(`SELECT * FROM credit_plans WHERE id = $1`, [planId]);
+    if (planCheck.rows.length === 0) return res.status(404).json({ error: 'Plan not found' });
+
+    const p = planCheck.rows[0];
+    if (req.user.role !== 'admin' && p.created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Permission denied: You can only toggle your own plans' });
+    }
+
+    const newStatus = !p.is_active;
+    const updateRes = await query(`UPDATE credit_plans SET is_active = $1, updated_at = NOW() WHERE id = $2 RETURNING *`, [newStatus, planId]);
+    return res.json({ message: `Plan is now ${newStatus ? 'Active' : 'Inactive'}`, plan: updateRes.rows[0] });
+  } catch (err) {
+    console.error('Toggle plan error:', err);
+    return res.status(500).json({ error: 'Failed to toggle plan status' });
+  }
+});
+
+// DELETE /api/billing/plans/:id - Delete a plan
+router.delete('/plans/:id', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  const planId = parseInt(req.params.id, 10);
+  if (isNaN(planId)) return res.status(400).json({ error: 'Invalid plan ID' });
+
+  try {
+    const planCheck = await query(`SELECT * FROM credit_plans WHERE id = $1`, [planId]);
+    if (planCheck.rows.length === 0) return res.status(404).json({ error: 'Plan not found' });
+
+    const p = planCheck.rows[0];
+    if (req.user.role !== 'admin' && p.created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Permission denied: You can only delete your own plans' });
+    }
+
+    await query(`DELETE FROM credit_plans WHERE id = $1`, [planId]);
+    return res.json({ message: `Plan #${planId} deleted successfully.` });
+  } catch (err) {
+    console.error('Delete plan error:', err);
+    return res.status(500).json({ error: 'Failed to delete plan' });
+  }
+});
+
+// POST /api/billing/plans/:id/order - Instant book / order from plan
+router.post('/plans/:id/order', authenticate, async (req, res) => {
+  const planId = parseInt(req.params.id, 10);
+  if (isNaN(planId)) return res.status(400).json({ error: 'Invalid plan ID' });
+
+  try {
+    const planRes = await query(`SELECT * FROM credit_plans WHERE id = $1`, [planId]);
+    if (planRes.rows.length === 0) return res.status(404).json({ error: 'Plan not found' });
+
+    const plan = planRes.rows[0];
+    if (!plan.is_active) {
+      return res.status(400).json({ error: 'This plan is currently inactive and cannot be ordered' });
+    }
+
+    // Role check: Only resellers can order wholesale reseller plans
+    if (plan.target_role === 'reseller' && req.user.role !== 'reseller' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Wholesale reseller plans can only be ordered by reseller partner accounts' });
+    }
+
+    let effectiveTaxMode = 'non_gst';
+    const userRow = await query(`SELECT tax_mode, gstin FROM users WHERE id = $1`, [req.user.id]);
+    if (userRow.rows.length > 0) {
+      const u = userRow.rows[0];
+      if (u.tax_mode === 'with_gst' || (u.gstin && String(u.gstin).trim())) {
+        effectiveTaxMode = 'with_gst';
+      }
+    }
+
+    const baseAmount = Number(parseFloat(plan.total_amount).toFixed(2));
+    const gstAmount = effectiveTaxMode === 'with_gst' ? Number((baseAmount * 0.18).toFixed(2)) : 0.00;
+    const finalAmount = Number((baseAmount + gstAmount).toFixed(2));
+    const utr = String(req.body.utr_number || req.body.notes || 'PLAN_ORDER').trim();
+
+    const insertRes = await query(`
+      INSERT INTO credit_requests 
+        (user_id, package_name, credits_requested, credit_type, destination, amount_inr, rate_per_credit, paid_amount, payment_status, utr_number, status, invoice_number, tax_mode, base_amount, gst_amount)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 0.00, 'Unpaid', $8, 'Pending', 'INV-' || TO_CHAR(CURRENT_DATE, 'YYYY') || '-' || LPAD(nextval('invoice_number_seq')::text, 6, '0'), $9, $10, $11)
+      RETURNING *
+    `, [
+      req.user.id,
+      plan.plan_name,
+      plan.credits,
+      plan.credit_type,
+      plan.destination,
+      finalAmount,
+      plan.rate_per_credit,
+      utr,
+      effectiveTaxMode,
+      baseAmount,
+      gstAmount
+    ]);
+
+    return res.status(201).json({
+      message: `Order for "${plan.plan_name}" (${Number(plan.credits).toLocaleString()} credits) submitted successfully!`,
+      request: insertRes.rows[0]
+    });
+
+  } catch (err) {
+    console.error('Order plan error:', err);
+    return res.status(500).json({ error: 'Failed to submit order for plan' });
+  }
+});
+
 module.exports = router;

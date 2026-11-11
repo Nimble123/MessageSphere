@@ -264,4 +264,91 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.equal(resellerSelfSettle.allowed, false);
     assert.equal(resellerSelfSettle.reason, 'self_settle_prohibited');
   });
+
+  await t.test('Credit Plans Creation & Target Role Rules', () => {
+    const CREDIT_TYPES = ['gsm_sms', 'normal', 'dp', 'cta', 'dp_cta', 'own_number'];
+
+    function validatePlanCreation(actor, planData) {
+      if (!['admin', 'reseller'].includes(actor.role)) {
+        return { allowed: false, error: 'Unauthorized role' };
+      }
+
+      let targetRole = String(planData.target_role || 'user').toLowerCase().trim();
+      if (actor.role === 'reseller') {
+        targetRole = 'user'; // Resellers are strictly forced to create client plans only
+      } else if (!['user', 'reseller'].includes(targetRole)) {
+        targetRole = 'user';
+      }
+
+      if (!CREDIT_TYPES.includes(planData.credit_type)) {
+        return { allowed: false, error: 'Invalid channel' };
+      }
+
+      const qty = parseInt(planData.credits, 10);
+      if (!Number.isSafeInteger(qty) || qty < 100) {
+        return { allowed: false, error: 'Credits must be at least 100' };
+      }
+
+      if (targetRole === 'reseller' && qty < 100000) {
+        return { allowed: false, error: 'Reseller wholesale plans require minimum 1,00,000 credits' };
+      }
+
+      const rate = parseFloat(planData.rate_per_credit);
+      if (isNaN(rate) || rate <= 0) {
+        return { allowed: false, error: 'Invalid rate' };
+      }
+
+      const total = Math.round(qty * rate * 100) / 100;
+      return { allowed: true, targetRole, qty, rate, total };
+    }
+
+    const admin = { id: 1, role: 'admin' };
+    const reseller = { id: 2, role: 'reseller' };
+    const client = { id: 3, role: 'user' };
+
+    // Client cannot create plans
+    assert.equal(validatePlanCreation(client, { credits: 1000, rate_per_credit: 0.12, credit_type: 'gsm_sms' }).allowed, false);
+
+    // Super Admin can create wholesale plan for Reseller (>= 100,000)
+    const adminWholesale = validatePlanCreation(admin, {
+      target_role: 'reseller',
+      credit_type: 'gsm_sms',
+      credits: 100000,
+      rate_per_credit: 0.09
+    });
+    assert.equal(adminWholesale.allowed, true);
+    assert.equal(adminWholesale.targetRole, 'reseller');
+    assert.equal(adminWholesale.total, 9000);
+
+    // Super Admin wholesale plan fails if quantity < 100,000
+    const adminWholesaleUnderLimit = validatePlanCreation(admin, {
+      target_role: 'reseller',
+      credit_type: 'gsm_sms',
+      credits: 50000,
+      rate_per_credit: 0.09
+    });
+    assert.equal(adminWholesaleUnderLimit.allowed, false);
+
+    // Super Admin can create retail plan for Direct Clients (< 100,000 is permitted)
+    const adminRetail = validatePlanCreation(admin, {
+      target_role: 'user',
+      credit_type: 'normal',
+      credits: 25000,
+      rate_per_credit: 0.10
+    });
+    assert.equal(adminRetail.allowed, true);
+    assert.equal(adminRetail.targetRole, 'user');
+    assert.equal(adminRetail.total, 2500);
+
+    // Reseller attempting to create wholesale plan for other resellers gets forced to 'user'
+    const resellerAttemptWholesale = validatePlanCreation(reseller, {
+      target_role: 'reseller',
+      credit_type: 'cta',
+      credits: 10000,
+      rate_per_credit: 0.15
+    });
+    assert.equal(resellerAttemptWholesale.allowed, true);
+    assert.equal(resellerAttemptWholesale.targetRole, 'user', 'Reseller plans must be forced to user target');
+    assert.equal(resellerAttemptWholesale.total, 1500);
+  });
 });

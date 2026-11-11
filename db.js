@@ -338,6 +338,29 @@ async function initDB() {
     
     // GST vs Non-GST Invoicing & Smart Reseller Auto-Refund Schema Migrations
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS tax_mode VARCHAR(20) DEFAULT 'non_gst';`);
+
+    // Credit Plans & Pricing Packages (Admin Direct Clients vs Wholesale Resellers vs Reseller Custom Client Plans)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS credit_plans (
+        id SERIAL PRIMARY KEY,
+        created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        target_role VARCHAR(20) NOT NULL DEFAULT 'user', -- 'user' (direct clients) or 'reseller' (wholesale partners)
+        plan_name VARCHAR(150) NOT NULL,
+        description TEXT,
+        credit_type VARCHAR(50) NOT NULL,
+        destination VARCHAR(50) NOT NULL DEFAULT 'domestic',
+        credits INTEGER NOT NULL,
+        rate_per_credit NUMERIC(10, 4) NOT NULL,
+        total_amount NUMERIC(12, 2) NOT NULL,
+        badge_text VARCHAR(50),
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_credit_plans_created_by ON credit_plans(created_by);
+      CREATE INDEX IF NOT EXISTS idx_credit_plans_target_role ON credit_plans(target_role);
+      CREATE INDEX IF NOT EXISTS idx_credit_plans_active ON credit_plans(is_active);
+    `);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS refund_destination VARCHAR(20) DEFAULT 'user';`);
     await client.query(`UPDATE users SET tax_mode = 'with_gst' WHERE gstin IS NOT NULL AND TRIM(gstin) != '' AND (tax_mode IS NULL OR tax_mode = 'non_gst');`);
 
@@ -489,6 +512,41 @@ async function initDB() {
       CROSS JOIN (SELECT unnest(ARRAY['domestic', 'international']) AS destination) d
       ON CONFLICT (user_id, credit_type, destination) DO NOTHING;
     `);
+
+    // Seed initial credit plans if credit_plans table is empty
+    const planCountRes = await client.query(`SELECT COUNT(*) FROM credit_plans`);
+    if (parseInt(planCountRes.rows[0].count, 10) === 0) {
+      const adminUserRow = await client.query(`SELECT id FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1`);
+      if (adminUserRow.rows.length > 0) {
+        const creatorId = adminUserRow.rows[0].id;
+        const seedPlans = [
+          // DIRECT CLIENT PLANS (target_role = 'user')
+          { target: 'user', name: 'GSM SMS Starter Pack', desc: 'Instant domestic GSM bulk SMS delivery for transactional and promo campaigns', type: 'gsm_sms', dest: 'domestic', qty: 10000, rate: 0.1500, badge: 'Starter' },
+          { target: 'user', name: 'GSM SMS Growth Pack', desc: 'High-volume domestic GSM SMS with priority routing and verified DLR report', type: 'gsm_sms', dest: 'domestic', qty: 50000, rate: 0.1350, badge: 'Popular' },
+          { target: 'user', name: 'GSM SMS Pro Volume Pack', desc: 'Carrier-grade GSM bulk SMS broadcast capacity for business scale', type: 'gsm_sms', dest: 'domestic', qty: 100000, rate: 0.1200, badge: 'Best Value' },
+          { target: 'user', name: 'WhatsApp Normal Text Pack', desc: 'Standard WhatsApp bulk broadcast messaging without buttons', type: 'normal', dest: 'domestic', qty: 25000, rate: 0.1600, badge: 'Popular' },
+          { target: 'user', name: 'WhatsApp CTA Interactive Pack', desc: 'WhatsApp campaigns with interactive Click-to-Action button links and phone dials', type: 'cta', dest: 'domestic', qty: 25000, rate: 0.2600, badge: 'High Conversion' },
+          { target: 'user', name: 'WhatsApp DP + CTA Master Pack', desc: 'High priority custom DP display image plus interactive call-to-action buttons', type: 'dp_cta', dest: 'domestic', qty: 50000, rate: 0.3600, badge: 'Enterprise' },
+          
+          // RESELLER WHOLESALE PARTNER PLANS (target_role = 'reseller', min 1 Lakh)
+          { target: 'reseller', name: 'Reseller Wholesale GSM Tier-1', desc: 'Wholesale entry package for reseller partners with white-label portal access', type: 'gsm_sms', dest: 'domestic', qty: 100000, rate: 0.1000, badge: 'Partner Starter' },
+          { target: 'reseller', name: 'Reseller Wholesale GSM Tier-2', desc: 'Volume partner wholesale rates for active reseller distributors', type: 'gsm_sms', dest: 'domestic', qty: 500000, rate: 0.0900, badge: 'Volume Partner' },
+          { target: 'reseller', name: 'Reseller Wholesale GSM Mega Pack', desc: 'Maximum margin distributor pricing for high-throughput telecom broadcast', type: 'gsm_sms', dest: 'domestic', qty: 1000000, rate: 0.0800, badge: 'Mega Distributor' },
+          { target: 'reseller', name: 'Reseller Wholesale WhatsApp Text', desc: 'Bulk wholesale WhatsApp messaging package for white-label reseller network', type: 'normal', dest: 'domestic', qty: 100000, rate: 0.1200, badge: 'Wholesale WA' },
+          { target: 'reseller', name: 'Reseller Wholesale WhatsApp CTA', desc: 'Interactive CTA WhatsApp messaging wholesale pool for client allotment', type: 'cta', dest: 'domestic', qty: 100000, rate: 0.2000, badge: 'Partner CTA' },
+          { target: 'reseller', name: 'Reseller Wholesale WhatsApp DP+CTA', desc: 'Premium DP + CTA wholesale package with dedicated operator dispatch queue', type: 'dp_cta', dest: 'domestic', qty: 100000, rate: 0.2800, badge: 'Partner Premium' }
+        ];
+
+        for (const p of seedPlans) {
+          const totalAmt = Math.round(p.qty * p.rate * 100) / 100;
+          await client.query(`
+            INSERT INTO credit_plans (created_by, target_role, plan_name, description, credit_type, destination, credits, rate_per_credit, total_amount, badge_text, is_active)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, TRUE)
+          `, [creatorId, p.target, p.name, p.desc, p.type, p.dest, p.qty, p.rate, totalAmt, p.badge]);
+        }
+        console.log(`[PLANS] Seeded initial credit plans for Direct Users & Reseller Wholesale Partners.`);
+      }
+    }
 
     await client.query('COMMIT');
     console.log('PostgreSQL tables initialized successfully.');
