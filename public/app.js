@@ -10356,6 +10356,38 @@ if (btnModalSaveOrder) {
 let cachedBillingOrders = [];
 let billingCurrentFilter = 'all';
 let billingSearchQuery = '';
+let adminBillingScope = 'direct'; // 'direct' or 'reseller_sales'
+window.adminBillingScope = 'direct';
+
+window.switchAdminBillingScope = function(scope) {
+  adminBillingScope = scope || 'direct';
+  window.adminBillingScope = adminBillingScope;
+  const btnDirect = document.getElementById('btn-billing-scope-direct');
+  const btnReseller = document.getElementById('btn-billing-scope-reseller');
+  const hintEl = document.getElementById('billing-scope-hint');
+
+  if (btnDirect && btnReseller) {
+    if (adminBillingScope === 'direct') {
+      btnDirect.style.background = '#4f46e5';
+      btnDirect.style.color = '#fff';
+      btnDirect.style.fontWeight = '700';
+      btnReseller.style.background = 'transparent';
+      btnReseller.style.color = '#475569';
+      btnReseller.style.fontWeight = '600';
+      if (hintEl) hintEl.textContent = 'Accounts receivable owed directly to Platform Admin by direct clients and reseller partner accounts.';
+    } else {
+      btnReseller.style.background = '#4f46e5';
+      btnReseller.style.color = '#fff';
+      btnReseller.style.fontWeight = '700';
+      btnDirect.style.background = 'transparent';
+      btnDirect.style.color = '#475569';
+      btnDirect.style.fontWeight = '600';
+      if (hintEl) hintEl.textContent = 'Auditing client sales made by Resellers. (Reseller collects payment directly from their client; not owed to Admin).';
+    }
+  }
+
+  loadBillingOrders();
+};
 
 window.filterBillingTab = function(filter, btn) {
   billingCurrentFilter = filter || 'all';
@@ -10420,37 +10452,6 @@ function renderBillingOrdersTable() {
     billingOrdersTbody.innerHTML = `<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--slate-400);">No orders matching current filter or search criteria.</td></tr>`;
     return;
   }
-
-let adminBillingScope = 'direct'; // 'direct' or 'reseller_sales'
-
-window.switchAdminBillingScope = function(scope) {
-  adminBillingScope = scope;
-  const btnDirect = document.getElementById('btn-billing-scope-direct');
-  const btnReseller = document.getElementById('btn-billing-scope-reseller');
-  const hintEl = document.getElementById('billing-scope-hint');
-
-  if (btnDirect && btnReseller) {
-    if (scope === 'direct') {
-      btnDirect.style.background = '#4f46e5';
-      btnDirect.style.color = '#fff';
-      btnDirect.style.fontWeight = '700';
-      btnReseller.style.background = 'transparent';
-      btnReseller.style.color = '#475569';
-      btnReseller.style.fontWeight = '600';
-      if (hintEl) hintEl.textContent = 'Accounts receivable owed directly to Platform Admin by direct clients and reseller partner accounts.';
-    } else {
-      btnReseller.style.background = '#4f46e5';
-      btnReseller.style.color = '#fff';
-      btnReseller.style.fontWeight = '700';
-      btnDirect.style.background = 'transparent';
-      btnDirect.style.color = '#475569';
-      btnDirect.style.fontWeight = '600';
-      if (hintEl) hintEl.textContent = 'Auditing client sales made by Resellers. (Reseller collects payment directly from their client; not owed to Admin).';
-    }
-  }
-
-  loadBillingOrders();
-};
 
   const isAdmin = currentUser && currentUser.role === 'admin';
   const isReseller = currentUser && currentUser.role === 'reseller';
@@ -10588,7 +10589,8 @@ async function loadBillingOrders() {
   if (!billingOrdersTbody) return;
   try {
     const isAdmin = currentUser && currentUser.role === 'admin';
-    const scopeParam = isAdmin ? `?scope=${adminBillingScope}` : '';
+    const activeScope = (typeof adminBillingScope !== 'undefined' ? adminBillingScope : (window.adminBillingScope || 'direct'));
+    const scopeParam = isAdmin ? `?scope=${activeScope}` : '';
 
     const scopeContainer = document.getElementById('admin-billing-scope-container');
     if (scopeContainer) {
@@ -10608,7 +10610,7 @@ async function loadBillingOrders() {
         if (el) el.textContent = val;
       };
 
-      if (isAdmin && adminBillingScope === 'reseller_sales') {
+      if (isAdmin && activeScope === 'reseller_sales') {
         setEl('billing-kpi-title-billed', 'Reseller Retail Billed');
         setEl('billing-kpi-sub-billed', 'Gross invoiced by resellers to clients');
         setEl('billing-kpi-title-paid', 'Reseller Collected');
