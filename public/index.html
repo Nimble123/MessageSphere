@@ -6700,7 +6700,10 @@
         <button type="button" class="btn-action btn-action-secondary" data-close="modal-admin-reseller-brand">Cancel</button>
         <div style="display:flex;gap:8px;">
           <button type="button" id="btn-admin-verify-domain" class="btn-action btn-action-success" onclick="verifyCurrentResellerDomain()" style="display:none;">
-            <i data-lucide="check-circle" style="width:14px;height:14px;"></i> Verify Domain
+            <i data-lucide="check-circle" style="width:14px;height:14px;"></i> Verify DNS
+          </button>
+          <button type="button" id="btn-admin-force-verify-domain" class="btn-action" onclick="forceVerifyCurrentResellerDomain()" style="display:none;background:#f59e0b;color:#fff;border:none;" title="Force activate custom domain immediately (bypass DNS check for staging/testing)">
+            <i data-lucide="zap" style="width:14px;height:14px;"></i> Force Activate
           </button>
           <button type="button" id="btn-admin-save-reseller-brand" class="btn-action btn-action-primary" onclick="saveAdminResellerBrand()">
             Save White-Label Brand

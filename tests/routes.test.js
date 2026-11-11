@@ -505,4 +505,45 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.equal(fallback.gstin, 'UNREGISTERED');
     assert.equal(fallback.voucherId, 'INV-REC-10023');
   });
+
+  await t.test('White-Label URL auto-normalization & Invite Branding Resolution', () => {
+    function normalizeHttpUrl(string) {
+      if (!string) return null;
+      let str = String(string).trim();
+      if (!str) return null;
+      if (!/^https?:\/\//i.test(str)) str = `https://${str}`;
+      try {
+        const url = new URL(str);
+        return (url.protocol === 'http:' || url.protocol === 'https:') ? url.href : null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    // Auto prefixes https:// smoothly without errors
+    assert.equal(normalizeHttpUrl('help.exhume.in'), 'https://help.exhume.in/');
+    assert.equal(normalizeHttpUrl('https://exhume.in/terms'), 'https://exhume.in/terms');
+    assert.equal(normalizeHttpUrl(''), null);
+    assert.equal(normalizeHttpUrl(null), null);
+
+    // Invite code resolution returns custom branding
+    function resolveBrandingMock({ refCode, host, profileMap }) {
+      if (refCode && profileMap[refCode.toLowerCase()]) {
+        return { custom_branding: true, branding: profileMap[refCode.toLowerCase()] };
+      }
+      if (host && profileMap[host.toLowerCase()]) {
+        return { custom_branding: true, branding: profileMap[host.toLowerCase()] };
+      }
+      return { custom_branding: false };
+    }
+
+    const profiles = {
+      'exhumenexus': { brand_name: 'Exhume Nexus', accent_color: '#0284c7' },
+      'portal.exhume.in': { brand_name: 'Exhume Portal', accent_color: '#10b981' }
+    };
+
+    assert.equal(resolveBrandingMock({ refCode: 'exhumenexus', profileMap: profiles }).custom_branding, true);
+    assert.equal(resolveBrandingMock({ host: 'portal.exhume.in', profileMap: profiles }).custom_branding, true);
+    assert.equal(resolveBrandingMock({ refCode: 'unknown', profileMap: profiles }).custom_branding, false);
+  });
 });

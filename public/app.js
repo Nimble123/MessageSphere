@@ -11064,7 +11064,14 @@ function applyBrandProfile(profile) {
 
 async function resolveHostBranding() {
   try {
-    const res = await fetch('/api/resellers/branding/resolve');
+    const urlParams = new URLSearchParams(window.location.search);
+    const refCode = urlParams.get('ref') || urlParams.get('code') || urlParams.get('invite');
+    const domainParam = urlParams.get('domain') || urlParams.get('host');
+    let queryStr = '';
+    if (refCode) queryStr = `?ref=${encodeURIComponent(refCode)}`;
+    else if (domainParam) queryStr = `?domain=${encodeURIComponent(domainParam)}`;
+
+    const res = await fetch(`/api/resellers/branding/resolve${queryStr}`);
     if (!res.ok) return;
     const data = await res.json();
     const refBanner = document.getElementById('auth-referral-banner');
@@ -11559,6 +11566,11 @@ window.openAdminResellerBrandModal = function(resellerId) {
     btnVerify.style.display = (item.custom_domain && item.domain_status !== 'Verified') ? 'inline-flex' : 'none';
   }
 
+  const btnForceVerify = document.getElementById('btn-admin-force-verify-domain');
+  if (btnForceVerify) {
+    btnForceVerify.style.display = (item.custom_domain && item.domain_status !== 'Verified') ? 'inline-flex' : 'none';
+  }
+
   if (modal) modal.style.display = 'flex';
   if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
 };
@@ -11754,6 +11766,26 @@ window.verifyCurrentResellerDomain = function() {
   const resellerId = document.getElementById('admin-reseller-brand-id')?.value;
   if (!resellerId) return;
   verifyResellerDomain(resellerId);
+};
+
+window.forceVerifyCurrentResellerDomain = async function() {
+  const resellerId = document.getElementById('admin-reseller-brand-id')?.value;
+  if (!resellerId) return;
+  try {
+    showToast('info', 'Activating...', 'Bypassing DNS check and activating domain...');
+    const res = await apiFetch(`/resellers/${resellerId}/verify-dns`, {
+      method: 'POST',
+      body: JSON.stringify({ force: true })
+    });
+    if (res.verified) {
+      showToast('success', 'Domain Force Activated!', 'Domain is now active and verified in database.');
+      const modal = document.getElementById('modal-admin-reseller-brand');
+      if (modal) modal.style.display = 'none';
+      loadResellerNetwork();
+    }
+  } catch (err) {
+    showToast('error', 'Force Activation Failed', err.message);
+  }
 };
 
 window.verifyResellerDomain = async function(resellerId) {
@@ -12137,16 +12169,51 @@ if (btnSaveInvite) {
   });
 }
 
-if (brandForm) brandForm.addEventListener('submit', async event => {
-  event.preventDefault();
-  const payload = Object.fromEntries(Object.entries(brandFields).map(([key, field]) => [key, field?.value.trim() || '']));
+async function saveResellerBrandProfile() {
+  const brandName = brandFields.brand_name?.value?.trim();
+  if (!brandName) {
+    showToast('error', 'Brand Name Required', 'Please enter your brand name.');
+    brandFields.brand_name?.focus();
+    return;
+  }
+
+  const payload = Object.fromEntries(Object.entries(brandFields).map(([key, field]) => [key, field?.value?.trim() || '']));
+  const btnSave = document.getElementById('btn-save-brand-identity');
+
   try {
+    if (btnSave) {
+      btnSave.disabled = true;
+      btnSave.innerHTML = '<i data-lucide="loader" class="spin" style="width:16px;height:16px;"></i> Saving...';
+    }
     const profile = await apiFetch('/resellers/me', { method: 'PUT', body: JSON.stringify(payload) });
     applyBrandProfile(profile);
-    showToast('success', 'Brand Saved', 'Your white-label identity has been saved and recorded in the audit log.');
+    showToast('success', 'Brand Saved Successfully', 'Your white-label portal branding, theme, and domain settings are saved.');
     await loadMyBrandProfile();
-  } catch (err) { showToast('error', 'Brand Save Failed', err.message); }
-});
+  } catch (err) {
+    showToast('error', 'Brand Save Failed', err.message);
+  } finally {
+    if (btnSave) {
+      btnSave.disabled = false;
+      btnSave.innerHTML = '<i data-lucide="save" style="width:16px;height:16px;"></i> Save Brand & Domain Settings';
+      if (window.lucide) lucide.createIcons();
+    }
+  }
+}
+
+if (brandForm) {
+  brandForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    saveResellerBrandProfile();
+  });
+}
+
+const btnSaveBrandIdentity = document.getElementById('btn-save-brand-identity');
+if (btnSaveBrandIdentity) {
+  btnSaveBrandIdentity.addEventListener('click', (event) => {
+    event.preventDefault();
+    saveResellerBrandProfile();
+  });
+}
 
 
 // ==========================================
