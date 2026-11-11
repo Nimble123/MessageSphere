@@ -8121,61 +8121,64 @@
 
   <!-- MODAL: CREATE / EDIT CREDIT PLAN -->
   <div id="modal-create-plan" class="modal-overlay" style="display:none;">
-    <div class="modal-content modal-content-saas" style="max-width: 580px; width: 95%;">
-      <div class="modal-header-saas" style="background: linear-gradient(135deg, #1e1b4b, #312e81); color: #fff; padding: 16px 22px;">
-        <div style="display:flex;align-items:center;gap:10px;">
-          <span style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,0.15);color:#fff;">
-            <i data-lucide="package-plus" style="width:18px;height:18px;"></i>
-          </span>
+    <div class="modal-card" style="max-width: 640px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; border-radius: 16px; overflow: hidden; background: #ffffff; box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.35);">
+      
+      <!-- Modal Header -->
+      <div class="modal-header-saas" style="background: linear-gradient(135deg, #0f172a, #1e1b4b); color: #fff; padding: 18px 24px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(99, 102, 241, 0.25); border: 1px solid rgba(99, 102, 241, 0.4); display: flex; align-items: center; justify-content: center; color: #a5b4fc;">
+            <i data-lucide="package-plus" style="width: 20px; height: 20px;"></i>
+          </div>
           <div>
-            <h3 id="modal-plan-title" style="margin:0;font-size:1.05rem;font-weight:700;color:#fff;">Create Credit Plan</h3>
-            <p style="margin:2px 0 0;font-size:0.75rem;color:#c7d2fe;">Configure message product, volume quantity, and custom rate.</p>
+            <h3 id="modal-plan-title" style="margin: 0; font-size: 1.12rem; font-weight: 800; color: #ffffff; letter-spacing: -0.2px;">Create Credit Plan</h3>
+            <div style="font-size: 0.76rem; color: #cbd5e1; margin-top: 2px;">Configure messaging product, volume quantity, and custom rate.</div>
           </div>
         </div>
-        <button type="button" class="modal-close-saas" data-close="modal-create-plan" style="color:#fff;"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+        <button type="button" class="btn-modal-close" data-close="modal-create-plan" style="color: #cbd5e1; background: none; border: none; font-size: 1.6rem; cursor: pointer; line-height: 1; padding: 4px 8px; border-radius: 6px;" title="Close">&times;</button>
       </div>
 
-      <div class="modal-body-saas" style="padding: 20px 24px; max-height: calc(85vh - 130px); overflow-y: auto;">
+      <!-- Modal Body (Clean internal scroll, full visibility) -->
+      <div class="modal-body-saas" style="padding: 22px 24px; overflow-y: auto; flex: 1; background: #ffffff;">
         <input type="hidden" id="plan-form-id" value="">
 
         <!-- Target Audience Selector (Admin only: Direct Clients vs Resellers; Reseller: locked to My Clients) -->
-        <div class="form-group" id="plan-target-audience-group" style="margin-bottom: 14px;">
-          <label style="font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px; display: block;">
-            Target Audience <span style="color:#ef4444;">*</span>
+        <div class="form-group" id="plan-target-audience-group" style="margin-bottom: 18px;">
+          <label style="font-size: 0.82rem; font-weight: 700; color: #334155; margin-bottom: 8px; display: flex; align-items: center; gap: 5px;">
+            <i data-lucide="users" style="width: 14px; height: 14px; color: #6366f1;"></i> Target Audience <span style="color:#ef4444;">*</span>
           </label>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-            <label id="lbl-plan-target-user" style="display:flex;align-items:center;gap:8px;padding:10px 14px;border:2px solid #4f46e5;background:rgba(79,70,229,0.05);border-radius:8px;cursor:pointer;">
-              <input type="radio" name="plan_target_role" value="user" checked onchange="onPlanTargetRoleChange()">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <label id="lbl-plan-target-user" style="display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 2px solid #4f46e5; background: #f5f3ff; border-radius: 10px; cursor: pointer; transition: all 0.2s;">
+              <input type="radio" name="plan_target_role" value="user" checked onchange="onPlanTargetRoleChange()" style="margin-top: 3px; accent-color: #4f46e5;">
               <div>
-                <strong style="font-size:0.84rem;color:#1e1b4b;display:block;">Direct Clients (Retail)</strong>
-                <span style="font-size:0.7rem;color:#64748b;">Standard user accounts</span>
+                <strong style="font-size: 0.88rem; color: #0f172a; display: block; font-weight: 700;">Direct Clients (Retail)</strong>
+                <span style="font-size: 0.74rem; color: #64748b; line-height: 1.35; display: block; margin-top: 2px;">Standard retail accounts</span>
               </div>
             </label>
-            <label id="lbl-plan-target-reseller" style="display:flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;cursor:pointer;">
-              <input type="radio" name="plan_target_role" value="reseller" onchange="onPlanTargetRoleChange()">
+            <label id="lbl-plan-target-reseller" style="display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1.5px solid #e2e8f0; background: #ffffff; border-radius: 10px; cursor: pointer; transition: all 0.2s;">
+              <input type="radio" name="plan_target_role" value="reseller" onchange="onPlanTargetRoleChange()" style="margin-top: 3px; accent-color: #4f46e5;">
               <div>
-                <strong style="font-size:0.84rem;color:#1e1b4b;display:block;">Reseller Partners (Wholesale)</strong>
-                <span style="font-size:0.7rem;color:#64748b;">Min 1 Lakh wholesale pool</span>
+                <strong style="font-size: 0.88rem; color: #0f172a; display: block; font-weight: 700;">Reseller Partners (Wholesale)</strong>
+                <span style="font-size: 0.74rem; color: #64748b; line-height: 1.35; display: block; margin-top: 2px;">Min 1 Lakh wholesale pool</span>
               </div>
             </label>
           </div>
         </div>
 
         <!-- Plan Name -->
-        <div class="form-group" style="margin-bottom: 12px;">
-          <label for="plan-form-name" style="font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px; display: block;">
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label for="plan-form-name" style="font-size: 0.82rem; font-weight: 700; color: #334155; margin-bottom: 6px; display: block;">
             Plan Title / Name <span style="color:#ef4444;">*</span>
           </label>
-          <input type="text" id="plan-form-name" class="form-input" placeholder="e.g. GSM SMS 50K Growth Pack" required style="font-size:0.84rem;">
+          <input type="text" id="plan-form-name" class="form-input" placeholder="e.g. GSM SMS 50K Growth Pack" required style="font-size: 0.88rem; padding: 10px 14px; border-radius: 8px;">
         </div>
 
         <!-- Channel and Destination Grid -->
-        <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 10px; margin-bottom: 12px;">
+        <div style="display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; margin-bottom: 16px;">
           <div class="form-group" style="margin-bottom: 0;">
-            <label for="plan-form-channel" style="font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px; display: block;">
+            <label for="plan-form-channel" style="font-size: 0.82rem; font-weight: 700; color: #334155; margin-bottom: 6px; display: block;">
               Message Product / Channel <span style="color:#ef4444;">*</span>
             </label>
-            <select id="plan-form-channel" class="form-input" style="font-size: 0.84rem;" onchange="onPlanChannelChange()">
+            <select id="plan-form-channel" class="form-input" style="font-size: 0.88rem; padding: 10px 14px; border-radius: 8px;" onchange="onPlanChannelChange()">
               <option value="gsm_sms">GSM Bulk SMS (Cellular Route)</option>
               <option value="normal">WhatsApp Normal (Standard Text)</option>
               <option value="cta">WhatsApp CTA Interactive (Button Links)</option>
@@ -8185,75 +8188,79 @@
             </select>
           </div>
           <div class="form-group" style="margin-bottom: 0;">
-            <label for="plan-form-dest" style="font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px; display: block;">
-              Destination <span style="color:#ef4444;">*</span>
+            <label for="plan-form-dest" style="font-size: 0.82rem; font-weight: 700; color: #334155; margin-bottom: 6px; display: block;">
+              Destination Route <span style="color:#ef4444;">*</span>
             </label>
-            <select id="plan-form-dest" class="form-input" style="font-size: 0.84rem;" onchange="calculatePlanTotal()">
-              <option value="domestic">Domestic (India)</option>
-              <option value="international">International</option>
+            <select id="plan-form-dest" class="form-input" style="font-size: 0.88rem; padding: 10px 14px; border-radius: 8px;" onchange="calculatePlanTotal()">
+              <option value="domestic">Domestic (India +91)</option>
+              <option value="international">International (Global)</option>
             </select>
           </div>
         </div>
 
         <!-- Quantity & Rate Grid -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
           <div class="form-group" style="margin-bottom: 0;">
-            <label for="plan-form-credits" style="font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px; display: block;">
+            <label for="plan-form-credits" style="font-size: 0.82rem; font-weight: 700; color: #334155; margin-bottom: 6px; display: block;">
               Credits Quantity <span style="color:#ef4444;">*</span>
             </label>
-            <input type="number" id="plan-form-credits" class="form-input" placeholder="e.g. 50000" min="100" step="5000" value="50000" required style="font-size:0.84rem;" oninput="calculatePlanTotal()">
-            <div id="plan-qty-hint" style="font-size:0.7rem;color:#64748b;margin-top:2px;">Standard retail package</div>
+            <input type="number" id="plan-form-credits" class="form-input" placeholder="e.g. 50000" min="100" step="5000" value="50000" required style="font-size: 0.88rem; padding: 10px 14px; border-radius: 8px;" oninput="calculatePlanTotal()">
+            <div id="plan-qty-hint" style="font-size: 0.74rem; color: #64748b; margin-top: 4px; font-weight: 500;">Standard retail package</div>
           </div>
           <div class="form-group" style="margin-bottom: 0;">
-            <label for="plan-form-rate" style="font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px; display: block;">
+            <label for="plan-form-rate" style="font-size: 0.82rem; font-weight: 700; color: #334155; margin-bottom: 6px; display: block;">
               Rate Per Message (₹) <span style="color:#ef4444;">*</span>
             </label>
-            <input type="number" id="plan-form-rate" class="form-input" placeholder="0.1200" step="0.001" min="0.0001" value="0.1200" required style="font-size:0.84rem;" oninput="calculatePlanTotal()">
-            <div style="font-size:0.7rem;color:#64748b;margin-top:2px;">Rate per credit in INR</div>
+            <input type="number" id="plan-form-rate" class="form-input" placeholder="0.1200" step="0.001" min="0.0001" value="0.1200" required style="font-size: 0.88rem; padding: 10px 14px; border-radius: 8px;" oninput="calculatePlanTotal()">
+            <div style="font-size: 0.74rem; color: #64748b; margin-top: 4px; font-weight: 500;">Rate per credit in INR</div>
           </div>
         </div>
 
-        <!-- Live Price Calculation Card -->
-        <div style="background: #eef2ff; border: 1.5px solid #c7d2fe; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+        <!-- Live Price Calculation Card (Clean Green-Tinted Financial Summary) -->
+        <div style="background: linear-gradient(135deg, #f0fdf4, #ecfdf5); border: 1.5px solid #a7f3d0; border-radius: 12px; padding: 14px 18px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
           <div>
-            <div style="font-size:0.72rem;color:#475569;font-weight:600;">Gross Plan Value (Base Amount):</div>
-            <div style="font-size:0.76rem;color:#1e1b4b;"><span id="calc-preview-qty">50,000</span> credits × ₹<span id="calc-preview-rate">0.1200</span></div>
+            <div style="font-size: 0.74rem; color: #047857; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Gross Plan Value (Base Amount):</div>
+            <div style="font-size: 0.82rem; color: #1e293b; margin-top: 3px; font-weight: 600;">
+              <span id="calc-preview-qty" style="font-weight: 700; color: #0f172a;">50,000</span> credits &times; ₹<span id="calc-preview-rate" style="font-weight: 700; color: #0f172a;">0.1200</span>
+            </div>
           </div>
           <div style="text-align: right;">
-            <div style="font-size:1.15rem;font-weight:800;color:#4338ca;" id="calc-preview-total">₹6,000.00</div>
+            <div style="font-size: 1.45rem; font-weight: 900; color: #047857; letter-spacing: -0.5px;" id="calc-preview-total">₹6,000.00</div>
           </div>
         </div>
 
-        <!-- Badge & Description -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+        <!-- Badge Tag & Plan Status -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
           <div class="form-group" style="margin-bottom: 0;">
-            <label for="plan-form-badge" style="font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px; display: block;">
+            <label for="plan-form-badge" style="font-size: 0.82rem; font-weight: 700; color: #334155; margin-bottom: 6px; display: block;">
               Badge Tag (Optional)
             </label>
-            <input type="text" id="plan-form-badge" class="form-input" placeholder="e.g. Popular, Best Value" style="font-size:0.84rem;">
+            <input type="text" id="plan-form-badge" class="form-input" placeholder="e.g. Most Popular, Best Value" style="font-size: 0.88rem; padding: 10px 14px; border-radius: 8px;">
           </div>
           <div class="form-group" style="margin-bottom: 0;">
-            <label for="plan-form-status" style="font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px; display: block;">
-              Status
+            <label for="plan-form-status" style="font-size: 0.82rem; font-weight: 700; color: #334155; margin-bottom: 6px; display: block;">
+              Visibility / Status
             </label>
-            <select id="plan-form-status" class="form-input" style="font-size:0.84rem;">
+            <select id="plan-form-status" class="form-input" style="font-size: 0.88rem; padding: 10px 14px; border-radius: 8px;">
               <option value="true" selected>Active (Available to buy)</option>
-              <option value="false">Inactive (Hidden)</option>
+              <option value="false">Inactive (Hidden / Paused)</option>
             </select>
           </div>
         </div>
 
-        <div class="form-group" style="margin-bottom: 0;">
-          <label for="plan-form-desc" style="font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px; display: block;">
+        <!-- Description / Features -->
+        <div class="form-group" style="margin-bottom: 6px;">
+          <label for="plan-form-desc" style="font-size: 0.82rem; font-weight: 700; color: #334155; margin-bottom: 6px; display: block;">
             Features / Description (Optional)
           </label>
-          <input type="text" id="plan-form-desc" class="form-input" placeholder="e.g. Priority telecom route, real-time DLR delivery sync" style="font-size:0.84rem;">
+          <input type="text" id="plan-form-desc" class="form-input" placeholder="e.g. Carrier telecom route, real-time DLR delivery sync" style="font-size: 0.88rem; padding: 10px 14px; border-radius: 8px;">
         </div>
       </div>
 
-      <div class="modal-footer-saas" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 22px; display: flex; justify-content: flex-end; gap: 8px;">
-        <button type="button" class="btn-action btn-action-secondary" data-close="modal-create-plan">Cancel</button>
-        <button type="button" class="btn-action btn-action-primary" id="btn-save-plan" onclick="saveCreditPlan()" style="font-weight: 700; background: #4f46e5; color: #fff;">Save Plan</button>
+      <!-- Modal Footer (Fixed at bottom) -->
+      <div class="modal-footer-saas" style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 16px 24px; display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0;">
+        <button type="button" class="btn-action btn-action-secondary" data-close="modal-create-plan" style="padding: 10px 20px; font-weight: 600; font-size: 0.86rem; border-radius: 8px;">Cancel</button>
+        <button type="button" class="btn-action btn-action-primary" id="btn-save-plan" onclick="saveCreditPlan()" style="padding: 10px 24px; font-weight: 700; font-size: 0.86rem; border-radius: 8px; background: #4f46e5; color: #fff; box-shadow: 0 2px 4px rgba(79, 70, 229, 0.25);">Save Plan</button>
       </div>
     </div>
   </div>
@@ -8264,6 +8271,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=202611111335"></script>
+  <script src="app.js?v=202611111410"></script>
 </body>
 </html>

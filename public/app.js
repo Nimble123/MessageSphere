@@ -14415,11 +14415,13 @@ window.onPlanTargetRoleChange = function() {
   if (isResellerTarget) {
     if (lblReseller) {
       lblReseller.style.border = '2px solid #4f46e5';
-      lblReseller.style.background = 'rgba(79,70,229,0.05)';
+      lblReseller.style.background = '#f5f3ff';
+      lblReseller.style.boxShadow = '0 0 0 1px #4f46e5';
     }
     if (lblUser) {
-      lblUser.style.border = '1px solid #cbd5e1';
-      lblUser.style.background = '#fff';
+      lblUser.style.border = '1.5px solid #e2e8f0';
+      lblUser.style.background = '#ffffff';
+      lblUser.style.boxShadow = 'none';
     }
     if (creditsInput) {
       creditsInput.min = 100000;
@@ -14431,11 +14433,13 @@ window.onPlanTargetRoleChange = function() {
   } else {
     if (lblUser) {
       lblUser.style.border = '2px solid #4f46e5';
-      lblUser.style.background = 'rgba(79,70,229,0.05)';
+      lblUser.style.background = '#f5f3ff';
+      lblUser.style.boxShadow = '0 0 0 1px #4f46e5';
     }
     if (lblReseller) {
-      lblReseller.style.border = '1px solid #cbd5e1';
-      lblReseller.style.background = '#fff';
+      lblReseller.style.border = '1.5px solid #e2e8f0';
+      lblReseller.style.background = '#ffffff';
+      lblReseller.style.boxShadow = 'none';
     }
     if (creditsInput) {
       creditsInput.min = 100;
