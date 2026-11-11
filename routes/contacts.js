@@ -566,7 +566,7 @@ router.get('/blacklist', authenticate, async (req, res) => {
     }
 
     const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
-    const limit = Math.min(parseInt(req.query.limit, 10) || 500, 5000);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
     const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
 
     const countRes = await query(`

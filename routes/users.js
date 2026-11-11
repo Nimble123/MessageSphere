@@ -12,9 +12,9 @@ router.get('/', authenticate, requireRoles('admin', 'reseller'), async (req, res
   try {
     let usersQuery = '';
     let params = [];
-    const limit = req.query.limit ? Math.min(parseInt(req.query.limit, 10) || 50, 500) : null;
-    const offset = parseInt(req.query.offset, 10) || 0;
-    const paginationClause = limit ? ` LIMIT ${limit} OFFSET ${offset}` : '';
+    const limit = req.query.limit ? Math.min(parseInt(req.query.limit, 10) || 50, 500) : (req.query.all === 'true' ? 500 : 100);
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+    const paginationClause = ` LIMIT ${limit} OFFSET ${offset}`;
 
     if (req.user.role === 'admin') {
       usersQuery = `
@@ -919,7 +919,7 @@ router.patch('/:id/reset-password', authenticate, requireRoles('admin', 'reselle
       return res.status(403).json({ error: 'Permission denied: Cannot modify users from other accounts' });
     }
 
-    const hash = await bcrypt.hash(newPassword, 10);
+    const hash = await hashPassword(newPassword);
     const client = await getClient();
     try {
       await client.query('BEGIN');

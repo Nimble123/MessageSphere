@@ -3,6 +3,7 @@ const path = require('path');
 const { query } = require('../db');
 const { getClient } = require('../db');
 const { logAudit } = require('./audit');
+const { ROOT_UPLOADS_DIR } = require('./storage');
 
 let schedulerInterval = null;
 let isSchedulerRunning = false;
@@ -10,9 +11,17 @@ let isSchedulerRunning = false;
 async function checkScheduledCampaigns() {
   if (isSchedulerRunning) return;
   isSchedulerRunning = true;
+  let lockClient = null;
   try {
+    lockClient = await getClient();
+    // Distributed Advisory Lock to prevent duplicate runs across clustered or multi-instance deployments
+    const lockRes = await lockClient.query('SELECT pg_try_advisory_lock(987654321) as acquired');
+    if (!lockRes.rows[0]?.acquired) {
+      return; // Another instance is currently executing the scheduler
+    }
+
     // Find all scheduled campaigns that have reached or passed their dispatch time
-    const result = await query(`
+    const result = await lockClient.query(`
       SELECT c.*, u.email as owner_email 
       FROM campaigns c 
       JOIN users u ON c.user_id = u.id 
@@ -66,6 +75,10 @@ async function checkScheduledCampaigns() {
   } catch (err) {
     console.error('[SCHEDULED WORKER ERROR]:', err);
   } finally {
+    if (lockClient) {
+      await lockClient.query('SELECT pg_advisory_unlock(987654321)').catch(() => {});
+      lockClient.release();
+    }
     isSchedulerRunning = false;
   }
 }
@@ -74,8 +87,16 @@ let purgeInterval = null;
 
 // Periodic Data Retention Worker - Enforces retention policies configured in retention_settings
 async function runDataRetentionPurge() {
+  let lockClient = null;
   try {
-    const settingsRes = await query('SELECT setting_key, retention_days FROM retention_settings');
+    lockClient = await getClient();
+    // Distributed Advisory Lock for retention purge
+    const lockRes = await lockClient.query('SELECT pg_try_advisory_lock(987654322) as acquired');
+    if (!lockRes.rows[0]?.acquired) {
+      return; // Another instance is currently executing data purge
+    }
+
+    const settingsRes = await lockClient.query('SELECT setting_key, retention_days FROM retention_settings');
     const settings = {};
     settingsRes.rows.forEach(r => { settings[r.setting_key] = parseInt(r.retention_days, 10); });
 
@@ -103,7 +124,7 @@ async function runDataRetentionPurge() {
 
     // 3. Purge Uploaded Assets unreferenced or older than retention policy
     if (settings.uploaded_assets && settings.uploaded_assets > 0) {
-      const uploadDir = path.resolve(process.env.UPLOAD_DIR || 'uploads');
+      const uploadDir = ROOT_UPLOADS_DIR;
       if (fs.existsSync(uploadDir)) {
         const cutoffTime = Date.now() - (settings.uploaded_assets * 24 * 60 * 60 * 1000);
         const files = fs.readdirSync(uploadDir);
@@ -132,6 +153,11 @@ async function runDataRetentionPurge() {
   } catch (err) {
     console.error('[RETENTION PURGE ERROR]:', err.message);
     return null;
+  } finally {
+    if (lockClient) {
+      await lockClient.query('SELECT pg_advisory_unlock(987654322)').catch(() => {});
+      lockClient.release();
+    }
   }
 }
 

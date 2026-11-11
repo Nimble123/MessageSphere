@@ -5,7 +5,7 @@
  * Example: node scripts/reset-admin.js admin@messagesphere.com MyNewSecretPass123
  */
 require('dotenv').config();
-const bcrypt = require('bcryptjs');
+const { hashPassword } = require('../services/hasher');
 const { pool, initializeUserCredits } = require('../db');
 
 async function resetAdmin() {
@@ -29,7 +29,7 @@ async function resetAdmin() {
   try {
     await client.query('BEGIN');
 
-    const hash = await bcrypt.hash(targetPassword, 10);
+    const hash = await hashPassword(targetPassword);
     const existing = await client.query('SELECT id, role FROM users WHERE email = $1', [targetEmail]);
 
     let adminId;

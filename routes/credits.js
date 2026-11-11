@@ -319,7 +319,9 @@ async function buildLedgerQuery(req, isExport = false) {
 router.get('/transactions', authenticate, async (req, res) => {
   try {
     const { sql, countSql, countParams, summarySql, summaryParams, params, viewerUserId, limitVal, offsetVal } = await buildLedgerQuery(req, false);
-    const shouldFetchSummary = offsetVal === 0 || req.query.include_summary === 'true';
+    // Performance Optimization: Never run heavy unindexed 500k-row table scans on every page load.
+    // Summary aggregation is only executed when explicitly requested (req.query.include_summary === 'true')
+    const shouldFetchSummary = req.query.include_summary === 'true';
     const queryPromises = [
       query(sql, params),
       query(countSql, countParams)

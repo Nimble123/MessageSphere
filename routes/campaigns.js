@@ -11,11 +11,9 @@ const { logAudit } = require('../services/audit');
 const { calculateSmsMetrics, normalizePhoneNumber, SMPP_DELIVERED_STATUSES, sanitizeCsvCell, isValidAttachmentUrl } = require('../services/telecom');
 const MAX_CAMPAIGN_RECIPIENTS = Number(process.env.MAX_CAMPAIGN_RECIPIENTS || 50000);
 
-// Setup multer storage for campaign attachments and reports
-const uploadDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+// Setup multer storage for campaign attachments and reports (supports persistent volumes)
+const { ROOT_UPLOADS_DIR } = require('../services/storage');
+const uploadDir = ROOT_UPLOADS_DIR;
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -775,28 +773,46 @@ router.get('/', authenticate, async (req, res) => {
 
     let listSql = '';
     let params = [];
-    const limit = req.query.limit ? Math.min(parseInt(req.query.limit, 10) || 100, 1000) : (req.query.all === 'true' ? null : 250);
+    const limit = req.query.limit ? Math.min(parseInt(req.query.limit, 10) || 100, 1000) : (req.query.all === 'true' ? 500 : 250);
     const offset = parseInt(req.query.offset, 10) || 0;
     const paginationClause = limit ? ` LIMIT ${limit} OFFSET ${offset}` : '';
 
+    const listColumns = `
+      c.id, c.user_id, c.title, c.credit_type, c.destination, c.channel_type, c.campaign_type,
+      c.status, c.total_numbers, c.delivered_count, c.failed_count, c.credits_used, c.refunded_credits,
+      c.scheduled_at, c.created_at, c.updated_at, c.report_processed_at,
+      SUBSTRING(c.message_text, 1, 150) AS message_preview,
+      u.email as owner_email,
+      ae.rejection_action,
+      ae.rejection_reason
+    `;
+
+    const lateralAuditJoin = `
+      LEFT JOIN LATERAL (
+        SELECT action AS rejection_action, details->>'reason' AS rejection_reason
+        FROM audit_events
+        WHERE entity_type = 'campaign' AND entity_id = c.id
+          AND action IN ('status_changed_to_rejected', 'status_changed_to_rejected_bulk', 'campaign_cancelled_by_user')
+        ORDER BY id DESC LIMIT 1
+      ) ae ON true
+    `;
+
     if (req.user.role === 'admin') {
       listSql = `
-        SELECT c.*, u.email as owner_email,
-          (SELECT action FROM audit_events WHERE entity_type = 'campaign' AND entity_id = c.id AND action IN ('status_changed_to_rejected', 'status_changed_to_rejected_bulk', 'campaign_cancelled_by_user') ORDER BY id DESC LIMIT 1) as rejection_action,
-          (SELECT details->>'reason' FROM audit_events WHERE entity_type = 'campaign' AND entity_id = c.id AND action IN ('status_changed_to_rejected', 'status_changed_to_rejected_bulk', 'campaign_cancelled_by_user') ORDER BY id DESC LIMIT 1) as rejection_reason
+        SELECT ${listColumns}
         FROM campaigns c
         JOIN users u ON c.user_id = u.id
+        ${lateralAuditJoin}
         WHERE 1=1 ${channelClause}
         ORDER BY c.created_at DESC
         ${paginationClause}
       `;
     } else if (req.user.role === 'reseller') {
       listSql = `
-        SELECT c.*, u.email as owner_email,
-          (SELECT action FROM audit_events WHERE entity_type = 'campaign' AND entity_id = c.id AND action IN ('status_changed_to_rejected', 'status_changed_to_rejected_bulk', 'campaign_cancelled_by_user') ORDER BY id DESC LIMIT 1) as rejection_action,
-          (SELECT details->>'reason' FROM audit_events WHERE entity_type = 'campaign' AND entity_id = c.id AND action IN ('status_changed_to_rejected', 'status_changed_to_rejected_bulk', 'campaign_cancelled_by_user') ORDER BY id DESC LIMIT 1) as rejection_reason
+        SELECT ${listColumns}
         FROM campaigns c
         JOIN users u ON c.user_id = u.id
+        ${lateralAuditJoin}
         WHERE (c.user_id = $1 OR u.reseller_id = $1) ${channelClause}
         ORDER BY c.created_at DESC
         ${paginationClause}
@@ -804,11 +820,10 @@ router.get('/', authenticate, async (req, res) => {
       params = [req.user.id];
     } else {
       listSql = `
-        SELECT c.*, u.email as owner_email,
-          (SELECT action FROM audit_events WHERE entity_type = 'campaign' AND entity_id = c.id AND action IN ('status_changed_to_rejected', 'status_changed_to_rejected_bulk', 'campaign_cancelled_by_user') ORDER BY id DESC LIMIT 1) as rejection_action,
-          (SELECT details->>'reason' FROM audit_events WHERE entity_type = 'campaign' AND entity_id = c.id AND action IN ('status_changed_to_rejected', 'status_changed_to_rejected_bulk', 'campaign_cancelled_by_user') ORDER BY id DESC LIMIT 1) as rejection_reason
+        SELECT ${listColumns}
         FROM campaigns c
         JOIN users u ON c.user_id = u.id
+        ${lateralAuditJoin}
         WHERE c.user_id = $1 ${channelClause}
         ORDER BY c.created_at DESC
         ${paginationClause}
@@ -1705,11 +1720,20 @@ router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.sin
   }
 });
 
-// GET /api/campaigns/operator/queue - Get campaigns waiting for dispatch (Super Admin only)
+// GET /api/campaigns/operator/queue - Get campaigns waiting for dispatch (Super Admin only, paginated & lean)
 router.get('/operator/queue', authenticate, requireRoles('admin'), async (req, res) => {
   try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+
     const sql = `
-      SELECT c.*, u.email as owner_email
+      SELECT 
+        c.id, c.user_id, c.title, c.credit_type, c.destination, c.channel_type, c.campaign_type,
+        c.status, c.total_numbers, c.delivered_count, c.failed_count, c.credits_used,
+        c.scheduled_at, c.created_at, c.updated_at, c.media_url, c.attachments,
+        c.message_text,
+        u.email as owner_email,
+        COUNT(*) OVER() AS total_queue_count
       FROM campaigns c
       JOIN users u ON c.user_id = u.id
       WHERE c.status IN ('Submitted', 'Approved')
@@ -1718,8 +1742,10 @@ router.get('/operator/queue', authenticate, requireRoles('admin'), async (req, r
       ORDER BY 
         CASE WHEN c.scheduled_at IS NOT NULL AND c.scheduled_at <= NOW() THEN 0 ELSE 1 END,
         c.created_at ASC
+      LIMIT $1 OFFSET $2
     `;
-    const result = await query(sql);
+    const result = await query(sql, [limit, offset]);
+    const totalCount = parseInt(result.rows[0]?.total_queue_count || 0, 10);
 
     // Parse attachments for each campaign
     const campaigns = result.rows.map(c => {
@@ -1732,6 +1758,15 @@ router.get('/operator/queue', authenticate, requireRoles('admin'), async (req, r
         attachments: attachments || []
       };
     });
+
+    if (req.query.paginate === 'true') {
+      return res.json({
+        queue: campaigns,
+        total: totalCount,
+        limit,
+        offset
+      });
+    }
 
     return res.json(campaigns);
   } catch (err) {

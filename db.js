@@ -402,10 +402,15 @@ async function initDB() {
     await client.query(`ALTER TABLE credit_requests ADD COLUMN IF NOT EXISTS user_email VARCHAR(255);`);
     await client.query(`ALTER TABLE credit_requests ALTER COLUMN utr_number DROP NOT NULL;`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_transactions_from_user ON credit_transactions(from_user_id, created_at DESC);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_transactions_to_user_created ON credit_transactions(to_user_id, created_at DESC);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_transactions_from_to ON credit_transactions(from_user_id, to_user_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_campaigns_operator_queue ON campaigns(created_at ASC) WHERE status IN ('Submitted', 'Approved');`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_campaigns_status_created ON campaigns(status, created_at DESC);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_campaigns_user_created ON campaigns(user_id, created_at DESC);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_users_reseller_id ON users(reseller_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_role_reseller ON users(role, reseller_id, created_at DESC);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_blacklist_user_created ON blacklist(user_id, created_at DESC);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_blacklist_phone ON blacklist(phone_number);`);
 
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 1;`);
     await client.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS direction VARCHAR(10) DEFAULT 'credit';`);
@@ -516,7 +521,7 @@ async function initDB() {
         console.log(`[AUTH] Admin successfully provisioned: ${adminEmail}`);
       }
     } else if (process.env.RESET_ADMIN === 'true') {
-      const newHash = await bcrypt.hash(adminPassword, 10);
+      const newHash = await hashPassword(adminPassword);
       await client.query(`UPDATE users SET password_hash = $1, token_version = token_version + 1 WHERE id = $2`, [newHash, adminCheck.rows[0].id]);
       console.log(`[AUTH] Admin password reset requested via RESET_ADMIN=true`);
     }

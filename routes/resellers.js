@@ -15,24 +15,10 @@ const {
   checkRenderDomainStatus,
   triggerRenderDomainVerification
 } = require('../services/renderDomains');
+const { LOGOS_DIR, FAVICONS_DIR } = require('../services/storage');
 
-const logosDir = path.join(__dirname, '../uploads/logos');
-if (!fs.existsSync(logosDir)) {
-  try {
-    fs.mkdirSync(logosDir, { recursive: true });
-  } catch (dirErr) {
-    console.error('Failed to create logos directory:', dirErr.message);
-  }
-}
-
-const faviconsDir = path.join(__dirname, '../uploads/favicons');
-if (!fs.existsSync(faviconsDir)) {
-  try {
-    fs.mkdirSync(faviconsDir, { recursive: true });
-  } catch (dirErr) {
-    console.error('Failed to create favicons directory:', dirErr.message);
-  }
-}
+const logosDir = LOGOS_DIR;
+const faviconsDir = FAVICONS_DIR;
 
 const logoStorage = multer.diskStorage({
   destination: (req, file, cb) => {

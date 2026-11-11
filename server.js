@@ -1,3 +1,6 @@
+// Configure maximum threadpool size for non-blocking native bcrypt crypto execution
+process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '64';
+
 const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
@@ -9,9 +12,10 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Gzip/Brotli compression middleware for all eligible responses (> 1KB)
+// Gzip/Brotli compression middleware for all eligible responses (> 512B)
 app.use(compression({
-  threshold: 1024,
+  threshold: 512,
+  level: 6,
   filter: (req, res) => {
     if (req.headers['x-no-compression']) return false;
     return compression.filter(req, res);
@@ -60,17 +64,36 @@ app.use((req, res, next) => {
   next();
 });
 
-// Static assets with optimized caching (HTML remains fresh, scripts/styles/media are cached)
+// Static assets with enterprise caching (HTML is fresh, scripts/styles/media are cached with ETags)
+const { ROOT_UPLOADS_DIR } = require('./services/storage');
+
 app.use(express.static(path.join(__dirname, 'public'), {
   etag: true,
   lastModified: true,
-  maxAge: '1h',
+  maxAge: '1d',
   setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.html') || filePath.endsWith('.js')) {
+    if (filePath.endsWith('.html')) {
+      // HTML is never cached; always revalidated so version bumps (?v=...) take effect instantly
       res.set('Cache-Control', 'no-cache, must-revalidate');
+    } else if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
+      // Versioned scripts & styles (?v=...): cache for 24h with stale-while-revalidate for instant repeat loads
+      res.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+    } else if (/\.(png|jpe?g|webp|svg|gif|ico|woff2?|ttf|eot)$/i.test(filePath)) {
+      // Static media & fonts: long-term immutable cache
+      res.set('Cache-Control', 'public, max-age=31536000, immutable');
     } else {
-      res.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+      res.set('Cache-Control', 'public, max-age=3600');
     }
+  }
+}));
+
+// Uploaded media & assets (supports Render persistent volume disks via UPLOADS_DIR / PERSISTENT_STORAGE_DIR)
+app.use('/uploads', express.static(ROOT_UPLOADS_DIR, {
+  etag: true,
+  maxAge: '1d',
+  setHeaders: (res) => {
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
   }
 }));
 

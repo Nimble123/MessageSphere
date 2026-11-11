@@ -7,11 +7,9 @@ const { query } = require('../db');
 const { authenticate } = require('../middleware/auth');
 const { calculateSmsMetrics, sanitizeCsvCell, isValidAttachmentUrl } = require('../services/telecom');
 
-// Multer storage for message template media attachments (Image, PDF, Video)
-const uploadDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+// Multer storage for message template media attachments (Image, PDF, Video) (supports persistent volumes)
+const { ROOT_UPLOADS_DIR } = require('../services/storage');
+const uploadDir = ROOT_UPLOADS_DIR;
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),

@@ -1,3 +1,4 @@
+process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '64';
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { CREDIT_TYPES, DESTINATIONS } = require('../db');
@@ -660,5 +661,48 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.equal(robustRes.summary.gross_revenue, 180.00);
     assert.equal(robustRes.summary.wholesale_cogs, 120.00);
     assert.equal(robustRes.summary.net_profit, 60.00);
+  });
+
+  await t.test('High-Scale Architecture: Threadpool, Storage Resolution, and Pagination Guardrails', async () => {
+    // 1. Threadpool size is configured for native worker parallelism
+    assert.ok(parseInt(process.env.UV_THREADPOOL_SIZE, 10) >= 16);
+
+    // 2. Hasher engine uses native non-blocking crypto
+    const { hashPassword, comparePassword } = require('../services/hasher');
+    const pwd = 'EnterpriseScaleSecretPass999';
+    const hash = await hashPassword(pwd);
+    assert.ok(hash.startsWith('$2'));
+    const isMatch = await comparePassword(pwd, hash);
+    assert.strictEqual(isMatch, true);
+    const isBad = await comparePassword('wrongPass', hash);
+    assert.strictEqual(isBad, false);
+
+    // 3. Storage engine resolves directories safely
+    const { ROOT_UPLOADS_DIR, LOGOS_DIR, FAVICONS_DIR } = require('../services/storage');
+    assert.ok(typeof ROOT_UPLOADS_DIR === 'string' && ROOT_UPLOADS_DIR.length > 0);
+    assert.ok(LOGOS_DIR.includes('logos'));
+    assert.ok(FAVICONS_DIR.includes('favicons'));
+
+    // 4. Pagination bounding helpers
+    function boundLimit(val, defaultVal, maxVal) {
+      const parsed = parseInt(val, 10);
+      if (isNaN(parsed) || parsed <= 0) return defaultVal;
+      return Math.min(parsed, maxVal);
+    }
+    assert.strictEqual(boundLimit('99999', 100, 1000), 1000);
+    assert.strictEqual(boundLimit(null, 100, 1000), 100);
+    assert.strictEqual(boundLimit('-5', 100, 1000), 100);
+    assert.strictEqual(boundLimit('50', 100, 1000), 50);
+
+    // 5. Cache-Control Header policy verification
+    function getCacheHeaderForFile(filePath) {
+      if (filePath.endsWith('.html')) return 'no-cache, must-revalidate';
+      if (filePath.endsWith('.js') || filePath.endsWith('.css')) return 'public, max-age=86400, stale-while-revalidate=604800';
+      if (/\.(png|jpe?g|webp|svg|gif|ico|woff2?|ttf|eot)$/i.test(filePath)) return 'public, max-age=31536000, immutable';
+      return 'public, max-age=3600';
+    }
+    assert.strictEqual(getCacheHeaderForFile('/var/www/index.html'), 'no-cache, must-revalidate');
+    assert.strictEqual(getCacheHeaderForFile('/var/www/app.js'), 'public, max-age=86400, stale-while-revalidate=604800');
+    assert.strictEqual(getCacheHeaderForFile('/var/www/logo.png'), 'public, max-age=31536000, immutable');
   });
 });

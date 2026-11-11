@@ -628,12 +628,12 @@ router.patch('/change-password', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const isMatch = await bcrypt.compare(currentPassword, userRes.rows[0].password_hash);
+    const isMatch = await comparePassword(currentPassword, userRes.rows[0].password_hash);
     if (!isMatch) {
       return res.status(400).json({ error: 'Incorrect current password' });
     }
 
-    const newHash = await bcrypt.hash(newPassword, 10);
+    const newHash = await hashPassword(newPassword);
     await query('UPDATE users SET password_hash = $1, token_version = token_version + 1 WHERE id = $2', [newHash, req.user.id]);
 
     return res.json({ message: 'Password changed successfully' });

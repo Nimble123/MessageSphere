@@ -14,10 +14,8 @@ const MAX_SMS_RECIPIENTS = Number(process.env.MAX_CAMPAIGN_RECIPIENTS || 50000);
 // ---------------------------------------------------------------------------
 // Multer: CSV/TXT recipient file upload — 10 MB max, field name: recipients_file
 // ---------------------------------------------------------------------------
-const uploadDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+const { ROOT_UPLOADS_DIR } = require('../services/storage');
+const uploadDir = ROOT_UPLOADS_DIR;
 
 const csvStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
