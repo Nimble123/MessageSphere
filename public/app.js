@@ -590,14 +590,14 @@ window.switchAuthMode = function(mode) {
     if (tabLogin) tabLogin.classList.remove('active');
     if (tabReg) tabReg.classList.add('active');
     if (heading) heading.innerHTML = `Create Your Account`;
-    if (subheading) subheading.textContent = `Sign up to launch verified WhatsApp and GSM SMS campaigns in minutes.`;
+    if (subheading) subheading.textContent = `Get started with high-throughput WhatsApp & GSM SMS broadcasts with carrier-grade reliability.`;
   } else {
     if (formLogin) formLogin.style.display = 'block';
     if (formReg) formReg.style.display = 'none';
     if (tabLogin) tabLogin.classList.add('active');
     if (tabReg) tabReg.classList.remove('active');
     if (heading) heading.innerHTML = `Sign in to <span class="brand-title">${escapeHtml(currentBrand)}</span>`;
-    if (subheading) subheading.textContent = `Enter your account credentials to access your dashboard.`;
+    if (subheading) subheading.textContent = `Enter your credentials to access your enterprise campaign console.`;
   }
 };
 

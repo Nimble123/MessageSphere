@@ -1,4 +1,4 @@
-# MessageSphere Manual Campaign Operations Portal
+# MessageSphere Enterprise Messaging & Broadcast Platform
 
 This application is a **manual dispatch coordination portal**. It does not call an SMS, WhatsApp, or other messaging-provider API.
 
