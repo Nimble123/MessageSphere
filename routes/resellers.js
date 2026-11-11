@@ -876,6 +876,362 @@ async function saveProfile(req, res, resellerId, actorId) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// RESELLER PROFIT & MARGINS COMMERCIAL ANALYTICS ENGINE
+// ---------------------------------------------------------------------------
+const WHOLESALE_BENCHMARK_RATES = {
+  gsm_sms_domestic: 0.0900,
+  gsm_sms_international: 0.9000,
+  normal_domestic: 0.1000,
+  dp_domestic: 0.1400,
+  cta_domestic: 0.1600,
+  dp_cta_domestic: 0.2200,
+  own_number_domestic: 0.0500,
+  normal_international: 1.2000,
+  dp_international: 1.5000,
+  cta_international: 1.5000,
+  dp_cta_international: 1.8000,
+  own_number_international: 0.8000
+};
+
+const CHANNEL_DEFINITIONS = {
+  gsm_sms_domestic: { label: 'GSM Bulk SMS (Domestic)', category: 'GSM SMS' },
+  gsm_sms_international: { label: 'GSM Bulk SMS (Intl)', category: 'GSM SMS' },
+  normal_domestic: { label: 'WhatsApp Standard (Domestic)', category: 'WhatsApp' },
+  dp_domestic: { label: 'WhatsApp DP (Domestic)', category: 'WhatsApp' },
+  cta_domestic: { label: 'WhatsApp CTA Button (Domestic)', category: 'WhatsApp' },
+  dp_cta_domestic: { label: 'WhatsApp DP + CTA (Domestic)', category: 'WhatsApp' },
+  own_number_domestic: { label: 'WhatsApp Own Number (Domestic)', category: 'WhatsApp' },
+  normal_international: { label: 'WhatsApp Standard (Intl)', category: 'WhatsApp' },
+  dp_international: { label: 'WhatsApp DP (Intl)', category: 'WhatsApp' },
+  cta_international: { label: 'WhatsApp CTA (Intl)', category: 'WhatsApp' },
+  dp_cta_international: { label: 'WhatsApp DP + CTA (Intl)', category: 'WhatsApp' },
+  own_number_international: { label: 'WhatsApp Own Number (Intl)', category: 'WhatsApp' }
+};
+
+function calculateResellerMargins(wholesaleRates = {}, allotments = []) {
+  let totalCreditsSold = 0;
+  let grossRevenue = 0;
+  let wholesaleCogs = 0;
+  let cashCollected = 0;
+
+  const channelMap = {};
+  for (const [k, def] of Object.entries(CHANNEL_DEFINITIONS)) {
+    const wRate = (wholesaleRates[k] !== undefined && wholesaleRates[k] !== null && Number(wholesaleRates[k]) > 0)
+      ? parseFloat(wholesaleRates[k])
+      : (WHOLESALE_BENCHMARK_RATES[k] || 0.1000);
+    channelMap[k] = {
+      key: k,
+      label: def.label,
+      category: def.category,
+      wholesale_rate: wRate,
+      credits_sold: 0,
+      revenue: 0,
+      cogs: 0,
+      net_profit: 0,
+      margin_pct: 0,
+      selling_rate: 0
+    };
+  }
+
+  const clientMap = {};
+  const processedInvoices = [];
+
+  for (const alt of allotments) {
+    const clientId = alt.user_id;
+    const clientName = alt.client_name || alt.full_name || alt.company_name || alt.email || `Client #${clientId}`;
+    const clientEmail = alt.client_email || alt.email || '';
+    const clientCompany = alt.client_company || alt.company_name || '';
+
+    if (!clientMap[clientId]) {
+      clientMap[clientId] = {
+        client_id: clientId,
+        name: clientName,
+        email: clientEmail,
+        company: clientCompany,
+        credits_bought: 0,
+        revenue: 0,
+        cogs: 0,
+        net_profit: 0,
+        margin_pct: 0,
+        paid_amount: 0,
+        balance_due: 0,
+        last_allotment_at: alt.created_at
+      };
+    }
+
+    const paidAmt = parseFloat(alt.paid_amount || 0) || 0;
+    cashCollected += paidAmt;
+    clientMap[clientId].paid_amount += paidAmt;
+
+    let invoiceCredits = 0;
+    let invoiceRevenue = 0;
+    let invoiceCogs = 0;
+
+    let crMap = alt.channel_rates;
+    if (typeof crMap === 'string') {
+      try { crMap = JSON.parse(crMap); } catch (_) { crMap = {}; }
+    }
+
+    if (crMap && typeof crMap === 'object' && Object.keys(crMap).length > 0) {
+      for (const [chKey, chVal] of Object.entries(crMap)) {
+        const cSold = parseInt(chVal.credits || 0, 10) || 0;
+        if (cSold <= 0) continue;
+        const sRate = parseFloat(chVal.rate || 0) || 0;
+        const sRev = (chVal.cost !== undefined && chVal.cost !== null)
+          ? parseFloat(chVal.cost)
+          : Math.round(cSold * sRate * 100) / 100;
+
+        const wRate = (wholesaleRates[chKey] !== undefined && wholesaleRates[chKey] !== null && Number(wholesaleRates[chKey]) > 0)
+          ? parseFloat(wholesaleRates[chKey])
+          : (WHOLESALE_BENCHMARK_RATES[chKey] || 0.1000);
+        const sCogs = Math.round(cSold * wRate * 100) / 100;
+
+        invoiceCredits += cSold;
+        invoiceRevenue += sRev;
+        invoiceCogs += sCogs;
+
+        if (!channelMap[chKey]) {
+          channelMap[chKey] = {
+            key: chKey,
+            label: chKey,
+            category: chKey.startsWith('gsm') ? 'GSM SMS' : 'WhatsApp',
+            wholesale_rate: wRate,
+            credits_sold: 0,
+            revenue: 0,
+            cogs: 0,
+            net_profit: 0,
+            margin_pct: 0,
+            selling_rate: 0
+          };
+        }
+        channelMap[chKey].credits_sold += cSold;
+        channelMap[chKey].revenue += sRev;
+        channelMap[chKey].cogs += sCogs;
+      }
+    } else {
+      const primaryKey = (alt.credit_type && alt.destination)
+        ? `${alt.credit_type}_${alt.destination}`
+        : 'gsm_sms_domestic';
+      const cSold = parseInt(alt.credits_requested || 0, 10) || 0;
+      const sRev = parseFloat(alt.base_amount || alt.amount_inr || 0) || 0;
+      const wRate = (wholesaleRates[primaryKey] !== undefined && wholesaleRates[primaryKey] !== null && Number(wholesaleRates[primaryKey]) > 0)
+        ? parseFloat(wholesaleRates[primaryKey])
+        : (WHOLESALE_BENCHMARK_RATES[primaryKey] || 0.1000);
+      const sCogs = Math.round(cSold * wRate * 100) / 100;
+
+      invoiceCredits += cSold;
+      invoiceRevenue += sRev;
+      invoiceCogs += sCogs;
+
+      if (!channelMap[primaryKey]) {
+        channelMap[primaryKey] = {
+          key: primaryKey,
+          label: primaryKey,
+          category: primaryKey.startsWith('gsm') ? 'GSM SMS' : 'WhatsApp',
+          wholesale_rate: wRate,
+          credits_sold: 0,
+          revenue: 0,
+          cogs: 0,
+          net_profit: 0,
+          margin_pct: 0,
+          selling_rate: 0
+        };
+      }
+      channelMap[primaryKey].credits_sold += cSold;
+      channelMap[primaryKey].revenue += sRev;
+      channelMap[primaryKey].cogs += sCogs;
+    }
+
+    const invoiceProfit = Math.round((invoiceRevenue - invoiceCogs) * 100) / 100;
+    totalCreditsSold += invoiceCredits;
+    grossRevenue += invoiceRevenue;
+    wholesaleCogs += invoiceCogs;
+
+    clientMap[clientId].credits_bought += invoiceCredits;
+    clientMap[clientId].revenue += invoiceRevenue;
+    clientMap[clientId].cogs += invoiceCogs;
+    clientMap[clientId].net_profit += invoiceProfit;
+    if (new Date(alt.created_at) > new Date(clientMap[clientId].last_allotment_at)) {
+      clientMap[clientId].last_allotment_at = alt.created_at;
+    }
+
+    processedInvoices.push({
+      id: alt.id,
+      invoice_number: alt.invoice_number || `INV-${alt.id}`,
+      client_id: clientId,
+      client_name: clientName,
+      client_email: clientEmail,
+      credits_allotted: invoiceCredits,
+      gross_billed: Math.round(invoiceRevenue * 100) / 100,
+      wholesale_cost: Math.round(invoiceCogs * 100) / 100,
+      net_profit: invoiceProfit,
+      margin_pct: invoiceRevenue > 0 ? Math.round((invoiceProfit / invoiceRevenue) * 1000) / 10 : 0,
+      paid_amount: paidAmt,
+      payment_status: alt.payment_status || 'Unpaid',
+      created_at: alt.created_at
+    });
+  }
+
+  const netProfit = Math.round((grossRevenue - wholesaleCogs) * 100) / 100;
+  const overallMarginPct = grossRevenue > 0 ? Math.round((netProfit / grossRevenue) * 1000) / 10 : 0;
+  const balanceDue = Math.round(Math.max(0, grossRevenue - cashCollected) * 100) / 100;
+  const collectionRatePct = grossRevenue > 0 ? Math.round((cashCollected / grossRevenue) * 1000) / 10 : 0;
+
+  // Finalize channels
+  let waCredits = 0, waRevenue = 0, waCogs = 0;
+  let gsmCredits = 0, gsmRevenue = 0, gsmCogs = 0;
+
+  const channelList = Object.values(channelMap).map(ch => {
+    ch.revenue = Math.round(ch.revenue * 100) / 100;
+    ch.cogs = Math.round(ch.cogs * 100) / 100;
+    ch.net_profit = Math.round((ch.revenue - ch.cogs) * 100) / 100;
+    ch.margin_pct = ch.revenue > 0 ? Math.round((ch.net_profit / ch.revenue) * 1000) / 10 : 0;
+    ch.selling_rate = ch.credits_sold > 0 ? Math.round((ch.revenue / ch.credits_sold) * 10000) / 10000 : 0;
+
+    if (ch.category === 'WhatsApp') {
+      waCredits += ch.credits_sold;
+      waRevenue += ch.revenue;
+      waCogs += ch.cogs;
+    } else {
+      gsmCredits += ch.credits_sold;
+      gsmRevenue += ch.revenue;
+      gsmCogs += ch.cogs;
+    }
+    return ch;
+  });
+
+  const waProfit = Math.round((waRevenue - waCogs) * 100) / 100;
+  const gsmProfit = Math.round((gsmRevenue - gsmCogs) * 100) / 100;
+
+  // Finalize top clients
+  const topClients = Object.values(clientMap).map(cl => {
+    cl.revenue = Math.round(cl.revenue * 100) / 100;
+    cl.cogs = Math.round(cl.cogs * 100) / 100;
+    cl.net_profit = Math.round(cl.net_profit * 100) / 100;
+    cl.margin_pct = cl.revenue > 0 ? Math.round((cl.net_profit / cl.revenue) * 1000) / 10 : 0;
+    cl.paid_amount = Math.round(cl.paid_amount * 100) / 100;
+    cl.balance_due = Math.round(Math.max(0, cl.revenue - cl.paid_amount) * 100) / 100;
+    return cl;
+  }).sort((a, b) => b.net_profit - a.net_profit);
+
+  return {
+    summary: {
+      total_credits_sold: totalCreditsSold,
+      gross_revenue: Math.round(grossRevenue * 100) / 100,
+      wholesale_cogs: Math.round(wholesaleCogs * 100) / 100,
+      net_profit: netProfit,
+      profit_margin_pct: overallMarginPct,
+      cash_collected: Math.round(cashCollected * 100) / 100,
+      balance_due: balanceDue,
+      collection_rate_pct: collectionRatePct,
+      avg_wholesale_rate: totalCreditsSold > 0 ? Math.round((wholesaleCogs / totalCreditsSold) * 10000) / 10000 : 0,
+      avg_selling_rate: totalCreditsSold > 0 ? Math.round((grossRevenue / totalCreditsSold) * 10000) / 10000 : 0
+    },
+    channel_summary: {
+      whatsapp: {
+        label: 'WhatsApp Messaging',
+        credits_sold: waCredits,
+        revenue: Math.round(waRevenue * 100) / 100,
+        cogs: Math.round(waCogs * 100) / 100,
+        net_profit: waProfit,
+        margin_pct: waRevenue > 0 ? Math.round((waProfit / waRevenue) * 1000) / 10 : 0
+      },
+      gsm_sms: {
+        label: 'GSM Bulk SMS',
+        credits_sold: gsmCredits,
+        revenue: Math.round(gsmRevenue * 100) / 100,
+        cogs: Math.round(gsmCogs * 100) / 100,
+        net_profit: gsmProfit,
+        margin_pct: gsmRevenue > 0 ? Math.round((gsmProfit / gsmRevenue) * 1000) / 10 : 0
+      }
+    },
+    channels: channelList,
+    top_clients: topClients,
+    recent_invoices: processedInvoices.slice(0, 15)
+  };
+}
+
+// GET /api/resellers/analytics/margins - Comprehensive Profit & Margins Analytics for Resellers
+router.get('/analytics/margins', authenticate, requireRoles('reseller', 'admin'), async (req, res) => {
+  try {
+    let targetResellerId = req.user.role === 'reseller' ? req.user.id : parseInt(req.query.reseller_id || req.user.id, 10);
+    if (!targetResellerId || isNaN(targetResellerId)) {
+      return res.status(400).json({ error: 'Valid reseller ID is required' });
+    }
+
+    // Verify reseller exists
+    const rCheck = await query(`SELECT id, full_name, email, company_name FROM users WHERE id = $1`, [targetResellerId]);
+    if (!rCheck.rows.length) {
+      return res.status(404).json({ error: 'Reseller account not found' });
+    }
+    const resellerUser = rCheck.rows[0];
+
+    // 1. Fetch reseller's wholesale rates from user_credits
+    const ucRes = await query(
+      `SELECT credit_type, destination, rate_inr FROM user_credits WHERE user_id = $1`,
+      [targetResellerId]
+    );
+    const wholesaleRates = {};
+    for (const row of ucRes.rows) {
+      const key = `${row.credit_type}_${row.destination}`;
+      if (row.rate_inr !== null && Number(row.rate_inr) > 0) {
+        wholesaleRates[key] = parseFloat(row.rate_inr);
+      }
+    }
+
+    // 2. Determine date filter range
+    const range = (req.query.range || 'this_month').toLowerCase();
+    let dateClause = '';
+    if (range === 'this_month') {
+      dateClause = `AND cr.created_at >= DATE_TRUNC('month', CURRENT_TIMESTAMP)`;
+    } else if (range === 'last_30_days') {
+      dateClause = `AND cr.created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days'`;
+    }
+
+    // 3. Query all client allotments made by this reseller
+    const allotmentsQuery = `
+      SELECT 
+        cr.id,
+        cr.user_id,
+        u.full_name AS client_name,
+        u.email AS client_email,
+        u.company_name AS client_company,
+        cr.credits_requested,
+        cr.credit_type,
+        cr.destination,
+        cr.amount_inr,
+        cr.base_amount,
+        cr.rate_per_credit,
+        cr.paid_amount,
+        cr.payment_status,
+        cr.channel_rates,
+        cr.invoice_number,
+        cr.created_at
+      FROM credit_requests cr
+      JOIN users u ON u.id = cr.user_id
+      WHERE u.reseller_id = $1
+        AND cr.status = 'Approved'
+        ${dateClause}
+      ORDER BY cr.created_at DESC
+    `;
+    const altRes = await query(allotmentsQuery, [targetResellerId]);
+
+    // 4. Calculate margins and breakdown
+    const report = calculateResellerMargins(wholesaleRates, altRes.rows);
+
+    return res.json({
+      reseller_id: targetResellerId,
+      reseller_name: resellerUser.company_name || resellerUser.full_name || resellerUser.email,
+      range,
+      ...report
+    });
+  } catch (err) {
+    console.error('Failed to compute reseller margin analytics:', err);
+    return res.status(500).json({ error: 'Failed to compute margin analytics: ' + (err.message || 'Server error') });
+  }
+});
+
 // GET /api/resellers/invite-settings - Reseller views their invite code, toggle & rate settings
 router.get('/invite-settings', authenticate, requireRoles('reseller', 'admin'), async (req, res) => {
   try {
@@ -1303,5 +1659,8 @@ router.post('/:id/verify-dns', authenticate, requireRoles('admin'), async (req, 
     return res.status(500).json({ error: 'Failed to run DNS check: ' + (err.message || 'Server error') });
   }
 });
+
+router.calculateResellerMargins = calculateResellerMargins;
+router.WHOLESALE_BENCHMARK_RATES = WHOLESALE_BENCHMARK_RATES;
 
 module.exports = router;

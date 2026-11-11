@@ -546,4 +546,99 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.equal(resolveBrandingMock({ host: 'portal.exhume.in', profileMap: profiles }).custom_branding, true);
     assert.equal(resolveBrandingMock({ refCode: 'unknown', profileMap: profiles }).custom_branding, false);
   });
+
+  test('Reseller Profit & Margins Engine calculates wholesale COGS, net profit, and channel breakdowns accurately', () => {
+    const resellersRouter = require('../routes/resellers');
+    const { calculateResellerMargins } = resellersRouter;
+    assert.equal(typeof calculateResellerMargins, 'function');
+
+    // Scenario: Reseller wholesale cost basis
+    const wholesaleRates = {
+      gsm_sms_domestic: 0.1000, // 10 paise cost
+      normal_domestic: 0.1200   // 12 paise cost
+    };
+
+    // Client Allotments
+    const sampleAllotments = [
+      // Allotment 1: 100,000 GSM SMS credits sold at 16 paise = ₹16,000 billed (paid ₹16,000)
+      {
+        id: 101,
+        user_id: 5,
+        client_name: 'Acme Logistics',
+        client_email: 'acme@example.com',
+        credits_requested: 100000,
+        credit_type: 'gsm_sms',
+        destination: 'domestic',
+        amount_inr: 16000.00,
+        base_amount: 16000.00,
+        paid_amount: 16000.00,
+        payment_status: 'Paid',
+        channel_rates: {
+          gsm_sms_domestic: { credits: 100000, rate: 0.1600, cost: 16000.00 }
+        },
+        created_at: new Date().toISOString()
+      },
+      // Allotment 2: 50,000 WhatsApp Standard credits sold at 20 paise = ₹10,000 billed (partial payment ₹6,000)
+      {
+        id: 102,
+        user_id: 6,
+        client_name: 'Beta Retail',
+        client_email: 'beta@example.com',
+        credits_requested: 50000,
+        credit_type: 'normal',
+        destination: 'domestic',
+        amount_inr: 10000.00,
+        base_amount: 10000.00,
+        paid_amount: 6000.00,
+        payment_status: 'Partial',
+        channel_rates: {
+          normal_domestic: { credits: 50000, rate: 0.2000, cost: 10000.00 }
+        },
+        created_at: new Date().toISOString()
+      }
+    ];
+
+    const result = calculateResellerMargins(wholesaleRates, sampleAllotments);
+
+    // Summary assertions
+    assert.equal(result.summary.total_credits_sold, 150000);
+    assert.equal(result.summary.gross_revenue, 26000.00); // 16,000 + 10,000
+    // COGS: (100,000 * 0.10) + (50,000 * 0.12) = 10,000 + 6,000 = 16,000
+    assert.equal(result.summary.wholesale_cogs, 16000.00);
+    // Net profit: 26,000 - 16,000 = 10,000
+    assert.equal(result.summary.net_profit, 10000.00);
+    // Margin %: (10,000 / 26,000) * 100 = 38.5%
+    assert.equal(result.summary.profit_margin_pct, 38.5);
+    // Cash collection: 16,000 + 6,000 = 22,000
+    assert.equal(result.summary.cash_collected, 22000.00);
+    assert.equal(result.summary.balance_due, 4000.00);
+
+    // Channel category breakdown assertions
+    assert.equal(result.channel_summary.gsm_sms.credits_sold, 100000);
+    assert.equal(result.channel_summary.gsm_sms.revenue, 16000.00);
+    assert.equal(result.channel_summary.gsm_sms.cogs, 10000.00);
+    assert.equal(result.channel_summary.gsm_sms.net_profit, 6000.00);
+    assert.equal(result.channel_summary.gsm_sms.margin_pct, 37.5);
+
+    assert.equal(result.channel_summary.whatsapp.credits_sold, 50000);
+    assert.equal(result.channel_summary.whatsapp.revenue, 10000.00);
+    assert.equal(result.channel_summary.whatsapp.cogs, 6000.00);
+    assert.equal(result.channel_summary.whatsapp.net_profit, 4000.00);
+    assert.equal(result.channel_summary.whatsapp.margin_pct, 40.0);
+
+    // Top clients ranked by net profit
+    assert.equal(result.top_clients.length, 2);
+    assert.equal(result.top_clients[0].name, 'Acme Logistics');
+    assert.equal(result.top_clients[0].net_profit, 6000.00);
+    assert.equal(result.top_clients[1].name, 'Beta Retail');
+    assert.equal(result.top_clients[1].net_profit, 4000.00);
+    assert.equal(result.top_clients[1].balance_due, 4000.00);
+
+    // Zero allotment edge case
+    const emptyResult = calculateResellerMargins(wholesaleRates, []);
+    assert.equal(emptyResult.summary.total_credits_sold, 0);
+    assert.equal(emptyResult.summary.gross_revenue, 0);
+    assert.equal(emptyResult.summary.net_profit, 0);
+    assert.equal(emptyResult.summary.profit_margin_pct, 0);
+  });
 });

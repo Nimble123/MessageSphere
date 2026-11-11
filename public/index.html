@@ -2540,6 +2540,197 @@
             </div>
           </div>
 
+          <!-- Reseller Commercial Profit & Margins Analytics Hub (Resellers Only) -->
+          <div id="reseller-profit-margins-section" style="display:none;margin-bottom:24px;background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,0.05);padding:22px;">
+            <!-- Header & Filter Bar -->
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #f1f5f9;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);color:#059669;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(5,150,105,0.15);">
+                  <i data-lucide="trending-up" style="width:22px;height:22px;"></i>
+                </div>
+                <div>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <h3 style="margin:0;font-size:1.1rem;font-weight:700;color:#0f172a;letter-spacing:-0.2px;">Reseller Profit & Margins Analytics</h3>
+                    <span style="background:#ecfdf5;color:#065f46;font-size:0.72rem;font-weight:700;padding:2px 8px;border-radius:999px;border:1px solid #a7f3d0;display:inline-flex;align-items:center;gap:4px;">
+                      <i data-lucide="badge-dollar-sign" style="width:12px;height:12px;"></i> LIVE MARGINS
+                    </span>
+                  </div>
+                  <div style="font-size:0.8rem;color:#64748b;margin-top:2px;">Track wholesale purchase basis, client billing rates, and your live commercial earnings</div>
+                </div>
+              </div>
+
+              <!-- Time Range Selector -->
+              <div style="display:flex;align-items:center;gap:6px;background:#f8fafc;padding:4px;border-radius:8px;border:1px solid #e2e8f0;">
+                <button type="button" id="rpm-filter-this-month" class="btn-rpm-filter active" onclick="setResellerMarginRange('this_month')" style="border:none;background:#059669;color:#fff;font-size:0.78rem;font-weight:600;padding:6px 12px;border-radius:6px;cursor:pointer;transition:all 0.15s ease;">
+                  This Month
+                </button>
+                <button type="button" id="rpm-filter-last-30" class="btn-rpm-filter" onclick="setResellerMarginRange('last_30_days')" style="border:none;background:transparent;color:#64748b;font-size:0.78rem;font-weight:600;padding:6px 12px;border-radius:6px;cursor:pointer;transition:all 0.15s ease;">
+                  Last 30 Days
+                </button>
+                <button type="button" id="rpm-filter-all-time" class="btn-rpm-filter" onclick="setResellerMarginRange('all_time')" style="border:none;background:transparent;color:#64748b;font-size:0.78rem;font-weight:600;padding:6px 12px;border-radius:6px;cursor:pointer;transition:all 0.15s ease;">
+                  All Time
+                </button>
+                <button type="button" onclick="loadResellerProfitAnalytics()" title="Refresh Margins" style="border:none;background:transparent;color:#64748b;padding:6px 8px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;">
+                  <i data-lucide="refresh-cw" style="width:14px;height:14px;"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Top 4 Summary Cards -->
+            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:14px;margin-bottom:20px;">
+              <!-- 1. Net Commercial Profit -->
+              <div style="background:linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);border:1px solid #bbf7d0;border-radius:12px;padding:16px;position:relative;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                  <span style="font-size:0.78rem;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.5px;">Net Profit Earned</span>
+                  <span id="rpm-margin-badge" style="background:#15803d;color:#fff;font-size:0.72rem;font-weight:700;padding:2px 8px;border-radius:999px;">0.0% Margin</span>
+                </div>
+                <div id="rpm-net-profit" style="font-size:1.75rem;font-weight:800;color:#14532d;line-height:1.1;margin-bottom:4px;">₹0.00</div>
+                <div style="font-size:0.75rem;color:#166534;">Revenue minus wholesale telecom cost</div>
+              </div>
+
+              <!-- 2. Gross Client Sales -->
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                  <span style="font-size:0.78rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.5px;">Gross Client Sales</span>
+                  <span id="rpm-selling-rate-badge" style="background:#e2e8f0;color:#334155;font-size:0.72rem;font-weight:600;padding:2px 6px;border-radius:6px;">0.00p / cr</span>
+                </div>
+                <div id="rpm-gross-revenue" style="font-size:1.75rem;font-weight:800;color:#0f172a;line-height:1.1;margin-bottom:4px;">₹0.00</div>
+                <div style="font-size:0.75rem;color:#64748b;"><span id="rpm-credits-sold">0</span> total credits allotted</div>
+              </div>
+
+              <!-- 3. Wholesale Cost Basis (COGS) -->
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                  <span style="font-size:0.78rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.5px;">Wholesale Cost Basis</span>
+                  <span id="rpm-wholesale-cost-badge" style="background:#e2e8f0;color:#334155;font-size:0.72rem;font-weight:600;padding:2px 6px;border-radius:6px;">0.00p / cr</span>
+                </div>
+                <div id="rpm-wholesale-cogs" style="font-size:1.75rem;font-weight:800;color:#334155;line-height:1.1;margin-bottom:4px;">₹0.00</div>
+                <div style="font-size:0.75rem;color:#64748b;">Your wholesale purchase cost basis</div>
+              </div>
+
+              <!-- 4. Realized Cashflow -->
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                  <span style="font-size:0.78rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.5px;">Realized Cashflow</span>
+                  <span id="rpm-collection-badge" style="background:#dbeafe;color:#1e40af;font-size:0.72rem;font-weight:600;padding:2px 6px;border-radius:6px;">0% Settled</span>
+                </div>
+                <div id="rpm-cash-collected" style="font-size:1.75rem;font-weight:800;color:#1e3a8a;line-height:1.1;margin-bottom:4px;">₹0.00</div>
+                <div style="font-size:0.75rem;color:#64748b;">Due Receivables: <strong id="rpm-balance-due" style="color:#b45309;">₹0.00</strong></div>
+              </div>
+            </div>
+
+            <!-- Channel Performance Comparison Strip -->
+            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:14px;margin-bottom:20px;">
+              <!-- WhatsApp Channel -->
+              <div style="background:#ffffff;border:1px solid #e2e8f0;border-left:4px solid #25d366;border-radius:10px;padding:14px 16px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <div style="width:28px;height:28px;border-radius:6px;background:#dcfce7;color:#15803d;display:flex;align-items:center;justify-content:center;">
+                      <i data-lucide="message-circle" style="width:16px;height:16px;"></i>
+                    </div>
+                    <span style="font-weight:700;font-size:0.88rem;color:#0f172a;">WhatsApp Messaging</span>
+                  </div>
+                  <span id="rpm-wa-margin" style="background:#f0fdf4;color:#166534;font-size:0.75rem;font-weight:700;padding:2px 8px;border-radius:6px;border:1px solid #bbf7d0;">0.0% Margin</span>
+                </div>
+                <div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:8px;">
+                  <div>
+                    <span style="font-size:0.72rem;color:#64748b;text-transform:uppercase;">Profit Earned</span>
+                    <div id="rpm-wa-profit" style="font-size:1.25rem;font-weight:800;color:#15803d;">₹0.00</div>
+                  </div>
+                  <div style="text-align:right;">
+                    <span style="font-size:0.72rem;color:#64748b;text-transform:uppercase;">Volume / Sales</span>
+                    <div style="font-size:0.85rem;font-weight:600;color:#334155;"><span id="rpm-wa-credits">0</span> cr · <span id="rpm-wa-revenue">₹0.00</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- GSM Bulk SMS Channel -->
+              <div style="background:#ffffff;border:1px solid #e2e8f0;border-left:4px solid #6366f1;border-radius:10px;padding:14px 16px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <div style="width:28px;height:28px;border-radius:6px;background:#e0e7ff;color:#4338ca;display:flex;align-items:center;justify-content:center;">
+                      <i data-lucide="smartphone" style="width:16px;height:16px;"></i>
+                    </div>
+                    <span style="font-weight:700;font-size:0.88rem;color:#0f172a;">GSM Bulk SMS</span>
+                  </div>
+                  <span id="rpm-gsm-margin" style="background:#eef2ff;color:#3730a3;font-size:0.75rem;font-weight:700;padding:2px 8px;border-radius:6px;border:1px solid #c7d2fe;">0.0% Margin</span>
+                </div>
+                <div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:8px;">
+                  <div>
+                    <span style="font-size:0.72rem;color:#64748b;text-transform:uppercase;">Profit Earned</span>
+                    <div id="rpm-gsm-profit" style="font-size:1.25rem;font-weight:800;color:#4338ca;">₹0.00</div>
+                  </div>
+                  <div style="text-align:right;">
+                    <span style="font-size:0.72rem;color:#64748b;text-transform:uppercase;">Volume / Sales</span>
+                    <div style="font-size:0.85rem;font-weight:600;color:#334155;"><span id="rpm-gsm-credits">0</span> cr · <span id="rpm-gsm-revenue">₹0.00</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Channel Breakdown Table & Top Clients Grid -->
+            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(360px, 1fr));gap:16px;">
+              <!-- Left: Itemized Channel Rates & Margins -->
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                  <h4 style="margin:0;font-size:0.88rem;font-weight:700;color:#0f172a;display:flex;align-items:center;gap:6px;">
+                    <i data-lucide="layers" style="width:15px;height:15px;color:#059669;"></i> Channel Rate & Margin Breakdown
+                  </h4>
+                  <span style="font-size:0.72rem;color:#64748b;">Wholesale vs Client Rate</span>
+                </div>
+                <div class="table-responsive" style="max-height:260px;overflow-y:auto;">
+                  <table class="table" style="font-size:0.8rem;width:100%;border-collapse:collapse;">
+                    <thead>
+                      <tr style="border-bottom:1px solid #e2e8f0;text-align:left;color:#64748b;font-size:0.72rem;">
+                        <th style="padding:6px 8px;">Channel</th>
+                        <th style="padding:6px 8px;text-align:right;">Wholesale</th>
+                        <th style="padding:6px 8px;text-align:right;">Selling</th>
+                        <th style="padding:6px 8px;text-align:right;">Sold</th>
+                        <th style="padding:6px 8px;text-align:right;">Profit</th>
+                        <th style="padding:6px 8px;text-align:right;">Margin</th>
+                      </tr>
+                    </thead>
+                    <tbody id="rpm-channels-tbody">
+                      <tr>
+                        <td colspan="6" style="text-align:center;padding:16px;color:#94a3b8;">Loading channel analytics...</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Right: Top Profitable Clients -->
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                  <h4 style="margin:0;font-size:0.88rem;font-weight:700;color:#0f172a;display:flex;align-items:center;gap:6px;">
+                    <i data-lucide="award" style="width:15px;height:15px;color:#d97706;"></i> Top Profitable Client Accounts
+                  </h4>
+                  <button type="button" onclick="switchView('view-users')" style="border:none;background:none;color:#059669;font-size:0.72rem;font-weight:600;cursor:pointer;padding:0;">
+                    Manage Clients &rarr;
+                  </button>
+                </div>
+                <div class="table-responsive" style="max-height:260px;overflow-y:auto;">
+                  <table class="table" style="font-size:0.8rem;width:100%;border-collapse:collapse;">
+                    <thead>
+                      <tr style="border-bottom:1px solid #e2e8f0;text-align:left;color:#64748b;font-size:0.72rem;">
+                        <th style="padding:6px 8px;">Client</th>
+                        <th style="padding:6px 8px;text-align:right;">Credits</th>
+                        <th style="padding:6px 8px;text-align:right;">Billed</th>
+                        <th style="padding:6px 8px;text-align:right;">Net Profit</th>
+                        <th style="padding:6px 8px;text-align:center;">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody id="rpm-clients-tbody">
+                      <tr>
+                        <td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;">Loading client margins...</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- C. End Client / User Command Banner -->
           <div class="dash-quick-strip" id="dash-quick-actions-client" style="display:none;align-items:center;justify-content:space-between;background:linear-gradient(135deg, #0f172a 0%, #1e293b 100%);color:#fff;padding:14px 20px;border-radius:12px;margin-bottom:20px;box-shadow:var(--shadow-card);flex-wrap:wrap;gap:12px;">
             <div style="display:flex;align-items:center;gap:12px;">
@@ -3686,6 +3877,9 @@
                 </button>
                 <button type="button" class="btn-action btn-action-secondary" onclick="openResellerClientBalancesModal()" style="padding: 5px 12px; font-size: 0.76rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; background: #f8fafc; border: 1px solid #cbd5e1; color: #334155;">
                   <i data-lucide="users" style="width: 12px; height: 12px; color: #4f46e5;"></i> Client Balances (<span id="reseller-btn-client-count">0</span>)
+                </button>
+                <button type="button" class="btn-action" onclick="switchView('view-dashboard'); setTimeout(() => { document.getElementById('reseller-profit-margins-section')?.scrollIntoView({behavior:'smooth'}); }, 100);" style="padding: 5px 12px; font-size: 0.76rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; background: #059669; color: #fff; border: none; font-weight: 600;">
+                  <i data-lucide="trending-up" style="width: 12px; height: 12px;"></i> Profit & Margins 💰
                 </button>
               </div>
             </div>
@@ -8856,6 +9050,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=202611111600"></script>
+  <script src="app.js?v=202611111705"></script>
 </body>
 </html>

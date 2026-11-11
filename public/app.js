@@ -1442,6 +1442,153 @@ async function loadResellerWalletData() {
   }
 }
 
+// --- RESELLER PROFIT & MARGINS COMMERCIAL ANALYTICS ---
+let currentResellerMarginRange = 'this_month';
+
+window.setResellerMarginRange = function(range) {
+  currentResellerMarginRange = range;
+  document.querySelectorAll('.btn-rpm-filter').forEach(btn => {
+    btn.style.background = 'transparent';
+    btn.style.color = '#64748b';
+  });
+  const activeBtn = document.getElementById(
+    range === 'this_month' ? 'rpm-filter-this-month' : (range === 'last_30_days' ? 'rpm-filter-last-30' : 'rpm-filter-all-time')
+  );
+  if (activeBtn) {
+    activeBtn.style.background = '#059669';
+    activeBtn.style.color = '#ffffff';
+  }
+  loadResellerProfitAnalytics(range);
+};
+
+window.loadResellerProfitAnalytics = async function(range) {
+  if (!currentUser || currentUser.role !== 'reseller') return;
+  const filterRange = range || currentResellerMarginRange || 'this_month';
+
+  try {
+    const data = await apiFetch(`/resellers/analytics/margins?range=${encodeURIComponent(filterRange)}`);
+    if (!data || !data.summary) return;
+
+    const s = data.summary;
+    const formatInr = (val) => '₹' + Number(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const formatPaisa = (rate) => (Number(rate || 0) * 100).toFixed(2) + 'p';
+
+    // 1. Top 4 KPI values
+    const netProfitEl = document.getElementById('rpm-net-profit');
+    const marginBadgeEl = document.getElementById('rpm-margin-badge');
+    const grossRevEl = document.getElementById('rpm-gross-revenue');
+    const creditsSoldEl = document.getElementById('rpm-credits-sold');
+    const sellingRateBadgeEl = document.getElementById('rpm-selling-rate-badge');
+    const wholesaleCogsEl = document.getElementById('rpm-wholesale-cogs');
+    const wholesaleCostBadgeEl = document.getElementById('rpm-wholesale-cost-badge');
+    const cashCollectedEl = document.getElementById('rpm-cash-collected');
+    const balanceDueEl = document.getElementById('rpm-balance-due');
+    const collectionBadgeEl = document.getElementById('rpm-collection-badge');
+
+    if (netProfitEl) netProfitEl.textContent = formatInr(s.net_profit);
+    if (marginBadgeEl) marginBadgeEl.textContent = `${s.profit_margin_pct}% Margin`;
+    if (grossRevEl) grossRevEl.textContent = formatInr(s.gross_revenue);
+    if (creditsSoldEl) creditsSoldEl.textContent = Number(s.total_credits_sold || 0).toLocaleString('en-IN');
+    if (sellingRateBadgeEl) sellingRateBadgeEl.textContent = `${formatPaisa(s.avg_selling_rate)} / cr`;
+    if (wholesaleCogsEl) wholesaleCogsEl.textContent = formatInr(s.wholesale_cogs);
+    if (wholesaleCostBadgeEl) wholesaleCostBadgeEl.textContent = `${formatPaisa(s.avg_wholesale_rate)} / cr`;
+    if (cashCollectedEl) cashCollectedEl.textContent = formatInr(s.cash_collected);
+    if (balanceDueEl) balanceDueEl.textContent = formatInr(s.balance_due);
+    if (collectionBadgeEl) collectionBadgeEl.textContent = `${s.collection_rate_pct}% Settled`;
+
+    // 2. Channel Summary Strip
+    const wa = data.channel_summary?.whatsapp || {};
+    const gsm = data.channel_summary?.gsm_sms || {};
+
+    const waProfitEl = document.getElementById('rpm-wa-profit');
+    const waMarginEl = document.getElementById('rpm-wa-margin');
+    const waCreditsEl = document.getElementById('rpm-wa-credits');
+    const waRevEl = document.getElementById('rpm-wa-revenue');
+
+    if (waProfitEl) waProfitEl.textContent = formatInr(wa.net_profit);
+    if (waMarginEl) waMarginEl.textContent = `${wa.margin_pct || 0}% Margin`;
+    if (waCreditsEl) waCreditsEl.textContent = Number(wa.credits_sold || 0).toLocaleString('en-IN');
+    if (waRevEl) waRevEl.textContent = formatInr(wa.revenue);
+
+    const gsmProfitEl = document.getElementById('rpm-gsm-profit');
+    const gsmMarginEl = document.getElementById('rpm-gsm-margin');
+    const gsmCreditsEl = document.getElementById('rpm-gsm-credits');
+    const gsmRevEl = document.getElementById('rpm-gsm-revenue');
+
+    if (gsmProfitEl) gsmProfitEl.textContent = formatInr(gsm.net_profit);
+    if (gsmMarginEl) gsmMarginEl.textContent = `${gsm.margin_pct || 0}% Margin`;
+    if (gsmCreditsEl) gsmCreditsEl.textContent = Number(gsm.credits_sold || 0).toLocaleString('en-IN');
+    if (gsmRevEl) gsmRevEl.textContent = formatInr(gsm.revenue);
+
+    // 3. Channel Breakdown Table
+    const channelsTbody = document.getElementById('rpm-channels-tbody');
+    if (channelsTbody) {
+      const activeChannels = (data.channels || []).filter(c => c.credits_sold > 0 || c.wholesale_rate > 0);
+      if (activeChannels.length === 0) {
+        channelsTbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:16px;color:#94a3b8;">No credits allotted in this period.</td></tr>`;
+      } else {
+        channelsTbody.innerHTML = activeChannels.map(ch => {
+          const isGsm = ch.category === 'GSM SMS';
+          const badgeClass = isGsm ? 'background:#e0e7ff;color:#3730a3;' : 'background:#dcfce7;color:#166534;';
+          return `
+            <tr style="border-bottom:1px solid #f1f5f9;">
+              <td style="padding:8px 8px;">
+                <div style="font-weight:600;color:#0f172a;display:flex;align-items:center;gap:6px;">
+                  <span style="${badgeClass}font-size:0.65rem;font-weight:700;padding:1px 5px;border-radius:4px;">${isGsm ? 'GSM' : 'WA'}</span>
+                  <span>${escapeHtml(ch.label)}</span>
+                </div>
+              </td>
+              <td style="padding:8px 8px;text-align:right;font-family:monospace;color:#64748b;">${formatPaisa(ch.wholesale_rate)}</td>
+              <td style="padding:8px 8px;text-align:right;font-family:monospace;color:#0f172a;font-weight:600;">${ch.selling_rate > 0 ? formatPaisa(ch.selling_rate) : '—'}</td>
+              <td style="padding:8px 8px;text-align:right;font-weight:600;color:#334155;">${Number(ch.credits_sold || 0).toLocaleString('en-IN')}</td>
+              <td style="padding:8px 8px;text-align:right;font-weight:700;color:${ch.net_profit >= 0 ? '#15803d' : '#b91c1c'};">${formatInr(ch.net_profit)}</td>
+              <td style="padding:8px 8px;text-align:right;">
+                <span style="background:${ch.margin_pct >= 25 ? '#dcfce7;color:#15803d' : '#f1f5f9;color:#475569'};font-size:0.72rem;font-weight:700;padding:2px 6px;border-radius:4px;">
+                  ${ch.margin_pct}%
+                </span>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
+    }
+
+    // 4. Top Profitable Clients Table
+    const clientsTbody = document.getElementById('rpm-clients-tbody');
+    if (clientsTbody) {
+      const topClients = data.top_clients || [];
+      if (topClients.length === 0) {
+        clientsTbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;">No client transactions yet. Allot credits to see earnings.</td></tr>`;
+      } else {
+        clientsTbody.innerHTML = topClients.slice(0, 8).map(cl => {
+          const isFullyPaid = cl.balance_due <= 0;
+          const statusBadge = isFullyPaid
+            ? `<span style="background:#dcfce7;color:#15803d;font-size:0.68rem;font-weight:700;padding:2px 6px;border-radius:4px;">Paid</span>`
+            : `<span style="background:#fef3c7;color:#b45309;font-size:0.68rem;font-weight:700;padding:2px 6px;border-radius:4px;" title="Due: ${formatInr(cl.balance_due)}">Due ${formatInr(cl.balance_due)}</span>`;
+          return `
+            <tr style="border-bottom:1px solid #f1f5f9;">
+              <td style="padding:8px 8px;">
+                <div style="font-weight:600;color:#0f172a;">${escapeHtml(cl.name || cl.company || 'Client')}</div>
+                <div style="font-size:0.7rem;color:#64748b;">${escapeHtml(cl.email)}</div>
+              </td>
+              <td style="padding:8px 8px;text-align:right;font-weight:600;color:#334155;">${Number(cl.credits_bought || 0).toLocaleString('en-IN')}</td>
+              <td style="padding:8px 8px;text-align:right;font-weight:600;color:#0f172a;">${formatInr(cl.revenue)}</td>
+              <td style="padding:8px 8px;text-align:right;font-weight:700;color:#15803d;">${formatInr(cl.net_profit)}</td>
+              <td style="padding:8px 8px;text-align:center;">${statusBadge}</td>
+            </tr>
+          `;
+        }).join('');
+      }
+    }
+
+    if (window.lucide) {
+      try { lucide.createIcons({ root: document.getElementById('reseller-profit-margins-section') }); } catch(_) {}
+    }
+  } catch (err) {
+    console.error('Failed to load reseller profit analytics:', err);
+  }
+};
+
 window.openResellerClientBalancesModal = function() {
   const modal = document.getElementById('modal-reseller-clients');
   if (!modal) return;
@@ -3504,6 +3651,17 @@ async function refreshDashboardMetrics() {
   if (stripAdmin) stripAdmin.style.display = (role === 'admin') ? 'flex' : 'none';
   if (stripReseller) stripReseller.style.display = (role === 'reseller') ? 'flex' : 'none';
   if (stripClient) stripClient.style.display = (role === 'user') ? 'flex' : 'none';
+
+  // Reseller Commercial Profit & Margins Analytics Hub
+  const rpmSection = document.getElementById('reseller-profit-margins-section');
+  if (rpmSection) {
+    if (role === 'reseller') {
+      rpmSection.style.display = 'block';
+      loadResellerProfitAnalytics();
+    } else {
+      rpmSection.style.display = 'none';
+    }
+  }
 
   // 2. Dynamic 4-KPI Metric Card elements
   const card1Title = document.getElementById('dash-card1-title');
@@ -6854,6 +7012,9 @@ if (btnModalSaveCredits) {
             renderResellerClientsTable(resellerCachedClients);
           }
         });
+      }
+      if (typeof loadResellerProfitAnalytics === 'function' && currentUser.role === 'reseller') {
+        loadResellerProfitAnalytics();
       }
     } catch (err) {
       showToast('error', 'Operation Failed', err.message);
