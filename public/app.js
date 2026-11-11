@@ -12291,7 +12291,7 @@ if (btnVerifyMyDomain) {
 const btnCopyCname = document.getElementById('btn-copy-cname-target');
 if (btnCopyCname) {
   btnCopyCname.addEventListener('click', async () => {
-    const targetCode = document.getElementById('brand-cname-target-code')?.textContent || 'messagesphere.nmedialabs.in';
+    const targetCode = document.getElementById('brand-cname-target-code')?.textContent || 'messagesphere.onrender.com';
     try {
       await navigator.clipboard.writeText(targetCode.trim());
       btnCopyCname.innerHTML = '<i data-lucide="check" style="width:12px;height:12px;"></i> Copied! ✓';

@@ -12,7 +12,8 @@ const {
   testRenderConnection,
   addCustomDomainToRender,
   removeCustomDomainFromRender,
-  checkRenderDomainStatus
+  checkRenderDomainStatus,
+  triggerRenderDomainVerification
 } = require('../services/renderDomains');
 
 const logosDir = path.join(__dirname, '../uploads/logos');
@@ -975,6 +976,7 @@ function calculateResellerMargins(wholesaleRates = {}, allotments = []) {
 
     if (crMap && typeof crMap === 'object' && Object.keys(crMap).length > 0) {
       for (const [chKey, chVal] of Object.entries(crMap)) {
+        if (!chVal || typeof chVal !== 'object') continue;
         const cSold = parseInt(chVal.credits || 0, 10) || 0;
         if (cSold <= 0) continue;
         const sRate = parseFloat(chVal.rate || 0) || 0;
@@ -1052,7 +1054,7 @@ function calculateResellerMargins(wholesaleRates = {}, allotments = []) {
     clientMap[clientId].revenue += invoiceRevenue;
     clientMap[clientId].cogs += invoiceCogs;
     clientMap[clientId].net_profit += invoiceProfit;
-    if (new Date(alt.created_at) > new Date(clientMap[clientId].last_allotment_at)) {
+    if (alt.created_at && (!clientMap[clientId].last_allotment_at || new Date(alt.created_at) > new Date(clientMap[clientId].last_allotment_at))) {
       clientMap[clientId].last_allotment_at = alt.created_at;
     }
 
@@ -1557,10 +1559,12 @@ router.post('/my-domain/verify', authenticate, requireRoles('reseller', 'admin')
     let renderInfo = null;
     try {
       const renderProv = await addCustomDomainToRender(domain);
+      await triggerRenderDomainVerification(domain);
       const renderStatus = await checkRenderDomainStatus(domain);
       renderInfo = {
         registered: renderProv.success,
-        ssl_status: renderStatus?.verificationStatus || 'provisioning'
+        ssl_status: renderStatus?.verificationStatus || 'provisioning',
+        certificate_status: renderStatus?.certificateStatus || 'waiting_for_verification'
       };
     } catch (_) {}
 
@@ -1640,10 +1644,12 @@ router.post('/:id/verify-dns', authenticate, requireRoles('admin'), async (req, 
     let renderInfo = null;
     try {
       const renderProv = await addCustomDomainToRender(domain);
+      await triggerRenderDomainVerification(domain);
       const renderStatus = await checkRenderDomainStatus(domain);
       renderInfo = {
         registered: renderProv.success,
-        ssl_status: renderStatus?.verificationStatus || 'provisioning'
+        ssl_status: renderStatus?.verificationStatus || 'provisioning',
+        certificate_status: renderStatus?.certificateStatus || 'waiting_for_verification'
       };
     } catch (_) {}
 
@@ -1657,6 +1663,26 @@ router.post('/:id/verify-dns', authenticate, requireRoles('admin'), async (req, 
     });
   } catch (err) {
     return res.status(500).json({ error: 'Failed to run DNS check: ' + (err.message || 'Server error') });
+  }
+});
+
+// GET /api/resellers/:id/render-status - Live Render SSL & domain certificate status check
+router.get('/:id/render-status', authenticate, requireRoles('reseller', 'admin'), async (req, res) => {
+  const resellerId = req.user.role === 'reseller' ? req.user.id : parseInt(req.params.id, 10);
+  try {
+    const profileRes = await query('SELECT custom_domain, domain_status FROM reseller_profiles WHERE reseller_id = $1', [resellerId]);
+    if (!profileRes.rows.length || !profileRes.rows[0].custom_domain) {
+      return res.status(404).json({ error: 'No custom domain configured for this partner.' });
+    }
+    const domain = profileRes.rows[0].custom_domain;
+    const renderStatus = await checkRenderDomainStatus(domain);
+    return res.json({
+      domain,
+      domain_status: profileRes.rows[0].domain_status,
+      render: renderStatus
+    });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to fetch Render status: ' + (err.message || 'Server error') });
   }
 });
 

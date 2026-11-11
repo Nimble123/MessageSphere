@@ -10,6 +10,15 @@ async function getRenderConfig() {
 
   try {
     const { query } = require('../db');
+    // Ensure table exists
+    await query(`
+      CREATE TABLE IF NOT EXISTS platform_integrations (
+        config_key VARCHAR(80) PRIMARY KEY,
+        config_value TEXT NOT NULL,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `).catch(() => {});
+
     const res = await query(
       `SELECT config_key, config_value FROM platform_integrations WHERE config_key IN ('RENDER_API_KEY', 'RENDER_SERVICE_ID')`
     );
@@ -103,6 +112,10 @@ async function addCustomDomainToRender(domain) {
 
     if (res.status === 409) {
       console.log(`[RENDER DOMAINS] Domain ${cleanDomain} is already registered on Render service.`);
+      // Still trigger verify on Render so DNS check runs immediately
+      try {
+        await triggerRenderDomainVerification(cleanDomain);
+      } catch (_) {}
       return { success: true, alreadyExists: true, configured: true };
     }
 
@@ -175,10 +188,32 @@ async function checkRenderDomainStatus(domain) {
   }
 }
 
+/**
+ * Force Render to re-verify custom domain immediately
+ */
+async function triggerRenderDomainVerification(domain) {
+  const cfg = await getRenderConfig();
+  if (!cfg.isConfigured || !domain) return { success: false, reason: 'Not configured' };
+  const cleanDomain = String(domain).trim().toLowerCase();
+  try {
+    const res = await fetch(`https://api.render.com/v1/services/${cfg.serviceId}/custom-domains/${encodeURIComponent(cleanDomain)}/verify`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${cfg.apiKey}`
+      }
+    });
+    return { success: res.ok, status: res.status };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
 module.exports = {
   getRenderConfig,
   testRenderConnection,
   addCustomDomainToRender,
   removeCustomDomainFromRender,
-  checkRenderDomainStatus
+  checkRenderDomainStatus,
+  triggerRenderDomainVerification
 };

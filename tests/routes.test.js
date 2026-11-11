@@ -640,5 +640,25 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.equal(emptyResult.summary.gross_revenue, 0);
     assert.equal(emptyResult.summary.net_profit, 0);
     assert.equal(emptyResult.summary.profit_margin_pct, 0);
+
+    // Defensive handling of malformed channel_rates and null dates
+    const malformedAllotment = [
+      {
+        id: 999,
+        user_id: 10,
+        credits_requested: 1000,
+        channel_rates: {
+          corrupted_entry: null,
+          another_broken: 'not_an_object',
+          normal_domestic: { credits: 1000, rate: 0.18, cost: 180.00 }
+        },
+        created_at: null
+      }
+    ];
+    const robustRes = calculateResellerMargins(wholesaleRates, malformedAllotment);
+    assert.equal(robustRes.summary.total_credits_sold, 1000);
+    assert.equal(robustRes.summary.gross_revenue, 180.00);
+    assert.equal(robustRes.summary.wholesale_cogs, 120.00);
+    assert.equal(robustRes.summary.net_profit, 60.00);
   });
 });
