@@ -1704,6 +1704,32 @@
       gap: 10px;
     }
 
+    /* Premium World-Class Credit Plans Cards */
+    .premium-plan-card {
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease, border-color 0.25s ease;
+    }
+    .premium-plan-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 20px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04) !important;
+      border-color: #818cf8 !important;
+    }
+    .plan-filter-pill {
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      cursor: pointer;
+    }
+    .plan-filter-pill:hover:not(.active) {
+      border-color: #94a3b8 !important;
+      color: #0f172a !important;
+      background: #f8fafc !important;
+    }
+    .plan-scope-btn {
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .plan-scope-btn:hover:not([style*="#0f172a"]) {
+      color: #0f172a !important;
+      background: rgba(255, 255, 255, 0.6) !important;
+    }
+
     /* Modular Media Uploaders */
     .media-card-box {
       background: white;
@@ -4794,11 +4820,11 @@
         <section id="view-plans" class="app-view">
           
           <!-- View Header -->
-          <div class="view-header" style="margin-bottom: 20px;">
+          <div class="view-header" style="margin-bottom: 22px;">
             <div>
               <h2 class="view-title" style="display: flex; align-items: center; gap: 10px;">
-                <span style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 8px; background: linear-gradient(135deg, #6366f1, #4f46e5); color: #fff;">
-                  <i data-lucide="package" style="width: 18px; height: 18px;"></i>
+                <span style="display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #6366f1, #4f46e5); color: #fff; box-shadow: 0 4px 10px rgba(99, 102, 241, 0.3);">
+                  <i data-lucide="package" style="width: 20px; height: 20px;"></i>
                 </span>
                 Credit Plans &amp; Pricing Packages
               </h2>
@@ -4807,51 +4833,107 @@
               </div>
             </div>
             <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-              <button type="button" class="btn-action btn-action-secondary" onclick="loadCreditPlans()" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; font-size: 0.82rem;">
+              <button type="button" class="btn-action btn-action-secondary" onclick="loadCreditPlans()" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; font-size: 0.82rem; border-radius: 8px; font-weight: 600;">
                 <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i> Refresh Plans
               </button>
-              <button type="button" class="btn-action btn-action-primary" id="btn-create-plan-modal" onclick="openCreatePlanModal()" style="display: none; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 700; background: #4f46e5; color: #fff;">
+              <button type="button" class="btn-action btn-action-primary" id="btn-create-plan-modal" onclick="openCreatePlanModal()" style="display: none; align-items: center; gap: 6px; padding: 9px 18px; font-weight: 700; border-radius: 8px; background: linear-gradient(135deg, #4f46e5, #4338ca); color: #fff; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);">
                 <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> Create New Plan
               </button>
             </div>
           </div>
 
-          <!-- Role / Scope Navigation Tabs (Admin / Reseller) -->
-          <div id="plans-scope-strip" style="display: none; margin-bottom: 16px; background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 12px 18px; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
-            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-              <span style="font-size: 0.78rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; display: inline-flex; align-items: center; gap: 5px;">
-                <i data-lucide="layers" style="width: 14px; height: 14px; color: #6366f1;"></i> Category:
-              </span>
-              <div class="scope-toggle-group" id="plans-scope-buttons" style="display: inline-flex; background: #e2e8f0; border-radius: 8px; padding: 3px; gap: 2px;">
-                <!-- Populated dynamically based on user role -->
+          <!-- Enterprise KPI Metrics Strip -->
+          <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); margin-bottom: 22px; gap: 14px;">
+            <div class="metric-card" style="padding: 16px 20px; border-left: 4px solid #6366f1; border-radius: 12px;">
+              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">Available Packages</span>
+                <div class="metric-icon" style="background: #eef2ff; color: #6366f1; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                  <i data-lucide="package" style="width: 16px; height: 16px;"></i>
+                </div>
+              </div>
+              <div class="metric-data">
+                <div class="metric-value" id="plans-kpi-total" style="font-size: 1.5rem; font-weight: 800; color: #1e1b4b;">12</div>
+                <div class="metric-sub" style="font-size: 0.74rem; color: #64748b; margin-top: 2px;">Active credit packages</div>
               </div>
             </div>
-            <div id="plans-scope-hint" style="font-size: 0.76rem; color: #64748b; font-weight: 500;">
-              Displaying available credit plans.
+
+            <div class="metric-card" style="padding: 16px 20px; border-left: 4px solid #2563eb; border-radius: 12px;">
+              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">GSM SMS Base Rate</span>
+                <div class="metric-icon" style="background: #eff6ff; color: #2563eb; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                  <i data-lucide="radio" style="width: 16px; height: 16px;"></i>
+                </div>
+              </div>
+              <div class="metric-data">
+                <div class="metric-value" id="plans-kpi-sms-rate" style="font-size: 1.5rem; font-weight: 800; color: #1e1b4b;">₹0.0800</div>
+                <div class="metric-sub" style="font-size: 0.74rem; color: #64748b; margin-top: 2px;">Cellular GSM Telecom Route</div>
+              </div>
+            </div>
+
+            <div class="metric-card" style="padding: 16px 20px; border-left: 4px solid #059669; border-radius: 12px;">
+              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">WhatsApp Base Rate</span>
+                <div class="metric-icon" style="background: #ecfdf5; color: #059669; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                  <i data-lucide="message-circle" style="width: 16px; height: 16px;"></i>
+                </div>
+              </div>
+              <div class="metric-data">
+                <div class="metric-value" id="plans-kpi-wa-rate" style="font-size: 1.5rem; font-weight: 800; color: #1e1b4b;">₹0.0800</div>
+                <div class="metric-sub" style="font-size: 0.74rem; color: #64748b; margin-top: 2px;">Text, CTA &amp; Media routes</div>
+              </div>
+            </div>
+
+            <div class="metric-card" style="padding: 16px 20px; border-left: 4px solid #7c3aed; border-radius: 12px;">
+              <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span class="metric-title" style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">Wholesale Volume Tier</span>
+                <div class="metric-icon" style="background: #faf5ff; color: #7c3aed; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                  <i data-lucide="sparkles" style="width: 16px; height: 16px;"></i>
+                </div>
+              </div>
+              <div class="metric-data">
+                <div class="metric-value" style="font-size: 1.5rem; font-weight: 800; color: #1e1b4b;">1,00,000+</div>
+                <div class="metric-sub" style="font-size: 0.74rem; color: #64748b; margin-top: 2px;">Partner wholesale credit pool</div>
+              </div>
             </div>
           </div>
 
-          <!-- Channel Filter Pills -->
-          <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px;" id="plans-channel-filter-pills">
-            <button type="button" class="btn-action btn-action-secondary plan-filter-pill active" onclick="filterPlansByChannel('all', this)" style="padding: 6px 14px; font-size: 0.76rem; font-weight: 700;">
+          <!-- Role / Scope Navigation Tabs (Admin / Reseller) -->
+          <div id="plans-scope-strip" style="display: none; margin-bottom: 18px; background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 14px; padding: 14px 20px; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+              <span style="font-size: 0.78rem; font-weight: 800; color: #334155; text-transform: uppercase; letter-spacing: 0.6px; display: inline-flex; align-items: center; gap: 6px;">
+                <i data-lucide="layers" style="width: 15px; height: 15px; color: #6366f1;"></i> Category:
+              </span>
+              <div class="scope-toggle-group" id="plans-scope-buttons" style="display: inline-flex; background: #f1f5f9; border-radius: 10px; padding: 4px; gap: 3px; border: 1px solid #e2e8f0;">
+                <!-- Populated dynamically based on user role -->
+              </div>
+            </div>
+            <div id="plans-scope-hint" style="font-size: 0.78rem; color: #64748b; font-weight: 600; display: inline-flex; align-items: center; gap: 5px;">
+              <i data-lucide="info" style="width: 14px; height: 14px; color: #6366f1;"></i> Displaying available credit packages.
+            </div>
+          </div>
+
+          <!-- Channel Filter Pills (Modern Rounded-Full Badges) -->
+          <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; align-items: center;" id="plans-channel-filter-pills">
+            <span style="font-size: 0.78rem; font-weight: 700; color: #475569; margin-right: 4px;">Products:</span>
+            <button type="button" class="btn-action plan-filter-pill active" onclick="filterPlansByChannel('all', this)" style="padding: 7px 16px; font-size: 0.78rem; font-weight: 700; border-radius: 30px; background: #0f172a; color: #fff; border: 1px solid #0f172a;">
               All Channels
             </button>
-            <button type="button" class="btn-action btn-action-secondary plan-filter-pill" onclick="filterPlansByChannel('gsm_sms', this)" style="padding: 6px 14px; font-size: 0.76rem; font-weight: 600;">
-              <i data-lucide="radio" style="width: 13px; height: 13px; vertical-align: -2px; margin-right: 3px;"></i> GSM Bulk SMS
+            <button type="button" class="btn-action plan-filter-pill" onclick="filterPlansByChannel('gsm_sms', this)" style="padding: 7px 16px; font-size: 0.78rem; font-weight: 600; border-radius: 30px; background: #fff; color: #475569; border: 1.5px solid #e2e8f0;">
+              <i data-lucide="radio" style="width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px;"></i> GSM Bulk SMS
             </button>
-            <button type="button" class="btn-action btn-action-secondary plan-filter-pill" onclick="filterPlansByChannel('normal', this)" style="padding: 6px 14px; font-size: 0.76rem; font-weight: 600;">
-              <i data-lucide="message-circle" style="width: 13px; height: 13px; vertical-align: -2px; margin-right: 3px;"></i> WhatsApp Text
+            <button type="button" class="btn-action plan-filter-pill" onclick="filterPlansByChannel('normal', this)" style="padding: 7px 16px; font-size: 0.78rem; font-weight: 600; border-radius: 30px; background: #fff; color: #475569; border: 1.5px solid #e2e8f0;">
+              <i data-lucide="message-circle" style="width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px;"></i> WhatsApp Text
             </button>
-            <button type="button" class="btn-action btn-action-secondary plan-filter-pill" onclick="filterPlansByChannel('cta', this)" style="padding: 6px 14px; font-size: 0.76rem; font-weight: 600;">
-              <i data-lucide="mouse-pointer-click" style="width: 13px; height: 13px; vertical-align: -2px; margin-right: 3px;"></i> WhatsApp CTA
+            <button type="button" class="btn-action plan-filter-pill" onclick="filterPlansByChannel('cta', this)" style="padding: 7px 16px; font-size: 0.78rem; font-weight: 600; border-radius: 30px; background: #fff; color: #475569; border: 1.5px solid #e2e8f0;">
+              <i data-lucide="mouse-pointer-click" style="width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px;"></i> WhatsApp CTA
             </button>
-            <button type="button" class="btn-action btn-action-secondary plan-filter-pill" onclick="filterPlansByChannel('dp_cta', this)" style="padding: 6px 14px; font-size: 0.76rem; font-weight: 600;">
-              <i data-lucide="sparkles" style="width: 13px; height: 13px; vertical-align: -2px; margin-right: 3px;"></i> WhatsApp DP + CTA
+            <button type="button" class="btn-action plan-filter-pill" onclick="filterPlansByChannel('dp_cta', this)" style="padding: 7px 16px; font-size: 0.78rem; font-weight: 600; border-radius: 30px; background: #fff; color: #475569; border: 1.5px solid #e2e8f0;">
+              <i data-lucide="sparkles" style="width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px;"></i> WhatsApp DP + CTA
             </button>
           </div>
 
           <!-- Plans Grid Container -->
-          <div id="plans-grid-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px;">
+          <div id="plans-grid-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 24px;">
             <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--slate-400);">Loading available plans...</div>
           </div>
         </section>
@@ -8271,6 +8353,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=202611111410"></script>
+  <script src="app.js?v=202611111430"></script>
 </body>
 </html>

@@ -14032,10 +14032,18 @@ window.filterPlansByChannel = function(ch, btn) {
   document.querySelectorAll('.plan-filter-pill').forEach(b => {
     b.classList.remove('active');
     b.style.fontWeight = '600';
+    b.style.background = '#ffffff';
+    b.style.color = '#475569';
+    b.style.border = '1.5px solid #e2e8f0';
+    b.style.boxShadow = 'none';
   });
   if (btn) {
     btn.classList.add('active');
     btn.style.fontWeight = '700';
+    btn.style.background = '#0f172a';
+    btn.style.color = '#ffffff';
+    btn.style.border = '1.5px solid #0f172a';
+    btn.style.boxShadow = '0 2px 4px rgba(15, 23, 42, 0.15)';
   }
   renderCreditPlansGrid();
 };
@@ -14046,26 +14054,29 @@ window.switchPlanCategory = function(cat) {
   const btns = document.querySelectorAll('.plan-scope-btn');
   btns.forEach(b => {
     if (b.dataset.scope === currentPlanCategory) {
-      b.style.background = '#4f46e5';
-      b.style.color = '#fff';
+      b.style.background = '#0f172a';
+      b.style.color = '#ffffff';
       b.style.fontWeight = '700';
+      b.style.boxShadow = '0 2px 6px rgba(15, 23, 42, 0.2)';
     } else {
       b.style.background = 'transparent';
-      b.style.color = '#475569';
+      b.style.color = '#64748b';
       b.style.fontWeight = '600';
+      b.style.boxShadow = 'none';
     }
   });
 
   const hintEl = document.getElementById('plans-scope-hint');
   if (hintEl) {
     if (currentUser?.role === 'admin') {
-      if (cat === 'all') hintEl.textContent = 'Showing all configured retail & wholesale credit plans.';
-      else if (cat === 'user') hintEl.textContent = 'Retail credit packages available for direct client accounts.';
-      else if (cat === 'reseller') hintEl.textContent = 'Wholesale volume packs for Reseller Partners (Min 1,00,000 qty).';
+      if (cat === 'all') hintEl.innerHTML = '<i data-lucide="info" style="width: 14px; height: 14px; color: #6366f1;"></i> Showing all configured retail & wholesale credit plans.';
+      else if (cat === 'user') hintEl.innerHTML = '<i data-lucide="info" style="width: 14px; height: 14px; color: #6366f1;"></i> Retail credit packages available for direct client accounts.';
+      else if (cat === 'reseller') hintEl.innerHTML = '<i data-lucide="info" style="width: 14px; height: 14px; color: #6366f1;"></i> Wholesale volume packs for Reseller Partners (Min 1,00,000 qty).';
     } else if (currentUser?.role === 'reseller') {
-      if (cat === 'wholesale') hintEl.textContent = 'Wholesale credit packages provided by Super Admin to stock your partner wallet.';
-      else if (cat === 'client_plans') hintEl.textContent = 'Custom credit plans created for your downstream clients.';
+      if (cat === 'wholesale') hintEl.innerHTML = '<i data-lucide="info" style="width: 14px; height: 14px; color: #6366f1;"></i> Wholesale credit packages provided by Super Admin to stock your partner wallet.';
+      else if (cat === 'client_plans') hintEl.innerHTML = '<i data-lucide="info" style="width: 14px; height: 14px; color: #6366f1;"></i> Custom credit plans created for your downstream clients.';
     }
+    if (window.lucide) window.lucide.createIcons();
   }
 
   renderCreditPlansGrid();
@@ -14091,13 +14102,13 @@ window.loadCreditPlans = async function() {
     if (isAdmin) {
       scopeStrip.style.display = 'flex';
       scopeButtons.innerHTML = `
-        <button type="button" class="plan-scope-btn" data-scope="all" onclick="switchPlanCategory('all')" style="padding: 5px 12px; font-size: 0.74rem; font-weight: ${currentPlanCategory === 'all' ? '700' : '600'}; background: ${currentPlanCategory === 'all' ? '#4f46e5' : 'transparent'}; color: ${currentPlanCategory === 'all' ? '#fff' : '#475569'}; border-radius: 6px; border: none; cursor: pointer;">
+        <button type="button" class="plan-scope-btn" data-scope="all" onclick="switchPlanCategory('all')" style="padding: 6px 14px; font-size: 0.76rem; font-weight: ${currentPlanCategory === 'all' ? '700' : '600'}; background: ${currentPlanCategory === 'all' ? '#0f172a' : 'transparent'}; color: ${currentPlanCategory === 'all' ? '#fff' : '#64748b'}; border-radius: 8px; border: none; cursor: pointer; transition: all 0.2s;">
           All Plans
         </button>
-        <button type="button" class="plan-scope-btn" data-scope="user" onclick="switchPlanCategory('user')" style="padding: 5px 12px; font-size: 0.74rem; font-weight: ${currentPlanCategory === 'user' ? '700' : '600'}; background: ${currentPlanCategory === 'user' ? '#4f46e5' : 'transparent'}; color: ${currentPlanCategory === 'user' ? '#fff' : '#475569'}; border-radius: 6px; border: none; cursor: pointer;">
+        <button type="button" class="plan-scope-btn" data-scope="user" onclick="switchPlanCategory('user')" style="padding: 6px 14px; font-size: 0.76rem; font-weight: ${currentPlanCategory === 'user' ? '700' : '600'}; background: ${currentPlanCategory === 'user' ? '#0f172a' : 'transparent'}; color: ${currentPlanCategory === 'user' ? '#fff' : '#64748b'}; border-radius: 8px; border: none; cursor: pointer; transition: all 0.2s;">
           Direct Clients (Retail)
         </button>
-        <button type="button" class="plan-scope-btn" data-scope="reseller" onclick="switchPlanCategory('reseller')" style="padding: 5px 12px; font-size: 0.74rem; font-weight: ${currentPlanCategory === 'reseller' ? '700' : '600'}; background: ${currentPlanCategory === 'reseller' ? '#4f46e5' : 'transparent'}; color: ${currentPlanCategory === 'reseller' ? '#fff' : '#475569'}; border-radius: 6px; border: none; cursor: pointer;">
+        <button type="button" class="plan-scope-btn" data-scope="reseller" onclick="switchPlanCategory('reseller')" style="padding: 6px 14px; font-size: 0.76rem; font-weight: ${currentPlanCategory === 'reseller' ? '700' : '600'}; background: ${currentPlanCategory === 'reseller' ? '#0f172a' : 'transparent'}; color: ${currentPlanCategory === 'reseller' ? '#fff' : '#64748b'}; border-radius: 8px; border: none; cursor: pointer; transition: all 0.2s;">
           Reseller Wholesale (1L+)
         </button>
       `;
@@ -14108,10 +14119,10 @@ window.loadCreditPlans = async function() {
         window.currentPlanCategory = 'wholesale';
       }
       scopeButtons.innerHTML = `
-        <button type="button" class="plan-scope-btn" data-scope="wholesale" onclick="switchPlanCategory('wholesale')" style="padding: 5px 12px; font-size: 0.74rem; font-weight: ${currentPlanCategory === 'wholesale' ? '700' : '600'}; background: ${currentPlanCategory === 'wholesale' ? '#4f46e5' : 'transparent'}; color: ${currentPlanCategory === 'wholesale' ? '#fff' : '#475569'}; border-radius: 6px; border: none; cursor: pointer;">
+        <button type="button" class="plan-scope-btn" data-scope="wholesale" onclick="switchPlanCategory('wholesale')" style="padding: 6px 14px; font-size: 0.76rem; font-weight: ${currentPlanCategory === 'wholesale' ? '700' : '600'}; background: ${currentPlanCategory === 'wholesale' ? '#0f172a' : 'transparent'}; color: ${currentPlanCategory === 'wholesale' ? '#fff' : '#64748b'}; border-radius: 8px; border: none; cursor: pointer; transition: all 0.2s;">
           Wholesale Plans (From Admin)
         </button>
-        <button type="button" class="plan-scope-btn" data-scope="client_plans" onclick="switchPlanCategory('client_plans')" style="padding: 5px 12px; font-size: 0.74rem; font-weight: ${currentPlanCategory === 'client_plans' ? '700' : '600'}; background: ${currentPlanCategory === 'client_plans' ? '#4f46e5' : 'transparent'}; color: ${currentPlanCategory === 'client_plans' ? '#fff' : '#475569'}; border-radius: 6px; border: none; cursor: pointer;">
+        <button type="button" class="plan-scope-btn" data-scope="client_plans" onclick="switchPlanCategory('client_plans')" style="padding: 6px 14px; font-size: 0.76rem; font-weight: ${currentPlanCategory === 'client_plans' ? '700' : '600'}; background: ${currentPlanCategory === 'client_plans' ? '#0f172a' : 'transparent'}; color: ${currentPlanCategory === 'client_plans' ? '#fff' : '#64748b'}; border-radius: 8px; border: none; cursor: pointer; transition: all 0.2s;">
           My Client Plans
         </button>
       `;
@@ -14125,7 +14136,32 @@ window.loadCreditPlans = async function() {
   try {
     const plansData = await apiFetch('/billing/plans');
     cachedCreditPlans = plansData;
-    window.cachedCreditPlans = cachedCreditPlans;
+    window.cachedCreditPlans = plansData;
+
+    // Dynamically calculate and update Enterprise KPI metrics
+    try {
+      const plansList = Array.isArray(plansData) ? plansData : [...(plansData.wholesale_plans || []), ...(plansData.my_client_plans || [])];
+      const totalEl = document.getElementById('plans-kpi-total');
+      const smsRateEl = document.getElementById('plans-kpi-sms-rate');
+      const waRateEl = document.getElementById('plans-kpi-wa-rate');
+
+      if (totalEl) totalEl.textContent = plansList.length || 0;
+
+      const smsPlans = plansList.filter(p => p.credit_type === 'gsm_sms');
+      if (smsRateEl && smsPlans.length > 0) {
+        const minSms = Math.min(...smsPlans.map(p => parseFloat(p.rate_per_credit)));
+        smsRateEl.textContent = `₹${minSms.toFixed(4)}`;
+      }
+
+      const waPlans = plansList.filter(p => ['normal', 'cta', 'dp', 'dp_cta'].includes(p.credit_type));
+      if (waRateEl && waPlans.length > 0) {
+        const minWa = Math.min(...waPlans.map(p => parseFloat(p.rate_per_credit)));
+        waRateEl.textContent = `₹${minWa.toFixed(4)}`;
+      }
+    } catch (e) {
+      console.warn('KPI calculation error:', e);
+    }
+
     renderCreditPlansGrid();
   } catch (err) {
     container.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #ef4444;">Failed to load credit plans: ${escapeHtml(err.message)}</div>`;
@@ -14168,16 +14204,16 @@ window.renderCreditPlansGrid = function() {
 
   if (listToDisplay.length === 0) {
     container.innerHTML = `
-      <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; background: #fff; border-radius: 12px; border: 1.5px dashed #cbd5e1;">
-        <div style="width: 48px; height: 48px; border-radius: 50%; background: #eef2ff; color: #6366f1; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px;">
-          <i data-lucide="package-open" style="width: 24px; height: 24px;"></i>
+      <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; background: #ffffff; border-radius: 16px; border: 1.5px dashed #cbd5e1;">
+        <div style="width: 52px; height: 52px; border-radius: 50%; background: #eef2ff; color: #6366f1; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 14px;">
+          <i data-lucide="package-open" style="width: 26px; height: 26px;"></i>
         </div>
-        <h4 style="font-size: 1.05rem; font-weight: 700; color: #1e293b; margin: 0 0 6px 0;">No credit plans found</h4>
-        <p style="font-size: 0.8rem; color: #64748b; margin: 0 0 16px 0; max-width: 400px; margin-inline: auto;">
-          ${(isAdmin || isReseller) ? 'No packages found matching this category or channel. Create custom plans to give clients or resellers pre-configured credit packs.' : 'No credit plans currently available. Please contact your account manager for custom volume allocations.'}
+        <h4 style="font-size: 1.1rem; font-weight: 800; color: #0f172a; margin: 0 0 6px 0;">No credit plans found</h4>
+        <p style="font-size: 0.82rem; color: #64748b; margin: 0 0 18px 0; max-width: 420px; margin-inline: auto; line-height: 1.45;">
+          ${(isAdmin || isReseller) ? 'No packages found matching this category or channel filter. Create custom plans to give clients or resellers pre-configured credit packs.' : 'No credit plans currently available. Please contact your account manager for custom volume allocations.'}
         </p>
         ${(isAdmin || isReseller) ? `
-          <button type="button" class="btn-action btn-action-primary" onclick="openCreatePlanModal()" style="padding: 8px 18px; font-weight: 700; background: #4f46e5; color: #fff;">
+          <button type="button" class="btn-action btn-action-primary" onclick="openCreatePlanModal()" style="padding: 9px 20px; font-weight: 700; border-radius: 8px; background: #4f46e5; color: #fff;">
             <i data-lucide="plus-circle" style="width: 15px; height: 15px;"></i> Create New Plan
           </button>
         ` : ''}
@@ -14187,131 +14223,197 @@ window.renderCreditPlansGrid = function() {
     return;
   }
 
+  // Theme configuration for each messaging channel
+  const themeStyles = {
+    'gsm_sms': {
+      accent: 'linear-gradient(90deg, #3b82f6, #6366f1)',
+      iconBg: 'linear-gradient(135deg, #eff6ff, #dbeafe)',
+      iconColor: '#2563eb',
+      iconBorder: '#bfdbfe',
+      channelBadgeText: '#1e40af'
+    },
+    'cta': {
+      accent: 'linear-gradient(90deg, #10b981, #059669)',
+      iconBg: 'linear-gradient(135deg, #ecfdf5, #d1fae5)',
+      iconColor: '#059669',
+      iconBorder: '#a7f3d0',
+      channelBadgeText: '#065f46'
+    },
+    'dp_cta': {
+      accent: 'linear-gradient(90deg, #8b5cf6, #ec4899)',
+      iconBg: 'linear-gradient(135deg, #faf5ff, #f3e8ff)',
+      iconColor: '#7c3aed',
+      iconBorder: '#e9d5ff',
+      channelBadgeText: '#6b21a8'
+    },
+    'normal': {
+      accent: 'linear-gradient(90deg, #0284c7, #38bdf8)',
+      iconBg: 'linear-gradient(135deg, #f0f9ff, #e0f2fe)',
+      iconColor: '#0284c7',
+      iconBorder: '#bae6fd',
+      channelBadgeText: '#0369a1'
+    },
+    'dp': {
+      accent: 'linear-gradient(90deg, #a855f7, #6366f1)',
+      iconBg: 'linear-gradient(135deg, #f5f3ff, #ede9fe)',
+      iconColor: '#7c3aed',
+      iconBorder: '#ddd6fe',
+      channelBadgeText: '#5b21b6'
+    },
+    'own_number': {
+      accent: 'linear-gradient(90deg, #0d9488, #14b8a6)',
+      iconBg: 'linear-gradient(135deg, #f0fdfa, #ccfbf1)',
+      iconColor: '#0d9488',
+      iconBorder: '#99f6e4',
+      channelBadgeText: '#115e59'
+    }
+  };
+
   container.innerHTML = listToDisplay.map(plan => {
     const isWholesale = plan.target_role === 'reseller';
     const isOwner = currentUser && (currentUser.id === plan.created_by || isAdmin);
     const channelIcon = getPlanChannelIcon(plan.credit_type);
     const channelLabel = getPlanChannelLabel(plan.credit_type);
-    const destLabel = plan.destination === 'international' ? 'International Route' : 'Domestic (India)';
+    const destLabel = plan.destination === 'international' ? 'International Route' : 'Domestic Route (India +91)';
+    const ratePaise = (Number(plan.rate_per_credit) * 100).toFixed(1);
+    const formattedTotal = Number(plan.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const formattedCredits = Number(plan.credits).toLocaleString('en-IN');
 
-    const borderStyle = plan.is_active ? (isWholesale ? 'border-color: #d8b4fe;' : 'border-color: #c7d2fe;') : 'border-color: #e2e8f0; opacity: 0.75;';
+    const theme = themeStyles[plan.credit_type] || themeStyles['gsm_sms'];
+    const topAccent = isWholesale ? 'linear-gradient(90deg, #9333ea, #ec4899)' : theme.accent;
 
     return `
-      <div class="card plan-card" style="border-radius: 14px; border: 1.5px solid; ${borderStyle} background: #ffffff; padding: 22px; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.2s ease-in-out; box-shadow: 0 2px 5px rgba(0,0,0,0.03); position: relative;">
+      <div class="card premium-plan-card" style="border-radius: 18px; border: 1.5px solid #e2e8f0; background: #ffffff; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.04), 0 2px 4px -2px rgba(0, 0, 0, 0.03); position: relative; overflow: hidden;">
         
-        <div>
-          <!-- Top Row: Channel Badge & Tags -->
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
-            <span style="font-size: 0.72rem; font-weight: 700; background: #eef2ff; color: #4338ca; padding: 4px 10px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid #c7d2fe;">
-              <i data-lucide="${channelIcon}" style="width: 12px; height: 12px;"></i> ${escapeHtml(channelLabel)}
-            </span>
-            
-            <div style="display: flex; align-items: center; gap: 5px;">
+        <!-- Top Gradient Accent Bar -->
+        <div style="height: 5px; width: 100%; background: ${topAccent};"></div>
+
+        <div style="padding: 24px 24px 18px 24px;">
+          
+          <!-- Top Row: Icon + Channel + Badge -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="width: 42px; height: 42px; border-radius: 10px; background: ${theme.iconBg}; border: 1px solid ${theme.iconBorder}; color: ${theme.iconColor}; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 2px 5px rgba(0,0,0,0.03);">
+                <i data-lucide="${channelIcon}" style="width: 20px; height: 20px;"></i>
+              </div>
+              <div>
+                <span style="font-size: 0.72rem; font-weight: 800; color: ${theme.channelBadgeText}; text-transform: uppercase; letter-spacing: 0.5px; display: block;">
+                  ${escapeHtml(channelLabel)}
+                </span>
+                <span style="font-size: 0.7rem; font-weight: 600; color: ${isWholesale ? '#9333ea' : '#475569'}; display: inline-flex; align-items: center; gap: 3px;">
+                  <i data-lucide="${isWholesale ? 'network' : 'user'}" style="width: 11px; height: 11px;"></i>
+                  ${isWholesale ? 'Wholesale Partner Tier' : 'Direct Client Retail'}
+                </span>
+              </div>
+            </div>
+
+            <!-- Single Sleek Badge / Dot -->
+            <div style="display: flex; align-items: center; gap: 6px;">
               ${plan.badge_text ? `
-                <span style="font-size: 0.68rem; font-weight: 800; background: #fef3c7; color: #92400e; padding: 3px 8px; border-radius: 20px; border: 1px solid #fde68a; text-transform: uppercase; letter-spacing: 0.3px;">
+                <span style="font-size: 0.68rem; font-weight: 800; background: linear-gradient(135deg, #fef3c7, #fde68a); color: #92400e; padding: 4px 9px; border-radius: 20px; border: 1px solid #fcd34d; text-transform: uppercase; letter-spacing: 0.4px;">
                   ${escapeHtml(plan.badge_text)}
                 </span>
               ` : ''}
-
-              ${(isAdmin || isReseller) ? `
-                <span style="font-size: 0.66rem; font-weight: 700; padding: 2px 7px; border-radius: 20px; ${plan.is_active ? 'background: #dcfce7; color: #15803d;' : 'background: #fee2e2; color: #b91c1c;'}">
-                  ${plan.is_active ? 'Active' : 'Inactive'}
-                </span>
-              ` : ''}
+              
+              <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 20px; ${plan.is_active ? 'background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0;' : 'background: #fef2f2; color: #dc2626; border: 1px solid #fecaca;'}">
+                <span style="width: 6px; height: 6px; border-radius: 50%; background: ${plan.is_active ? '#10b981' : '#ef4444'};"></span>
+                ${plan.is_active ? 'Active' : 'Paused'}
+              </span>
             </div>
           </div>
 
-          <!-- Target Role Tag for Admins/Resellers -->
-          ${(isAdmin || (isReseller && currentPlanCategory === 'all')) ? `
-            <div style="margin-bottom: 10px;">
-              ${isWholesale ? `
-                <span style="background: #fae8ff; color: #86198f; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 12px; border: 1px solid #f0abfc; display: inline-flex; align-items: center; gap: 3px;">
-                  <i data-lucide="network" style="width: 11px; height: 11px;"></i> Reseller Wholesale (Min 1L)
-                </span>
-              ` : `
-                <span style="background: #e0f2fe; color: #0369a1; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 12px; border: 1px solid #bae6fd; display: inline-flex; align-items: center; gap: 3px;">
-                  <i data-lucide="user" style="width: 11px; height: 11px;"></i> Direct Client Retail
-                </span>
-              `}
-            </div>
-          ` : ''}
-
-          <!-- Plan Title -->
-          <h3 style="font-size: 1.12rem; font-weight: 800; color: #0f172a; margin: 0 0 6px 0; line-height: 1.3;">
+          <!-- Plan Title & Description -->
+          <h3 style="font-size: 1.2rem; font-weight: 800; color: #0f172a; margin: 0 0 6px 0; letter-spacing: -0.3px; line-height: 1.3;">
             ${escapeHtml(plan.plan_name)}
           </h3>
-
-          <!-- Description -->
-          <p style="font-size: 0.77rem; color: #64748b; margin: 0 0 16px 0; min-height: 32px; line-height: 1.45;">
-            ${escapeHtml(plan.description || `${destLabel} with carrier telecom routing and real-time delivery reports.`)}
+          <p style="font-size: 0.78rem; color: #64748b; margin: 0 0 16px 0; min-height: 36px; line-height: 1.45;">
+            ${escapeHtml(plan.description || `${destLabel} with carrier telecom routing, instant DLR report reconciliation, and fast gateway priority.`)}
           </p>
 
-          <!-- Pricing & Credit Details Box -->
-          <div style="background: ${isWholesale ? '#faf5ff' : '#f8fafc'}; border: 1px solid ${isWholesale ? '#e9d5ff' : '#e2e8f0'}; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;">
-            <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px;">
-              <span style="font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Package Price</span>
-              <span style="font-size: 0.72rem; color: #475569; font-weight: 600;">${destLabel}</span>
-            </div>
-            
+          <!-- Pricing Block (Stripe/Linear-grade) -->
+          <div style="background: ${isWholesale ? 'linear-gradient(135deg, #faf5ff, #f3e8ff)' : 'linear-gradient(135deg, #f8fafc, #f1f5f9)'}; border-radius: 12px; border: 1px solid ${isWholesale ? '#e9d5ff' : '#e2e8f0'}; padding: 16px 18px; margin-bottom: 16px;">
             <div style="display: flex; align-items: baseline; justify-content: space-between;">
-              <div style="font-size: 1.55rem; font-weight: 900; color: ${isWholesale ? '#6b21a8' : '#1e1b4b'}; letter-spacing: -0.5px;">
-                ₹${Number(plan.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <div style="display: flex; align-items: baseline; gap: 2px;">
+                <span style="font-size: 1.15rem; font-weight: 800; color: #64748b;">₹</span>
+                <span style="font-size: 1.85rem; font-weight: 900; color: #0f172a; letter-spacing: -0.8px;">${formattedTotal}</span>
+                <span style="font-size: 0.76rem; font-weight: 600; color: #64748b; margin-left: 3px;">/ package</span>
               </div>
               <div style="text-align: right;">
-                <div style="font-size: 0.8rem; font-weight: 700; color: #0f172a;">
-                  ₹${Number(plan.rate_per_credit).toFixed(4)} <span style="font-size: 0.68rem; font-weight: 500; color: #64748b;">/ credit</span>
-                </div>
-                <div style="font-size: 0.68rem; color: #64748b;">
-                  (${(Number(plan.rate_per_credit) * 100).toFixed(1)} paise)
-                </div>
+                <span style="display: inline-block; font-size: 0.8rem; font-weight: 800; color: ${isWholesale ? '#7c3aed' : '#4338ca'}; background: ${isWholesale ? '#f3e8ff' : '#e0e7ff'}; padding: 3px 9px; border-radius: 6px; border: 1px solid ${isWholesale ? '#ddd6fe' : '#c7d2fe'};">
+                  ₹${Number(plan.rate_per_credit).toFixed(4)} <span style="font-size: 0.68rem; font-weight: 600; color: #64748b;">/ msg</span>
+                </span>
+                <div style="font-size: 0.68rem; color: #64748b; margin-top: 2px; font-weight: 500;">(${ratePaise} paise)</div>
               </div>
             </div>
 
-            <!-- Credits Quantity Highlight -->
-            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed ${isWholesale ? '#e9d5ff' : '#cbd5e1'}; display: flex; align-items: center; justify-content: space-between;">
-              <span style="font-size: 0.75rem; color: #475569; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
-                <i data-lucide="layers" style="width: 12px; height: 12px; color: #6366f1;"></i> Volume:
-              </span>
-              <strong style="font-size: 0.92rem; color: #0f172a; font-weight: 800;">
-                ${Number(plan.credits).toLocaleString()} Credits
-              </strong>
+            <!-- 2-Chip Metadata Grid -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed ${isWholesale ? '#ddd6fe' : '#cbd5e1'};">
+              <div>
+                <span style="font-size: 0.68rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Volume:</span>
+                <div style="font-size: 0.95rem; font-weight: 800; color: #0f172a; margin-top: 1px;">
+                  ${formattedCredits} Credits
+                </div>
+              </div>
+              <div style="text-align: right;">
+                <span style="font-size: 0.68rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Route:</span>
+                <div style="font-size: 0.85rem; font-weight: 700; color: #0f172a; margin-top: 1px;">
+                  ${plan.destination === 'international' ? 'International' : 'Domestic (India +91)'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Feature Bullets (World-class checkmarks) -->
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; font-size: 0.78rem; color: #334155;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <i data-lucide="check-circle-2" style="width: 15px; height: 15px; color: #10b981; flex-shrink: 0;"></i>
+              <span>Direct carrier telecom routing &amp; real-time DLR</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <i data-lucide="check-circle-2" style="width: 15px; height: 15px; color: #10b981; flex-shrink: 0;"></i>
+              <span>Intelligent DND scrubbing &amp; compliance filtering</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <i data-lucide="check-circle-2" style="width: 15px; height: 15px; color: #10b981; flex-shrink: 0;"></i>
+              <span>Instant wallet credit &amp; verified GST tax invoice</span>
             </div>
           </div>
 
           ${(isAdmin && plan.creator_email) ? `
-            <div style="font-size: 0.68rem; color: #94a3b8; margin-bottom: 14px;">
+            <div style="font-size: 0.68rem; color: #94a3b8; margin-bottom: 12px; display: flex; align-items: center; gap: 5px;">
+              <i data-lucide="shield-check" style="width: 12px; height: 12px; color: #6366f1;"></i>
               Created by: <strong>${escapeHtml(plan.creator_email)}</strong> (${escapeHtml(plan.creator_role || 'admin')})
             </div>
           ` : ''}
+
         </div>
 
-        <!-- Action Buttons -->
-        <div>
-          ${((currentUser.role === 'user' && !isOwner) || (isReseller && isWholesale)) ? `
-            <button type="button" class="btn-action btn-action-primary" onclick="orderCreditPlan(${plan.id})" style="width: 100%; justify-content: center; font-weight: 700; padding: 10px 14px; ${isWholesale ? 'background: #7c3aed;' : 'background: #4f46e5;'} color: #fff; box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);">
-              <i data-lucide="shopping-cart" style="width: 15px; height: 15px;"></i> ${isWholesale ? 'Order Wholesale Pack' : 'Order Now & Top-up'}
+        <!-- Action Footer -->
+        <div style="padding: 14px 24px 20px 24px; background: #ffffff; border-top: 1px solid #f1f5f9;">
+          ${(!isOwner && (currentUser.role === 'user' || (isReseller && isWholesale))) ? `
+            <button type="button" class="btn-action btn-action-primary" onclick="orderCreditPlan(${plan.id})" style="width: 100%; justify-content: center; font-weight: 800; font-size: 0.88rem; padding: 11px 16px; border-radius: 10px; ${isWholesale ? 'background: linear-gradient(135deg, #7c3aed, #6d28d9);' : 'background: linear-gradient(135deg, #4f46e5, #4338ca);'} color: #fff; box-shadow: 0 4px 12px ${isWholesale ? 'rgba(124, 58, 237, 0.3)' : 'rgba(79, 70, 229, 0.3)'}; transition: all 0.2s;">
+              <i data-lucide="${isWholesale ? 'coins' : 'zap'}" style="width: 16px; height: 16px;"></i>
+              ${isWholesale ? 'Order Wholesale Pack' : 'Order Now & Top-up'}
             </button>
           ` : ''}
 
           ${(isOwner) ? `
-            <div style="display: flex; gap: 6px; align-items: center;">
-              <button type="button" class="btn-action btn-action-secondary" onclick="openCreatePlanModal(${plan.id})" style="flex: 1; justify-content: center; font-size: 0.76rem; padding: 7px 10px; font-weight: 600;">
-                <i data-lucide="edit-3" style="width: 13px; height: 13px;"></i> Edit
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button type="button" class="btn-action btn-action-secondary" onclick="openCreatePlanModal(${plan.id})" style="flex: 1; justify-content: center; font-size: 0.8rem; padding: 8px 12px; font-weight: 700; border-radius: 8px;">
+                <i data-lucide="edit-3" style="width: 14px; height: 14px;"></i> Edit Plan
               </button>
               
-              <button type="button" class="btn-action btn-action-secondary" onclick="toggleCreditPlanStatus(${plan.id})" title="${plan.is_active ? 'Pause Plan' : 'Activate Plan'}" style="font-size: 0.76rem; padding: 7px 10px; font-weight: 600; color: ${plan.is_active ? '#475569' : '#059669'};">
-                <i data-lucide="${plan.is_active ? 'pause' : 'play'}" style="width: 13px; height: 13px;"></i>
+              <button type="button" class="btn-action btn-action-secondary" onclick="toggleCreditPlanStatus(${plan.id})" title="${plan.is_active ? 'Pause Plan' : 'Activate Plan'}" style="padding: 8px 12px; font-size: 0.8rem; font-weight: 700; border-radius: 8px; color: ${plan.is_active ? '#475569' : '#059669'};">
+                <i data-lucide="${plan.is_active ? 'pause' : 'play'}" style="width: 14px; height: 14px;"></i>
               </button>
 
-              <button type="button" class="btn-action btn-action-danger" onclick="deleteCreditPlan(${plan.id})" title="Delete Plan" style="padding: 7px 10px;">
-                <i data-lucide="trash-2" style="width: 13px; height: 13px;"></i>
+              <button type="button" class="btn-action btn-action-danger" onclick="deleteCreditPlan(${plan.id})" title="Delete Plan" style="padding: 8px 12px; border-radius: 8px;">
+                <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
               </button>
 
-              ${(isReseller && isWholesale) ? `
-                <button type="button" class="btn-action btn-action-primary" onclick="orderCreditPlan(${plan.id})" title="Re-order" style="padding: 7px 10px; background: #7c3aed; color: #fff;">
-                  <i data-lucide="shopping-cart" style="width: 13px; height: 13px;"></i>
-                </button>
-              ` : ''}
+              <button type="button" class="btn-action btn-action-primary" onclick="orderCreditPlan(${plan.id})" title="Order / Test Top-up" style="padding: 8px 12px; border-radius: 8px; background: #4f46e5; color: #fff;">
+                <i data-lucide="shopping-cart" style="width: 14px; height: 14px;"></i>
+              </button>
             </div>
           ` : ''}
         </div>
