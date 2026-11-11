@@ -371,7 +371,7 @@ router.post('/register', registerLimiter, async (req, res) => {
         INSERT INTO credit_requests 
           (user_id, user_email, package_name, credits_requested, credit_type, destination, amount_inr, rate_per_credit, paid_amount, payment_status, utr_number, receipt_url, status, invoice_number, tax_mode, base_amount, gst_amount)
         VALUES 
-          ($1, $2, $3, $4, $5, $6, $7, $8, 0.00, 'Unpaid', NULL, NULL, 'Pending', 'INV-' || TO_CHAR(CURRENT_DATE, 'YYYY') || '-' || LPAD(nextval('invoice_number_seq')::text, 6, '0'), $9, $10, $11)
+          ($1, $2, $3, $4, $5, $6, $7, $8, 0.00, 'Unpaid', 'PENDING-ONBOARDING', NULL, 'Pending', 'INV-' || TO_CHAR(CURRENT_DATE, 'YYYY') || '-' || LPAD(nextval('invoice_number_seq')::text, 6, '0'), $9, $10, $11)
       `, [
         newUser.id,
         cleanEmail,
@@ -449,21 +449,6 @@ router.post('/register', registerLimiter, async (req, res) => {
     await client.query('ROLLBACK');
     console.error('Registration error:', err);
     return res.status(500).json({ error: 'Failed to complete registration. Please try again later.' });
-  } finally {
-    client.release();
-  }
-});
-        companyName: newUser.company_name,
-        phone: newUser.phone,
-        businessAddress: newUser.business_address,
-        gstin: newUser.gstin,
-        ...credits
-      }
-    });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('Self-registration error:', err);
-    return res.status(500).json({ error: 'Failed to complete registration' });
   } finally {
     client.release();
   }

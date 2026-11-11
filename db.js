@@ -377,6 +377,7 @@ async function initDB() {
     `);
 
     await client.query(`ALTER TABLE credit_requests ADD COLUMN IF NOT EXISTS user_email VARCHAR(255);`);
+    await client.query(`ALTER TABLE credit_requests ALTER COLUMN utr_number DROP NOT NULL;`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_transactions_from_user ON credit_transactions(from_user_id, created_at DESC);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_transactions_from_to ON credit_transactions(from_user_id, to_user_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_campaigns_operator_queue ON campaigns(created_at ASC) WHERE status IN ('Submitted', 'Approved');`);
