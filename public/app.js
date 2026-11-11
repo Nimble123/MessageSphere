@@ -10407,6 +10407,37 @@ function renderBillingOrdersTable() {
     return;
   }
 
+let adminBillingScope = 'direct'; // 'direct' or 'reseller_sales'
+
+window.switchAdminBillingScope = function(scope) {
+  adminBillingScope = scope;
+  const btnDirect = document.getElementById('btn-billing-scope-direct');
+  const btnReseller = document.getElementById('btn-billing-scope-reseller');
+  const hintEl = document.getElementById('billing-scope-hint');
+
+  if (btnDirect && btnReseller) {
+    if (scope === 'direct') {
+      btnDirect.style.background = '#4f46e5';
+      btnDirect.style.color = '#fff';
+      btnDirect.style.fontWeight = '700';
+      btnReseller.style.background = 'transparent';
+      btnReseller.style.color = '#475569';
+      btnReseller.style.fontWeight = '600';
+      if (hintEl) hintEl.textContent = 'Accounts receivable owed directly to Platform Admin by direct clients and reseller partner accounts.';
+    } else {
+      btnReseller.style.background = '#4f46e5';
+      btnReseller.style.color = '#fff';
+      btnReseller.style.fontWeight = '700';
+      btnDirect.style.background = 'transparent';
+      btnDirect.style.color = '#475569';
+      btnDirect.style.fontWeight = '600';
+      if (hintEl) hintEl.textContent = 'Auditing client sales made by Resellers. (Reseller collects payment directly from their client; not owed to Admin).';
+    }
+  }
+
+  loadBillingOrders();
+};
+
   const isAdmin = currentUser && currentUser.role === 'admin';
   const isReseller = currentUser && currentUser.role === 'reseller';
 
@@ -10431,7 +10462,17 @@ function renderBillingOrdersTable() {
 
     const ratePerCr = parseFloat(ord.rate_per_credit) || (totalBill > 0 && ord.credits_requested ? (totalBill / ord.credits_requested) : 0.150);
 
-    const canManageKhata = isAdmin || (isReseller && (ord.reseller_id === currentUser.id || ord.user_id !== currentUser.id));
+    const isDownstream = Boolean(ord.is_downstream_client);
+
+    // Settlement permission boundary:
+    // Admin ONLY settles direct users and reseller accounts. Downstream client invoices are strictly between client and reseller!
+    // Resellers ONLY settle their own downstream clients. Resellers cannot settle their own invoice to Admin.
+    let canManageKhata = false;
+    if (isAdmin) {
+      canManageKhata = !isDownstream;
+    } else if (isReseller) {
+      canManageKhata = isDownstream && (ord.reseller_id === currentUser.id);
+    }
 
     let actionBtns = [];
     if (canManageKhata) {
@@ -10442,7 +10483,10 @@ function renderBillingOrdersTable() {
       `);
     }
 
-    const canApproveReject = (isAdmin || (isReseller && ord.reseller_id === currentUser.id)) && oStatus === 'pending';
+    const canApproveReject = (
+      (isAdmin && !isDownstream) || 
+      (isReseller && isDownstream && ord.reseller_id === currentUser.id)
+    ) && oStatus === 'pending';
 
     if (canApproveReject) {
       actionBtns.push(`
@@ -10459,6 +10503,32 @@ function renderBillingOrdersTable() {
 
     const cTypeLabel = ord.credit_type === 'gsm_sms' ? 'GSM Bulk SMS' : (ord.credit_type === 'normal' ? 'WA Text' : (ord.credit_type || '').toUpperCase());
 
+    let clientAccountHtml = `
+      <strong style="font-size:0.82rem;color:#0f172a;">${escapeHtml(ord.user_email || currentUser.email)}</strong>
+      <div style="font-size:0.68rem;color:#64748b;text-transform:uppercase;">${ord.user_role || 'client'}</div>
+    `;
+
+    if (isDownstream) {
+      const resellerLabel = ord.reseller_company || ord.reseller_name || ord.reseller_email || 'Partner';
+      clientAccountHtml = `
+        <strong style="font-size:0.82rem;color:#0f172a;">${escapeHtml(ord.user_email || '')}</strong>
+        <div style="margin-top:2px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+          <span class="status-badge" style="background:#e0e7ff;color:#3730a3;font-size:0.65rem;font-weight:700;padding:1px 6px;">Client</span>
+          <span style="font-size:0.7rem;color:#64748b;">via Reseller: <strong style="color:#1e1b4b;">${escapeHtml(resellerLabel)}</strong></span>
+        </div>
+      `;
+    }
+
+    let paymentStatusColHtml = `<div style="text-align:center;">${pBadgeHtml}</div>`;
+    if (isDownstream && isAdmin) {
+      paymentStatusColHtml = `
+        <div style="text-align:center;">
+          ${pBadgeHtml}
+          <div style="font-size:0.65rem;color:#64748b;margin-top:3px;font-weight:600;">(Reseller Khata)</div>
+        </div>
+      `;
+    }
+
     return `
       <tr>
         <td>
@@ -10466,8 +10536,7 @@ function renderBillingOrdersTable() {
           <div style="font-size:0.68rem;color:#64748b;font-family:monospace;">${escapeHtml(ord.utr_number || 'INV')}</div>
         </td>
         <td>
-          <strong style="font-size:0.82rem;color:#0f172a;">${escapeHtml(ord.user_email || currentUser.email)}</strong>
-          <div style="font-size:0.68rem;color:#64748b;text-transform:uppercase;">${ord.user_role || 'client'}</div>
+          ${clientAccountHtml}
         </td>
         <td>
           <span style="display:inline-flex;align-items:center;gap:4px;font-size:0.78rem;font-weight:600;">
@@ -10490,7 +10559,7 @@ function renderBillingOrdersTable() {
         <td style="text-align:right;">
           <strong style="font-size:0.85rem;color:${dueAmount > 0 ? '#dc2626' : '#64748b'};">₹${dueAmount.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>
         </td>
-        <td style="text-align:center;">${pBadgeHtml}</td>
+        <td style="text-align:center;">${paymentStatusColHtml}</td>
         <td style="text-align:center;"><span class="status-badge ${badgeClass}">${(ord.status || 'Pending').toUpperCase()}</span></td>
         <td style="font-size:0.75rem;color:#64748b;white-space:nowrap;">${new Date(ord.created_at).toLocaleDateString()}</td>
         <td style="text-align:center;">${actionsHtml}</td>
@@ -10504,9 +10573,17 @@ function renderBillingOrdersTable() {
 async function loadBillingOrders() {
   if (!billingOrdersTbody) return;
   try {
+    const isAdmin = currentUser && currentUser.role === 'admin';
+    const scopeParam = isAdmin ? `?scope=${adminBillingScope}` : '';
+
+    const scopeContainer = document.getElementById('admin-billing-scope-container');
+    if (scopeContainer) {
+      scopeContainer.style.display = isAdmin ? 'flex' : 'none';
+    }
+
     const [orders, summary] = await Promise.all([
-      apiFetch('/billing/requests'),
-      apiFetch('/billing/summary').catch(() => null)
+      apiFetch(`/billing/requests${scopeParam}`),
+      apiFetch(`/billing/summary${scopeParam}`).catch(() => null)
     ]);
 
     cachedBillingOrders = Array.isArray(orders) ? orders : [];
@@ -10516,6 +10593,27 @@ async function loadBillingOrders() {
         const el = document.getElementById(id);
         if (el) el.textContent = val;
       };
+
+      if (isAdmin && adminBillingScope === 'reseller_sales') {
+        setEl('billing-kpi-title-billed', 'Reseller Retail Billed');
+        setEl('billing-kpi-sub-billed', 'Gross invoiced by resellers to clients');
+        setEl('billing-kpi-title-paid', 'Reseller Collected');
+        setEl('billing-kpi-sub-paid', 'Client payments collected by resellers');
+        setEl('billing-kpi-title-due', 'Reseller Client Due');
+        setEl('billing-kpi-sub-due', 'Pending balance with reseller clients');
+        setEl('billing-kpi-title-pending', 'Open Client Orders');
+        setEl('billing-kpi-sub-pending', 'Reseller client orders with balance');
+      } else {
+        setEl('billing-kpi-title-billed', 'Total Billed Value');
+        setEl('billing-kpi-sub-billed', 'Gross invoiced to direct users & resellers');
+        setEl('billing-kpi-title-paid', 'Cleared (Paid)');
+        setEl('billing-kpi-sub-paid', 'Total payment collected by Admin');
+        setEl('billing-kpi-title-due', 'Outstanding Balance Due');
+        setEl('billing-kpi-sub-due', 'Direct receivables owed to Admin');
+        setEl('billing-kpi-title-pending', 'Open Invoiced Accounts');
+        setEl('billing-kpi-sub-pending', 'Orders with pending / partial payment to Admin');
+      }
+
       setEl('billing-kpi-total-billed', `₹${Number(summary.total_billed || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
       setEl('billing-kpi-total-paid', `₹${Number(summary.total_paid || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
       setEl('billing-kpi-total-due', `₹${Number(summary.total_due || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);

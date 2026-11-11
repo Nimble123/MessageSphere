@@ -197,4 +197,71 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.equal(validUser.allowed, true);
     assert.equal(validUser.role, 'user');
   });
+
+  test('Billing scope and settlement permission boundary rules', () => {
+    // 1. Counterparty partition logic:
+    // Direct counterparty: direct user (reseller_id is null) OR reseller account (role is reseller)
+    // Downstream retail client: user under reseller (reseller_id is not null AND role != reseller)
+    const isDirectCounterparty = (user) => (user.reseller_id === null || user.role === 'reseller');
+    const isDownstreamClient = (user) => (user.reseller_id !== null && user.role !== 'reseller');
+
+    const adminDirectUser = { id: 10, role: 'user', reseller_id: null };
+    const resellerAccount = { id: 2, role: 'reseller', reseller_id: null };
+    const resellerClient = { id: 3, role: 'user', reseller_id: 2 };
+
+    assert.equal(isDirectCounterparty(adminDirectUser), true);
+    assert.equal(isDirectCounterparty(resellerAccount), true);
+    assert.equal(isDirectCounterparty(resellerClient), false);
+
+    assert.equal(isDownstreamClient(adminDirectUser), false);
+    assert.equal(isDownstreamClient(resellerAccount), false);
+    assert.equal(isDownstreamClient(resellerClient), true);
+
+    // 2. Settlement Permission Boundary:
+    // Can actor settle/record payment on invoice?
+    const canRecordPayment = (actor, order) => {
+      // User cannot settle their own invoice
+      if (order.user_id === actor.id) return { allowed: false, reason: 'self_settle_prohibited' };
+      
+      if (actor.role === 'admin') {
+        // Admin settles with direct counterparties only; downstream client settlements belong to Reseller
+        if (order.is_downstream_client) {
+          return { allowed: false, reason: 'reseller_khata_boundary' };
+        }
+        return { allowed: true };
+      }
+
+      if (actor.role === 'reseller') {
+        // Reseller can ONLY settle their own downstream clients
+        if (order.reseller_id === actor.id && order.user_id !== actor.id) {
+          return { allowed: true };
+        }
+        return { allowed: false, reason: 'not_reseller_client' };
+      }
+
+      return { allowed: false, reason: 'unauthorized_role' };
+    };
+
+    const admin = { id: 1, role: 'admin' };
+    const reseller = { id: 2, role: 'reseller' };
+
+    const orderResellerToAdmin = { id: 101, user_id: 2, reseller_id: null, is_downstream_client: false, amount: 8000 };
+    const orderClientToReseller = { id: 102, user_id: 3, reseller_id: 2, is_downstream_client: true, amount: 12000 };
+
+    // Admin can settle Reseller's purchase from Admin
+    assert.equal(canRecordPayment(admin, orderResellerToAdmin).allowed, true);
+
+    // Admin CANNOT settle Reseller's client order (odhani) - belongs strictly to Reseller Khata
+    const adminClientSettle = canRecordPayment(admin, orderClientToReseller);
+    assert.equal(adminClientSettle.allowed, false);
+    assert.equal(adminClientSettle.reason, 'reseller_khata_boundary');
+
+    // Reseller can settle their own client's payment
+    assert.equal(canRecordPayment(reseller, orderClientToReseller).allowed, true);
+
+    // Reseller CANNOT settle their own invoice to Admin
+    const resellerSelfSettle = canRecordPayment(reseller, orderResellerToAdmin);
+    assert.equal(resellerSelfSettle.allowed, false);
+    assert.equal(resellerSelfSettle.reason, 'self_settle_prohibited');
+  });
 });

@@ -4574,54 +4574,74 @@
           <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); margin-bottom: 22px; gap: 14px;">
             <div class="metric-card" style="padding: 16px 20px; border-left: 4px solid #4f46e5;">
               <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <span class="metric-title" style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">Total Billed Value</span>
+                <span class="metric-title" id="billing-kpi-title-billed" style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">Total Billed Value</span>
                 <div class="metric-icon" style="background: #eef2ff; color: #4f46e5; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
                   <i data-lucide="calculator" style="width: 17px; height: 17px;"></i>
                 </div>
               </div>
               <div class="metric-data">
                 <div class="metric-value" id="billing-kpi-total-billed" style="font-size: 1.5rem; font-weight: 800; color: #1e1b4b;">₹0</div>
-                <div class="metric-sub" style="font-size: 0.72rem; color: var(--slate-500); margin-top: 4px;">Gross invoiced across all orders</div>
+                <div class="metric-sub" id="billing-kpi-sub-billed" style="font-size: 0.72rem; color: var(--slate-500); margin-top: 4px;">Gross invoiced to direct users & resellers</div>
               </div>
             </div>
 
             <div class="metric-card" style="padding: 16px 20px; border-left: 4px solid #10b981;">
               <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <span class="metric-title" style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">Cleared (Paid)</span>
+                <span class="metric-title" id="billing-kpi-title-paid" style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">Cleared (Paid)</span>
                 <div class="metric-icon" style="background: #ecfdf5; color: #10b981; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
                   <i data-lucide="check-circle-2" style="width: 17px; height: 17px;"></i>
                 </div>
               </div>
               <div class="metric-data">
                 <div class="metric-value" id="billing-kpi-total-paid" style="font-size: 1.5rem; font-weight: 800; color: #047857;">₹0</div>
-                <div class="metric-sub" style="font-size: 0.72rem; color: var(--slate-500); margin-top: 4px;">Total payment collected</div>
+                <div class="metric-sub" id="billing-kpi-sub-paid" style="font-size: 0.72rem; color: var(--slate-500); margin-top: 4px;">Total payment collected by Admin</div>
               </div>
             </div>
 
             <div class="metric-card" style="padding: 16px 20px; border-left: 4px solid #ef4444;">
               <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <span class="metric-title" style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">Outstanding Balance Due</span>
+                <span class="metric-title" id="billing-kpi-title-due" style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">Outstanding Balance Due</span>
                 <div class="metric-icon" style="background: #fef2f2; color: #ef4444; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
                   <i data-lucide="alert-circle" style="width: 17px; height: 17px;"></i>
                 </div>
               </div>
               <div class="metric-data">
                 <div class="metric-value" id="billing-kpi-total-due" style="font-size: 1.5rem; font-weight: 800; color: #b91c1c;">₹0</div>
-                <div class="metric-sub" style="font-size: 0.72rem; color: var(--slate-500); margin-top: 4px;">Pending receivables to collect</div>
+                <div class="metric-sub" id="billing-kpi-sub-due" style="font-size: 0.72rem; color: var(--slate-500); margin-top: 4px;">Direct receivables owed to Admin</div>
               </div>
             </div>
 
             <div class="metric-card" style="padding: 16px 20px; border-left: 4px solid #f59e0b;">
               <div class="metric-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <span class="metric-title" style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">Open Invoiced Accounts</span>
+                <span class="metric-title" id="billing-kpi-title-pending" style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--slate-500);">Open Invoiced Accounts</span>
                 <div class="metric-icon" style="background: #fffbeb; color: #f59e0b; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
                   <i data-lucide="clock" style="width: 17px; height: 17px;"></i>
                 </div>
               </div>
               <div class="metric-data">
                 <div class="metric-value" id="billing-kpi-pending-count" style="font-size: 1.5rem; font-weight: 800; color: #b45309;">0</div>
-                <div class="metric-sub" style="font-size: 0.72rem; color: var(--slate-500); margin-top: 4px;">Orders with pending / partial payment</div>
+                <div class="metric-sub" id="billing-kpi-sub-pending" style="font-size: 0.72rem; color: var(--slate-500); margin-top: 4px;">Orders with pending / partial payment to Admin</div>
               </div>
+            </div>
+          </div>
+
+          <!-- Admin Scope Filter Bar (Admin Only) -->
+          <div id="admin-billing-scope-container" class="admin-only" style="display: none; margin-bottom: 16px; background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 12px 18px; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <span style="font-size: 0.78rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; display: inline-flex; align-items: center; gap: 5px;">
+                <i data-lucide="layers" style="width: 14px; height: 14px; color: #6366f1;"></i> Ledger Scope:
+              </span>
+              <div class="scope-toggle-group" style="display: inline-flex; background: #e2e8f0; border-radius: 8px; padding: 3px; gap: 2px;">
+                <button type="button" id="btn-billing-scope-direct" class="scope-pill-btn active" onclick="switchAdminBillingScope('direct')" style="padding: 6px 14px; font-size: 0.78rem; font-weight: 700; border-radius: 6px; border: none; cursor: pointer; transition: all 0.2s; background: #4f46e5; color: #fff; display: inline-flex; align-items: center; gap: 5px;">
+                  <i data-lucide="shield-check" style="width: 13px; height: 13px;"></i> Platform Receivables (Direct & Resellers)
+                </button>
+                <button type="button" id="btn-billing-scope-reseller" class="scope-pill-btn" onclick="switchAdminBillingScope('reseller_sales')" style="padding: 6px 14px; font-size: 0.78rem; font-weight: 600; border-radius: 6px; border: none; cursor: pointer; transition: all 0.2s; background: transparent; color: #475569; display: inline-flex; align-items: center; gap: 5px;">
+                  <i data-lucide="store" style="width: 13px; height: 13px;"></i> Reseller Client Sales (Audit)
+                </button>
+              </div>
+            </div>
+            <div id="billing-scope-hint" style="font-size: 0.76rem; color: #64748b; font-weight: 500;">
+              Accounts receivable owed directly to Platform Admin.
             </div>
           </div>
 

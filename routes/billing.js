@@ -8,49 +8,78 @@ const { authenticate, requireRoles } = require('../middleware/auth');
 router.get('/summary', authenticate, async (req, res) => {
   try {
     if (req.user.role === 'admin') {
+      const scope = req.query.scope || 'direct'; // 'direct' (default) or 'reseller_sales'
       const summarySql = `
         SELECT
-          -- Platform Direct Receivables (Direct platform clients & resellers)
-          COALESCE(COUNT(*) FILTER (WHERE u.reseller_id IS NULL), 0) AS platform_orders,
-          COALESCE(SUM(cr.amount_inr) FILTER (WHERE u.reseller_id IS NULL), 0) AS platform_billed,
-          COALESCE(SUM(cr.paid_amount) FILTER (WHERE u.reseller_id IS NULL), 0) AS platform_paid,
-          COALESCE(SUM(GREATEST(0, cr.amount_inr - COALESCE(cr.paid_amount, 0))) FILTER (WHERE u.reseller_id IS NULL), 0) AS platform_due,
+          -- Platform Direct Receivables (Admin direct clients & Reseller partner accounts)
+          COALESCE(COUNT(*) FILTER (WHERE u.reseller_id IS NULL OR u.role = 'reseller'), 0) AS platform_orders,
+          COALESCE(SUM(cr.amount_inr) FILTER (WHERE u.reseller_id IS NULL OR u.role = 'reseller'), 0) AS platform_billed,
+          COALESCE(SUM(cr.paid_amount) FILTER (WHERE u.reseller_id IS NULL OR u.role = 'reseller'), 0) AS platform_paid,
+          COALESCE(SUM(GREATEST(0, cr.amount_inr - COALESCE(cr.paid_amount, 0))) FILTER (WHERE u.reseller_id IS NULL OR u.role = 'reseller'), 0) AS platform_due,
 
-          -- Downstream Reseller Client Receivables (Retail)
-          COALESCE(COUNT(*) FILTER (WHERE u.reseller_id IS NOT NULL), 0) AS retail_orders,
-          COALESCE(SUM(cr.amount_inr) FILTER (WHERE u.reseller_id IS NOT NULL), 0) AS retail_billed,
-          COALESCE(SUM(cr.paid_amount) FILTER (WHERE u.reseller_id IS NOT NULL), 0) AS retail_paid,
-          COALESCE(SUM(GREATEST(0, cr.amount_inr - COALESCE(cr.paid_amount, 0))) FILTER (WHERE u.reseller_id IS NOT NULL), 0) AS retail_due,
+          -- Downstream Reseller Client Sales (Internal transactions between Reseller & their clients)
+          COALESCE(COUNT(*) FILTER (WHERE u.reseller_id IS NOT NULL AND u.role != 'reseller'), 0) AS retail_orders,
+          COALESCE(SUM(cr.amount_inr) FILTER (WHERE u.reseller_id IS NOT NULL AND u.role != 'reseller'), 0) AS retail_billed,
+          COALESCE(SUM(cr.paid_amount) FILTER (WHERE u.reseller_id IS NOT NULL AND u.role != 'reseller'), 0) AS retail_paid,
+          COALESCE(SUM(GREATEST(0, cr.amount_inr - COALESCE(cr.paid_amount, 0))) FILTER (WHERE u.reseller_id IS NOT NULL AND u.role != 'reseller'), 0) AS retail_due,
 
-          -- Combined Totals
-          COALESCE(COUNT(*), 0) AS total_orders,
-          COALESCE(SUM(cr.amount_inr), 0) AS total_billed,
-          COALESCE(SUM(cr.paid_amount), 0) AS total_paid,
-          COALESCE(SUM(GREATEST(0, cr.amount_inr - COALESCE(cr.paid_amount, 0))), 0) AS total_due,
-          COALESCE(COUNT(CASE WHEN cr.payment_status = 'Unpaid' OR (COALESCE(cr.paid_amount, 0) = 0 AND cr.amount_inr > 0) THEN 1 END), 0) AS count_unpaid,
-          COALESCE(COUNT(CASE WHEN cr.payment_status = 'Partial' OR (cr.paid_amount > 0 AND cr.paid_amount < cr.amount_inr) THEN 1 END), 0) AS count_partial,
-          COALESCE(COUNT(CASE WHEN cr.payment_status = 'Paid' OR (cr.paid_amount >= cr.amount_inr AND cr.amount_inr > 0) THEN 1 END), 0) AS count_paid
+          -- Payment status counts strictly for Platform Direct (where Admin collects money)
+          COALESCE(COUNT(CASE WHEN (u.reseller_id IS NULL OR u.role = 'reseller') AND (cr.payment_status = 'Unpaid' OR (COALESCE(cr.paid_amount, 0) = 0 AND cr.amount_inr > 0)) THEN 1 END), 0) AS platform_unpaid,
+          COALESCE(COUNT(CASE WHEN (u.reseller_id IS NULL OR u.role = 'reseller') AND (cr.payment_status = 'Partial' OR (cr.paid_amount > 0 AND cr.paid_amount < cr.amount_inr)) THEN 1 END), 0) AS platform_partial,
+          COALESCE(COUNT(CASE WHEN (u.reseller_id IS NULL OR u.role = 'reseller') AND (cr.payment_status = 'Paid' OR (cr.paid_amount >= cr.amount_inr AND cr.amount_inr > 0)) THEN 1 END), 0) AS platform_paid_count,
+
+          -- Payment status counts for Reseller Client Sales
+          COALESCE(COUNT(CASE WHEN (u.reseller_id IS NOT NULL AND u.role != 'reseller') AND (cr.payment_status = 'Unpaid' OR (COALESCE(cr.paid_amount, 0) = 0 AND cr.amount_inr > 0)) THEN 1 END), 0) AS retail_unpaid,
+          COALESCE(COUNT(CASE WHEN (u.reseller_id IS NOT NULL AND u.role != 'reseller') AND (cr.payment_status = 'Partial' OR (cr.paid_amount > 0 AND cr.paid_amount < cr.amount_inr)) THEN 1 END), 0) AS retail_partial,
+          COALESCE(COUNT(CASE WHEN (u.reseller_id IS NOT NULL AND u.role != 'reseller') AND (cr.payment_status = 'Paid' OR (cr.paid_amount >= cr.amount_inr AND cr.amount_inr > 0)) THEN 1 END), 0) AS retail_paid_count
         FROM credit_requests cr
         JOIN users u ON cr.user_id = u.id
         WHERE cr.status != 'Rejected'
       `;
       const result = await query(summarySql);
       const row = result.rows[0] || {};
+
+      if (scope === 'reseller_sales') {
+        return res.json({
+          scope: 'reseller_sales',
+          total_orders: parseInt(row.retail_orders, 10) || 0,
+          total_billed: Math.round(parseFloat(row.retail_billed || 0) * 100) / 100,
+          total_paid: Math.round(parseFloat(row.retail_paid || 0) * 100) / 100,
+          total_due: Math.round(parseFloat(row.retail_due || 0) * 100) / 100,
+          count_unpaid: parseInt(row.retail_unpaid, 10) || 0,
+          count_partial: parseInt(row.retail_partial, 10) || 0,
+          count_paid: parseInt(row.retail_paid_count, 10) || 0,
+          platform_direct: {
+            orders: parseInt(row.platform_orders, 10) || 0,
+            billed: Math.round(parseFloat(row.platform_billed || 0) * 100) / 100,
+            paid: Math.round(parseFloat(row.platform_paid || 0) * 100) / 100,
+            due: Math.round(parseFloat(row.platform_due || 0) * 100) / 100
+          },
+          reseller_sales: {
+            orders: parseInt(row.retail_orders, 10) || 0,
+            billed: Math.round(parseFloat(row.retail_billed || 0) * 100) / 100,
+            paid: Math.round(parseFloat(row.retail_paid || 0) * 100) / 100,
+            due: Math.round(parseFloat(row.retail_due || 0) * 100) / 100
+          }
+        });
+      }
+
       return res.json({
-        total_orders: parseInt(row.total_orders, 10) || 0,
-        total_billed: Math.round(parseFloat(row.total_billed || 0) * 100) / 100,
-        total_paid: Math.round(parseFloat(row.total_paid || 0) * 100) / 100,
-        total_due: Math.round(parseFloat(row.total_due || 0) * 100) / 100,
-        count_unpaid: parseInt(row.count_unpaid, 10) || 0,
-        count_partial: parseInt(row.count_partial, 10) || 0,
-        count_paid: parseInt(row.count_paid, 10) || 0,
+        scope: 'direct',
+        total_orders: parseInt(row.platform_orders, 10) || 0,
+        total_billed: Math.round(parseFloat(row.platform_billed || 0) * 100) / 100,
+        total_paid: Math.round(parseFloat(row.platform_paid || 0) * 100) / 100,
+        total_due: Math.round(parseFloat(row.platform_due || 0) * 100) / 100,
+        count_unpaid: parseInt(row.platform_unpaid, 10) || 0,
+        count_partial: parseInt(row.platform_partial, 10) || 0,
+        count_paid: parseInt(row.platform_paid_count, 10) || 0,
         platform_direct: {
           orders: parseInt(row.platform_orders, 10) || 0,
           billed: Math.round(parseFloat(row.platform_billed || 0) * 100) / 100,
           paid: Math.round(parseFloat(row.platform_paid || 0) * 100) / 100,
           due: Math.round(parseFloat(row.platform_due || 0) * 100) / 100
         },
-        retail_clients: {
+        reseller_sales: {
           orders: parseInt(row.retail_orders, 10) || 0,
           billed: Math.round(parseFloat(row.retail_billed || 0) * 100) / 100,
           paid: Math.round(parseFloat(row.retail_paid || 0) * 100) / 100,
@@ -141,15 +170,34 @@ router.get('/requests', authenticate, async (req, res) => {
     let params = [];
 
     if (req.user.role === 'admin') {
+      const scope = req.query.scope || 'direct'; // 'direct' (default), 'reseller_sales', or 'all'
+      let whereClause = '';
+      if (scope === 'reseller_sales') {
+        whereClause = `WHERE (u.reseller_id IS NOT NULL AND u.role != 'reseller')`;
+      } else if (scope === 'all') {
+        whereClause = '';
+      } else {
+        // Default: strictly Admin's direct counterparties (Direct Users & Resellers)
+        whereClause = `WHERE (u.reseller_id IS NULL OR u.role = 'reseller')`;
+      }
+
       sql = `
         SELECT 
           cr.*, 
           u.email as user_email,
           u.role as user_role,
+          u.company_name as user_company,
+          u.full_name as user_name,
           u.reseller_id,
+          ru.email as reseller_email,
+          ru.company_name as reseller_company,
+          ru.full_name as reseller_name,
+          (u.reseller_id IS NOT NULL AND u.role != 'reseller') as is_downstream_client,
           GREATEST(0, COALESCE(cr.amount_inr, 0) - COALESCE(cr.paid_amount, 0)) AS due_amount
         FROM credit_requests cr 
         JOIN users u ON cr.user_id = u.id 
+        LEFT JOIN users ru ON u.reseller_id = ru.id
+        ${whereClause}
         ORDER BY cr.created_at DESC
       `;
     } else if (req.user.role === 'reseller') {
@@ -158,10 +206,16 @@ router.get('/requests', authenticate, async (req, res) => {
           cr.*, 
           u.email as user_email,
           u.role as user_role,
+          u.company_name as user_company,
+          u.full_name as user_name,
           u.reseller_id,
+          ru.email as reseller_email,
+          ru.company_name as reseller_company,
+          (u.reseller_id IS NOT NULL AND u.role != 'reseller') as is_downstream_client,
           GREATEST(0, COALESCE(cr.amount_inr, 0) - COALESCE(cr.paid_amount, 0)) AS due_amount
         FROM credit_requests cr 
         JOIN users u ON cr.user_id = u.id 
+        LEFT JOIN users ru ON u.reseller_id = ru.id
         WHERE cr.user_id = $1 OR u.reseller_id = $1
         ORDER BY cr.created_at DESC
       `;
@@ -172,7 +226,10 @@ router.get('/requests', authenticate, async (req, res) => {
           cr.*, 
           u.email as user_email,
           u.role as user_role,
+          u.company_name as user_company,
+          u.full_name as user_name,
           u.reseller_id,
+          false as is_downstream_client,
           GREATEST(0, COALESCE(cr.amount_inr, 0) - COALESCE(cr.paid_amount, 0)) AS due_amount
         FROM credit_requests cr 
         JOIN users u ON cr.user_id = u.id 
@@ -458,9 +515,10 @@ router.post('/requests/:id/record-payment', authenticate, requireRoles('admin', 
 
     // Fetch order with user info for role permission checking
     const orderRes = await client.query(`
-      SELECT cr.*, u.reseller_id, u.email as user_email
+      SELECT cr.*, u.reseller_id, u.email as user_email, u.role as user_role, ru.email as reseller_email
       FROM credit_requests cr
       JOIN users u ON cr.user_id = u.id
+      LEFT JOIN users ru ON u.reseller_id = ru.id
       WHERE cr.id = $1
       FOR UPDATE OF cr
     `, [reqId]);
@@ -478,9 +536,17 @@ router.post('/requests/:id/record-payment', authenticate, requireRoles('admin', 
       return res.status(403).json({ error: 'Permission denied: You cannot record payment or settle your own invoice.' });
     }
 
-    // Permission check: Admin can record payment for all; Reseller can ONLY record for their downstream clients
-    if (req.user.role !== 'admin') {
-      const isMyClient = order.reseller_id === req.user.id;
+    // Permission check: Admin settles directly with Platform direct users and Reseller partner accounts only
+    if (req.user.role === 'admin') {
+      const isDownstreamClient = order.reseller_id && order.user_role !== 'reseller';
+      if (isDownstreamClient) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ 
+          error: `Permission denied: This invoice is between Reseller (${order.reseller_email || 'partner'}) and their client. Only the managing Reseller can record client settlements.` 
+        });
+      }
+    } else if (req.user.role === 'reseller') {
+      const isMyClient = order.reseller_id === req.user.id && order.user_id !== req.user.id;
       if (!isMyClient) {
         await client.query('ROLLBACK');
         return res.status(403).json({ error: 'Permission denied: Resellers can only record payments for their own assigned clients' });
