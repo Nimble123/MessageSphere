@@ -11788,6 +11788,100 @@ window.forceVerifyCurrentResellerDomain = async function() {
   }
 };
 
+window.openRenderCloudConfigModal = async function() {
+  const modal = document.getElementById('modal-render-cloud-config');
+  if (!modal) return;
+
+  const statusBadge = document.getElementById('render-config-status-badge');
+  const statusDesc = document.getElementById('render-config-status-desc');
+  const apiKeyInput = document.getElementById('render-api-key-input');
+  const serviceIdInput = document.getElementById('render-service-id-input');
+
+  if (statusBadge) {
+    statusBadge.textContent = 'Checking...';
+    statusBadge.className = 'status-badge badge-submitted';
+  }
+  if (statusDesc) statusDesc.textContent = 'Contacting api.render.com...';
+  modal.style.display = 'flex';
+  if (window.lucide) setTimeout(() => lucide.createIcons(), 30);
+
+  try {
+    const data = await apiFetch('/resellers/render/config');
+    if (apiKeyInput && data.api_key_masked) apiKeyInput.placeholder = data.api_key_masked;
+    if (serviceIdInput && data.service_id_raw) serviceIdInput.value = data.service_id_raw;
+
+    if (data.configured && data.connection?.connected) {
+      if (statusBadge) {
+        statusBadge.textContent = 'Active & Connected ✓';
+        statusBadge.className = 'status-badge badge-completed';
+      }
+      if (statusDesc) {
+        statusDesc.innerHTML = `<span style="color:#059669;font-weight:700;">Connected to Web Service: "${escapeHtml(data.connection.serviceName)}"</span>. Automated domain registration and SSL certificates are active for all resellers.`;
+      }
+    } else if (data.configured) {
+      if (statusBadge) {
+        statusBadge.textContent = 'Authentication Error ⚠';
+        statusBadge.className = 'status-badge badge-failed';
+      }
+      if (statusDesc) {
+        statusDesc.textContent = `Saved credentials could not connect: ${data.connection?.error || 'Check API key permissions.'}`;
+      }
+    } else {
+      if (statusBadge) {
+        statusBadge.textContent = 'Not Configured';
+        statusBadge.className = 'status-badge badge-submitted';
+      }
+      if (statusDesc) {
+        statusDesc.textContent = 'Enter your Render API Key and Service ID below to enable 100% automated domain and SSL registration.';
+      }
+    }
+  } catch (err) {
+    if (statusBadge) {
+      statusBadge.textContent = 'Error';
+      statusBadge.className = 'status-badge badge-failed';
+    }
+    if (statusDesc) statusDesc.textContent = err.message;
+  }
+};
+
+window.saveRenderCloudConfig = async function() {
+  const apiKeyInput = document.getElementById('render-api-key-input');
+  const serviceIdInput = document.getElementById('render-service-id-input');
+  const btnSave = document.getElementById('btn-save-render-config');
+
+  const apiKey = apiKeyInput?.value?.trim();
+  const serviceId = serviceIdInput?.value?.trim();
+
+  if (!apiKey || !serviceId) {
+    showToast('error', 'Missing Information', 'Please enter both your Render Personal API Key and Service ID.');
+    return;
+  }
+
+  try {
+    if (btnSave) {
+      btnSave.disabled = true;
+      btnSave.innerHTML = '<i data-lucide="loader" class="spin" style="width:14px;height:14px;"></i> Verifying with Render...';
+    }
+
+    const res = await apiFetch('/resellers/render/config', {
+      method: 'PUT',
+      body: JSON.stringify({ api_key: apiKey, service_id: serviceId })
+    });
+
+    showToast('success', 'Render Connected!', res.message || 'Render automated SSL engine active.');
+    const modal = document.getElementById('modal-render-cloud-config');
+    if (modal) modal.style.display = 'none';
+  } catch (err) {
+    showToast('error', 'Connection Failed', err.message);
+  } finally {
+    if (btnSave) {
+      btnSave.disabled = false;
+      btnSave.innerHTML = '<i data-lucide="save" style="width:14px;height:14px;"></i> Connect &amp; Save';
+      if (window.lucide) lucide.createIcons();
+    }
+  }
+};
+
 window.verifyResellerDomain = async function(resellerId) {
   try {
     showToast('info', 'Verifying DNS...', 'Running automated DNS resolution test...');

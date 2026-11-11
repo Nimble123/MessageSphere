@@ -4038,6 +4038,9 @@
               <button type="button" class="btn-action btn-action-secondary" onclick="loadResellerNetwork()" style="display:inline-flex;align-items:center;gap:6px;">
                 <i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Refresh
               </button>
+              <button type="button" class="btn-action" onclick="openRenderCloudConfigModal()" style="display:inline-flex;align-items:center;gap:6px;background:#0f172a;color:#fff;border-radius:6px;padding:6px 14px;font-size:0.82rem;font-weight:600;" title="Configure automated Render domain binding and SSL provisioning">
+                <i data-lucide="cloud-lightning" style="width:15px;height:15px;color:#38bdf8;"></i> Automated SSL Engine
+              </button>
               <button type="button" class="btn-action btn-action-primary" onclick="openCreateUserModalWithRole('reseller')" style="display:inline-flex;align-items:center;gap:6px;font-weight:600;">
                 <i data-lucide="user-plus" style="width:15px;height:15px;"></i> Create New Reseller
               </button>
@@ -6542,6 +6545,68 @@
       <div class="modal-footer-saas" style="padding: 10px 20px; display: flex; justify-content: space-between; align-items: center;">
         <span style="font-size: 0.75rem; color: #64748b;">Note: Allotments are instantly transferred from your available wholesale stock.</span>
         <button class="btn-action btn-action-secondary" data-close="modal-reseller-clients">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: RENDER CLOUD AUTOMATED SSL & DOMAIN ENGINE -->
+  <div id="modal-render-cloud-config" class="modal-overlay" style="display:none;">
+    <div class="modal-card" style="max-width: 580px; width: 95%;">
+      <div class="modal-header-saas" style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:36px;height:36px;border-radius:8px;background:#0f172a;color:#38bdf8;display:flex;align-items:center;justify-content:center;">
+            <i data-lucide="cloud-lightning" style="width:20px;height:20px;"></i>
+          </div>
+          <div>
+            <h3 style="margin:0;font-size:1.05rem;font-weight:700;">Render Cloud Automated SSL Engine</h3>
+            <div style="font-size:0.75rem;color:#64748b;">Automatically registers custom domains and provisions free SSL via Render API</div>
+          </div>
+        </div>
+        <button class="btn-modal-close" data-close="modal-render-cloud-config">&times;</button>
+      </div>
+
+      <div class="modal-body-saas" style="padding:18px 22px;">
+        <!-- Status Box -->
+        <div id="render-config-status-box" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:16px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:0.75rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.04em;">Integration Status</span>
+            <span id="render-config-status-badge" class="status-badge badge-submitted" style="font-size:0.74rem;">Checking...</span>
+          </div>
+          <div id="render-config-status-desc" style="font-size:0.8rem;color:#64748b;margin-top:6px;">
+            Checking API connectivity to api.render.com...
+          </div>
+        </div>
+
+        <form id="render-cloud-config-form" onsubmit="return false;">
+          <div class="form-group" style="margin-bottom:14px;">
+            <label style="font-size:0.8rem;font-weight:600;color:#334155;display:flex;justify-content:space-between;">
+              <span>Render Personal API Key *</span>
+              <a href="https://dashboard.render.com/u/settings#api-keys" target="_blank" style="color:#0284c7;text-decoration:none;font-weight:500;">Get Key from Render ↗</a>
+            </label>
+            <input type="password" id="render-api-key-input" class="form-input" placeholder="rnd_xxxxxxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off" style="font-family:monospace;font-size:0.85rem;">
+            <div style="font-size:0.72rem;color:#64748b;margin-top:4px;">Render Dashboard ➔ Account Settings ➔ API Keys ➔ Create API Key</div>
+          </div>
+
+          <div class="form-group" style="margin-bottom:16px;">
+            <label style="font-size:0.8rem;font-weight:600;color:#334155;display:flex;justify-content:space-between;">
+              <span>Render Service ID *</span>
+              <span style="color:#64748b;font-weight:400;">(from your web service URL)</span>
+            </label>
+            <input type="text" id="render-service-id-input" class="form-input" placeholder="srv-xxxxxxxxxxxxxxxx" autocomplete="off" style="font-family:monospace;font-size:0.85rem;">
+            <div style="font-size:0.72rem;color:#64748b;margin-top:4px;">Open your web service in Render; copy the <code>srv-xxxx</code> from the browser URL.</div>
+          </div>
+
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;font-size:0.78rem;color:#166534;line-height:1.45;">
+            <strong><i data-lucide="check" style="width:13px;height:13px;display:inline-block;vertical-align:-1px;"></i> Zero Manual Work:</strong> Once saved, whenever any reseller enters a custom domain (like <code>exhumenexus.exhume.in</code>), MessageSphere automatically calls Render API, registers the domain, and activates SSL certificates in the cloud. You will never need to open Render to manually add a domain again!
+          </div>
+        </form>
+      </div>
+
+      <div class="modal-footer-saas" style="display:flex;justify-content:space-between;align-items:center;padding:12px 22px;">
+        <button type="button" class="btn-action btn-action-secondary" data-close="modal-render-cloud-config">Cancel</button>
+        <button type="button" id="btn-save-render-config" class="btn-action btn-action-primary" onclick="saveRenderCloudConfig()" style="display:inline-flex;align-items:center;gap:6px;font-weight:700;">
+          <i data-lucide="save" style="width:14px;height:14px;"></i> Connect &amp; Save
+        </button>
       </div>
     </div>
   </div>

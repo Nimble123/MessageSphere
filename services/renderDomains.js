@@ -4,19 +4,86 @@
 // ===========================================================================
 require('dotenv').config();
 
-const RENDER_SERVICE_ID = (process.env.RENDER_SERVICE_ID || '').trim();
+async function getRenderConfig() {
+  let apiKey = (process.env.RENDER_API_KEY || '').trim();
+  let serviceId = (process.env.RENDER_SERVICE_ID || '').trim();
+
+  try {
+    const { query } = require('../db');
+    const res = await query(
+      `SELECT config_key, config_value FROM platform_integrations WHERE config_key IN ('RENDER_API_KEY', 'RENDER_SERVICE_ID')`
+    );
+    res.rows.forEach(r => {
+      if (r.config_key === 'RENDER_API_KEY' && r.config_value) apiKey = r.config_value.trim();
+      if (r.config_key === 'RENDER_SERVICE_ID' && r.config_value) serviceId = r.config_value.trim();
+    });
+  } catch (_) {}
+
+  return {
+    apiKey,
+    serviceId,
+    isConfigured: Boolean(apiKey && serviceId)
+  };
+}
+
+/**
+ * Test Render API Key & Service ID connectivity
+ */
+async function testRenderConnection(overrideApiKey, overrideServiceId) {
+  const cfg = await getRenderConfig();
+  const apiKey = overrideApiKey || cfg.apiKey;
+  const serviceId = overrideServiceId || cfg.serviceId;
+
+  if (!apiKey || !serviceId) {
+    return {
+      connected: false,
+      error: 'Render API Key and Service ID are required.'
+    };
+  }
+
+  try {
+    const res = await fetch(`https://api.render.com/v1/services/${encodeURIComponent(serviceId)}`, {
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${apiKey.trim()}`
+      }
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      return {
+        connected: false,
+        status: res.status,
+        error: errData.message || `Render API error (HTTP ${res.status}). Verify API Key and Service ID.`
+      };
+    }
+
+    const data = await res.json();
+    return {
+      connected: true,
+      serviceName: data.name || data.service?.name || serviceId,
+      serviceType: data.type || data.service?.type || 'web_service',
+      domainsCount: (data.customDomains || []).length
+    };
+  } catch (err) {
+    return {
+      connected: false,
+      error: 'Network error connecting to api.render.com: ' + err.message
+    };
+  }
+}
 
 /**
  * Automatically register a reseller's custom domain with Render's infrastructure.
  * Render generates and auto-renews free Let's Encrypt / Cloudflare SSL certificates.
  */
 async function addCustomDomainToRender(domain) {
-  const apiKey = process.env.RENDER_API_KEY;
-  if (!apiKey || !RENDER_SERVICE_ID || !domain) {
+  const cfg = await getRenderConfig();
+  if (!cfg.isConfigured || !domain) {
     return {
       success: false,
-      configured: Boolean(apiKey && RENDER_SERVICE_ID),
-      reason: !apiKey ? 'RENDER_API_KEY not configured' : (!RENDER_SERVICE_ID ? 'RENDER_SERVICE_ID not configured' : 'Domain missing')
+      configured: cfg.isConfigured,
+      reason: !cfg.apiKey ? 'RENDER_API_KEY not configured' : (!cfg.serviceId ? 'RENDER_SERVICE_ID not configured' : 'Domain missing')
     };
   }
 
@@ -24,12 +91,12 @@ async function addCustomDomainToRender(domain) {
 
   try {
     console.log(`[RENDER DOMAINS] 🌐 Requesting automated SSL & domain provisioning for: ${cleanDomain}`);
-    const res = await fetch(`https://api.render.com/v1/services/${RENDER_SERVICE_ID}/custom-domains`, {
+    const res = await fetch(`https://api.render.com/v1/services/${cfg.serviceId}/custom-domains`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey.trim()}`
+        'Authorization': `Bearer ${cfg.apiKey}`
       },
       body: JSON.stringify({ name: cleanDomain })
     });
@@ -47,11 +114,11 @@ async function addCustomDomainToRender(domain) {
 
     // Trigger immediate DNS / SSL verification on Render
     try {
-      await fetch(`https://api.render.com/v1/services/${RENDER_SERVICE_ID}/custom-domains/${encodeURIComponent(cleanDomain)}/verify`, {
+      await fetch(`https://api.render.com/v1/services/${cfg.serviceId}/custom-domains/${encodeURIComponent(cleanDomain)}/verify`, {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
-          'Authorization': `Bearer ${apiKey.trim()}`
+          'Authorization': `Bearer ${cfg.apiKey}`
         }
       });
     } catch (_) {}
@@ -68,17 +135,17 @@ async function addCustomDomainToRender(domain) {
  * Remove obsolete custom domain from Render when a reseller changes or deletes domain
  */
 async function removeCustomDomainFromRender(domain) {
-  const apiKey = process.env.RENDER_API_KEY;
-  if (!apiKey || !RENDER_SERVICE_ID || !domain) return;
+  const cfg = await getRenderConfig();
+  if (!cfg.isConfigured || !domain) return;
   const cleanDomain = String(domain).trim().toLowerCase();
 
   try {
     console.log(`[RENDER DOMAINS] 🗑️ Removing obsolete custom domain: ${cleanDomain}`);
-    await fetch(`https://api.render.com/v1/services/${RENDER_SERVICE_ID}/custom-domains/${encodeURIComponent(cleanDomain)}`, {
+    await fetch(`https://api.render.com/v1/services/${cfg.serviceId}/custom-domains/${encodeURIComponent(cleanDomain)}`, {
       method: 'DELETE',
       headers: {
         'Accept': 'application/json',
-        'Authorization': `Bearer ${apiKey.trim()}`
+        'Authorization': `Bearer ${cfg.apiKey}`
       }
     });
   } catch (err) {
@@ -90,15 +157,15 @@ async function removeCustomDomainFromRender(domain) {
  * Check Render's live SSL and domain verification status
  */
 async function checkRenderDomainStatus(domain) {
-  const apiKey = process.env.RENDER_API_KEY;
-  if (!apiKey || !RENDER_SERVICE_ID || !domain) return null;
+  const cfg = await getRenderConfig();
+  if (!cfg.isConfigured || !domain) return null;
   const cleanDomain = String(domain).trim().toLowerCase();
 
   try {
-    const res = await fetch(`https://api.render.com/v1/services/${RENDER_SERVICE_ID}/custom-domains/${encodeURIComponent(cleanDomain)}`, {
+    const res = await fetch(`https://api.render.com/v1/services/${cfg.serviceId}/custom-domains/${encodeURIComponent(cleanDomain)}`, {
       headers: {
         'Accept': 'application/json',
-        'Authorization': `Bearer ${apiKey.trim()}`
+        'Authorization': `Bearer ${cfg.apiKey}`
       }
     });
     if (!res.ok) return null;
@@ -109,6 +176,8 @@ async function checkRenderDomainStatus(domain) {
 }
 
 module.exports = {
+  getRenderConfig,
+  testRenderConnection,
   addCustomDomainToRender,
   removeCustomDomainFromRender,
   checkRenderDomainStatus

@@ -7,7 +7,13 @@ const multer = require('multer');
 const { query, getClient } = require('../db');
 const { authenticate, requireRoles } = require('../middleware/auth');
 const { logAudit } = require('../services/audit');
-const { addCustomDomainToRender, removeCustomDomainFromRender, checkRenderDomainStatus } = require('../services/renderDomains');
+const {
+  getRenderConfig,
+  testRenderConnection,
+  addCustomDomainToRender,
+  removeCustomDomainFromRender,
+  checkRenderDomainStatus
+} = require('../services/renderDomains');
 
 const logosDir = path.join(__dirname, '../uploads/logos');
 if (!fs.existsSync(logosDir)) {
@@ -1039,6 +1045,75 @@ router.put('/invite-settings', authenticate, requireRoles('reseller', 'admin'), 
     await client.query('ROLLBACK');
     console.error('Update invite settings error:', err);
     return res.status(500).json({ error: 'Failed to update invite settings: ' + (err.message || 'Database error') });
+  } finally {
+    client.release();
+  }
+});
+
+// GET /api/resellers/render/config - Get current Render API integration status (Admin only)
+router.get('/render/config', authenticate, requireRoles('admin'), async (req, res) => {
+  try {
+    const cfg = await getRenderConfig();
+    const testResult = cfg.isConfigured ? await testRenderConnection() : null;
+    return res.json({
+      configured: cfg.isConfigured,
+      service_id: cfg.serviceId ? `${cfg.serviceId.slice(0, 8)}...` : '',
+      service_id_raw: cfg.serviceId || '',
+      api_key_masked: cfg.apiKey ? `rnd_${cfg.apiKey.slice(4, 8)}...${cfg.apiKey.slice(-4)}` : '',
+      connection: testResult
+    });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to read Render configuration: ' + err.message });
+  }
+});
+
+// PUT /api/resellers/render/config - Save Render API key & Service ID (Admin only)
+router.put('/render/config', authenticate, requireRoles('admin'), async (req, res) => {
+  const apiKey = String(req.body.api_key || '').trim();
+  const serviceId = String(req.body.service_id || '').trim();
+
+  if (!apiKey || !serviceId) {
+    return res.status(400).json({ error: 'Both Render API Key and Service ID are required.' });
+  }
+
+  // Test the key live with Render
+  const test = await testRenderConnection(apiKey, serviceId);
+  if (!test.connected) {
+    return res.status(400).json({
+      error: `Could not connect to Render with provided credentials: ${test.error || 'Invalid API key or service ID'}`
+    });
+  }
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    await client.query(`
+      INSERT INTO platform_integrations (config_key, config_value, updated_at)
+      VALUES ('RENDER_API_KEY', $1, NOW())
+      ON CONFLICT (config_key) DO UPDATE SET config_value = EXCLUDED.config_value, updated_at = NOW()
+    `, [apiKey]);
+    await client.query(`
+      INSERT INTO platform_integrations (config_key, config_value, updated_at)
+      VALUES ('RENDER_SERVICE_ID', $1, NOW())
+      ON CONFLICT (config_key) DO UPDATE SET config_value = EXCLUDED.config_value, updated_at = NOW()
+    `, [serviceId]);
+    await logAudit(client, {
+      actorId: req.user.id,
+      entityType: 'platform_integration',
+      entityId: 0,
+      action: 'render_cloud_integration_configured',
+      details: { serviceId, serviceName: test.serviceName }
+    });
+    await client.query('COMMIT');
+
+    return res.json({
+      message: `Render API connected successfully to service: "${test.serviceName}"! All reseller custom domains will now be automatically provisioned with free SSL.`,
+      service_name: test.serviceName,
+      domains_count: test.domainsCount
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    return res.status(500).json({ error: 'Failed to save Render configuration: ' + err.message });
   } finally {
     client.release();
   }

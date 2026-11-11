@@ -435,6 +435,15 @@ async function initDB() {
     await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS terms_url TEXT;`);
     await client.query(`ALTER TABLE reseller_profiles ADD COLUMN IF NOT EXISTS privacy_url TEXT;`);
 
+    // Automated Cloud & SaaS Infrastructure Integrations (Render.com API Key & Service ID)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS platform_integrations (
+        config_key VARCHAR(80) PRIMARY KEY,
+        config_value TEXT NOT NULL,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     // Backfill clean invite codes for any reseller profiles missing one
     const unseededInvites = await client.query(`SELECT reseller_id, brand_name FROM reseller_profiles WHERE invite_code IS NULL OR invite_code = ''`);
     for (const rRow of unseededInvites.rows) {
