@@ -16144,14 +16144,20 @@ window.renderTeamMembersTable = function(members) {
     const isActive = m.status === 'active' && !m.is_blocked;
     const initial = (m.full_name || m.email || 'S').charAt(0).toUpperCase();
     const assignedCount = Number(m.assigned_clients_count) || 0;
+    const assignedResellers = Number(m.assigned_resellers_count) || 0;
     const coverageCount = Number(m.coverage_clients_count) || 0;
+
+    let countText = `${assignedCount} Client${assignedCount === 1 ? '' : 's'}`;
+    if (assignedResellers > 0) {
+      countText = `${assignedResellers} Reseller${assignedResellers === 1 ? '' : 's'} · ${assignedCount} Accounts`;
+    }
 
     // Managed clients badge
     const canManageTeam = Boolean(currentUser && (currentUser.role === 'admin' || currentUser.role === 'reseller' || currentUser.permissions?.can_manage_team));
     const clientsBadgeHtml = `
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
         <span style="background:#e0e7ff;color:#3730a3;font-weight:700;font-size:0.75rem;padding:3px 9px;border-radius:12px;border:1px solid #c7d2fe;">
-          ${assignedCount} Client${assignedCount === 1 ? '' : 's'}
+          ${countText}
         </span>
         ${coverageCount > 0 ? `
           <span style="background:#fef3c7;color:#92400e;font-weight:700;font-size:0.72rem;padding:2px 7px;border-radius:10px;border:1px solid #fde68a;" title="Temporarily covering for colleagues on leave">
@@ -16159,7 +16165,7 @@ window.renderTeamMembersTable = function(members) {
           </span>
         ` : ''}
         ${canManageTeam ? `
-          <button type="button" onclick="openPortfolioManagerModal(${m.user_id}, '${escapeHtml(m.full_name || m.email)}')" title="Manage Client Portfolio for ${escapeHtml(m.full_name || m.email)}" style="padding:2px 8px;font-size:0.72rem;font-weight:600;background:#eff6ff;border:1px solid #c7d2fe;border-radius:6px;color:#4f46e5;cursor:pointer;display:inline-flex;align-items:center;gap:3px;">
+          <button type="button" onclick="openPortfolioManagerModal(${m.user_id}, '${escapeHtml(m.full_name || m.email)}')" title="Manage Account Portfolio for ${escapeHtml(m.full_name || m.email)}" style="padding:2px 8px;font-size:0.72rem;font-weight:600;background:#eff6ff;border:1px solid #c7d2fe;border-radius:6px;color:#4f46e5;cursor:pointer;display:inline-flex;align-items:center;gap:3px;">
             <i data-lucide="plus-circle" style="width:11px;height:11px;"></i> Manage
           </button>
         ` : ''}
@@ -16685,22 +16691,37 @@ window.handleTeamReassignSubmit = async function(e) {
 };
 
 // ============================================================================
-// BATCH CLIENT PORTFOLIO MANAGER MODAL
+// BATCH CLIENT & RESELLER PORTFOLIO MANAGER MODAL
 // ============================================================================
 let portfolioModalAgentUserId = null;
 let portfolioClientsCache = [];
+let portfolioModalTypeFilter = 'all';
 
 window.openPortfolioManagerModal = async function(agentUserId, agentName) {
   portfolioModalAgentUserId = agentUserId;
+  portfolioModalTypeFilter = 'all';
   const nameDisp = document.getElementById('portfolio-agent-name-display');
-  if (nameDisp) nameDisp.innerHTML = `Assigning clients to: <strong>${escapeHtml(agentName)}</strong>`;
+  if (nameDisp) nameDisp.innerHTML = `Assigning accounts to: <strong>${escapeHtml(agentName)}</strong>`;
 
   const searchInput = document.getElementById('portfolio-client-search');
   if (searchInput) searchInput.value = '';
 
+  // Reset filter tabs UI
+  document.querySelectorAll('.btn-portfolio-tab').forEach(t => {
+    if (t.dataset.type === 'all') {
+      t.style.background = '#e0e7ff';
+      t.style.color = '#3730a3';
+      t.style.borderColor = '#c7d2fe';
+    } else {
+      t.style.background = '#fff';
+      t.style.color = '#475569';
+      t.style.borderColor = '#cbd5e1';
+    }
+  });
+
   const listContainer = document.getElementById('portfolio-clients-list');
   if (listContainer) {
-    listContainer.innerHTML = '<div style="text-align:center;padding:24px;color:#94a3b8;">Loading clients...</div>';
+    listContainer.innerHTML = '<div style="text-align:center;padding:24px;color:#94a3b8;">Loading accounts...</div>';
   }
 
   const modal = document.getElementById('modal-portfolio-manager');
@@ -16712,10 +16733,10 @@ window.openPortfolioManagerModal = async function(agentUserId, agentName) {
   try {
     const res = await apiFetch(`/team/${agentUserId}/assignable-clients`);
     portfolioClientsCache = res.clients || [];
-    renderPortfolioClientsList(portfolioClientsCache);
+    renderPortfolioClientsList();
   } catch (err) {
     if (listContainer) {
-      listContainer.innerHTML = `<div style="text-align:center;padding:24px;color:#ef4444;">Failed to load clients: ${escapeHtml(err.message)}</div>`;
+      listContainer.innerHTML = `<div style="text-align:center;padding:24px;color:#ef4444;">Failed to load accounts: ${escapeHtml(err.message)}</div>`;
     }
   }
 };
@@ -16725,17 +16746,47 @@ window.closePortfolioManagerModal = function() {
   if (modal) modal.style.display = 'none';
   portfolioModalAgentUserId = null;
   portfolioClientsCache = [];
+  portfolioModalTypeFilter = 'all';
 };
 
-function renderPortfolioClientsList(clients) {
+window.setPortfolioTypeFilter = function(type, btn) {
+  portfolioModalTypeFilter = type;
+  document.querySelectorAll('.btn-portfolio-tab').forEach(t => {
+    t.style.background = '#fff';
+    t.style.color = '#475569';
+    t.style.borderColor = '#cbd5e1';
+  });
+  if (btn) {
+    btn.style.background = '#e0e7ff';
+    btn.style.color = '#3730a3';
+    btn.style.borderColor = '#c7d2fe';
+  }
+  renderPortfolioClientsList();
+};
+
+function renderPortfolioClientsList() {
   const listContainer = document.getElementById('portfolio-clients-list');
   if (!listContainer) return;
 
-  if (!clients || clients.length === 0) {
+  const query = (document.getElementById('portfolio-client-search')?.value || '').toLowerCase().trim();
+
+  let filtered = portfolioClientsCache.filter(c => {
+    if (portfolioModalTypeFilter === 'reseller' && c.role !== 'reseller') return false;
+    if (portfolioModalTypeFilter === 'direct' && (c.role !== 'user' || c.reseller_id)) return false;
+    if (query) {
+      const match = (c.email || '').toLowerCase().includes(query) ||
+                    (c.full_name || '').toLowerCase().includes(query) ||
+                    (c.company_name || '').toLowerCase().includes(query);
+      if (!match) return false;
+    }
+    return true;
+  });
+
+  if (!filtered || filtered.length === 0) {
     listContainer.innerHTML = `
       <div style="text-align:center;padding:32px;color:#94a3b8;">
-        <i data-lucide="users" style="width:32px;height:32px;opacity:0.4;display:block;margin:0 auto 8px;"></i>
-        No clients found in your directory.
+        <i data-lucide="inbox" style="width:32px;height:32px;opacity:0.4;display:block;margin:0 auto 8px;"></i>
+        No matching accounts found.
       </div>
     `;
     updatePortfolioSelectedCount();
@@ -16743,13 +16794,23 @@ function renderPortfolioClientsList(clients) {
     return;
   }
 
-  listContainer.innerHTML = clients.map(c => {
+  listContainer.innerHTML = filtered.map(c => {
     const isAssignedToThis = Number(c.assigned_agent_id) === Number(portfolioModalAgentUserId);
     const hasOtherAgent = c.assigned_agent_id && !isAssignedToThis;
+    const isReseller = (c.role === 'reseller');
+
+    let typeBadge = '';
+    if (isReseller) {
+      typeBadge = `<span style="font-size:0.72rem;padding:2px 8px;border-radius:12px;background:#eef2ff;color:#4f46e5;font-weight:700;border:1px solid #c7d2fe;">🏢 Reseller Partner · ${c.downstream_clients_count || 0} Clients</span>`;
+    } else if (c.reseller_id) {
+      typeBadge = `<span style="font-size:0.7rem;padding:2px 7px;border-radius:10px;background:#f8fafc;color:#64748b;border:1px solid #e2e8f0;">Client of: ${escapeHtml(c.parent_reseller_name || c.parent_reseller_email || 'Reseller')}</span>`;
+    } else {
+      typeBadge = `<span style="font-size:0.7rem;padding:2px 7px;border-radius:10px;background:#ecfdf5;color:#047857;font-weight:600;border:1px solid #a7f3d0;">👤 Direct Client</span>`;
+    }
 
     let statusBadge = '';
     if (isAssignedToThis) {
-      statusBadge = '<span style="font-size:0.7rem;padding:2px 7px;border-radius:10px;background:#dcfce7;color:#15803d;font-weight:600;">Managed by this agent</span>';
+      statusBadge = '<span style="font-size:0.7rem;padding:2px 7px;border-radius:10px;background:#dcfce7;color:#15803d;font-weight:700;">Managed by this agent</span>';
     } else if (hasOtherAgent) {
       statusBadge = `<span style="font-size:0.7rem;padding:2px 7px;border-radius:10px;background:#f1f5f9;color:#64748b;">Assigned: ${escapeHtml(c.current_agent_name || c.current_agent_email || 'Other')}</span>`;
     } else {
@@ -16757,19 +16818,27 @@ function renderPortfolioClientsList(clients) {
     }
 
     return `
-      <label style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:8px;background:${isAssignedToThis ? '#f8fafc' : '#fff'};cursor:pointer;transition:all 0.15s ease;">
-        <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
-          <input type="checkbox" class="portfolio-client-chk" value="${c.id}" ${isAssignedToThis ? 'checked' : ''} onchange="updatePortfolioSelectedCount()" style="width:17px;height:17px;accent-color:var(--primary);cursor:pointer;">
-          <div style="min-width:0;">
-            <div style="font-weight:600;font-size:0.88rem;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-              ${escapeHtml(c.company_name || c.full_name || c.email)}
+      <label style="display:flex;align-items:flex-start;justify-content:space-between;padding:12px 14px;border:1px solid ${isAssignedToThis ? '#c7d2fe' : '#e2e8f0'};border-radius:9px;margin-bottom:8px;background:${isAssignedToThis ? '#f5f7ff' : (isReseller ? '#faf5ff' : '#fff')};cursor:pointer;transition:all 0.15s ease;">
+        <div style="display:flex;align-items:flex-start;gap:12px;flex:1;min-width:0;">
+          <input type="checkbox" class="portfolio-client-chk" value="${c.id}" ${isAssignedToThis ? 'checked' : ''} onchange="updatePortfolioSelectedCount()" style="width:18px;height:18px;accent-color:var(--primary);cursor:pointer;margin-top:2px;">
+          <div style="min-width:0;flex:1;">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <span style="font-weight:700;font-size:0.9rem;color:#1e293b;">
+                ${escapeHtml(c.company_name || c.full_name || c.email)}
+              </span>
+              ${typeBadge}
             </div>
-            <div style="font-size:0.78rem;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            <div style="font-size:0.8rem;color:#64748b;margin-top:2px;">
               ${escapeHtml(c.email)}
             </div>
+            ${isReseller ? `
+              <div style="font-size:0.74rem;color:#4f46e5;font-weight:600;margin-top:4px;">
+                ✦ Assigning this reseller will automatically grant this agent management access to all ${c.downstream_clients_count || 0} downstream clients!
+              </div>
+            ` : ''}
           </div>
         </div>
-        <div style="margin-left:8px;flex-shrink:0;">
+        <div style="margin-left:10px;flex-shrink:0;">
           ${statusBadge}
         </div>
       </label>
@@ -16784,22 +16853,12 @@ function updatePortfolioSelectedCount() {
   const checkboxes = document.querySelectorAll('.portfolio-client-chk:checked');
   const countDisp = document.getElementById('portfolio-selected-count');
   if (countDisp) {
-    countDisp.textContent = `${checkboxes.length} client${checkboxes.length === 1 ? '' : 's'} selected`;
+    countDisp.textContent = `${checkboxes.length} account${checkboxes.length === 1 ? '' : 's'} selected`;
   }
 }
 
 window.filterPortfolioClientsList = function() {
-  const query = (document.getElementById('portfolio-client-search')?.value || '').toLowerCase().trim();
-  if (!query) {
-    renderPortfolioClientsList(portfolioClientsCache);
-    return;
-  }
-  const filtered = portfolioClientsCache.filter(c => 
-    (c.email || '').toLowerCase().includes(query) ||
-    (c.full_name || '').toLowerCase().includes(query) ||
-    (c.company_name || '').toLowerCase().includes(query)
-  );
-  renderPortfolioClientsList(filtered);
+  renderPortfolioClientsList();
 };
 
 window.toggleAllPortfolioCheckboxes = function(check) {
@@ -16824,10 +16883,11 @@ window.savePortfolioManagerChanges = async function() {
       method: 'POST',
       body: JSON.stringify({ client_ids: selectedClientIds })
     });
-    showToast('success', 'Portfolio Saved', res.message || 'Client portfolio updated.');
+    showToast('success', 'Portfolio Saved', res.message || 'Account portfolio updated.');
     closePortfolioManagerModal();
     loadTeamMembers();
     if (typeof loadUsers === 'function') loadUsers();
+    if (typeof loadResellerNetwork === 'function') loadResellerNetwork();
   } catch (err) {
     showToast('error', 'Update Failed', err.message);
   } finally {

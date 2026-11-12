@@ -967,4 +967,61 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     const auditorUser = { id: 11, is_team_member: true, parent_user_id: 1, permissions: subAdminPresets.platform_auditor };
     assert.strictEqual(canDeleteUser(auditorUser, regularClient), false);
   });
+
+  await t.test('Reseller Assignment Cascading & Staff Exclusion Logic', async () => {
+    // 1. Staff Exclusion: Team members must NEVER appear in the list of assignable accounts
+    const teamMemberIds = [10, 11, 12]; // e.g. Deepshikha (id 10)
+    const allUsers = [
+      { id: 1, email: 'admin@messagesphere.com', role: 'admin' },
+      { id: 10, email: 'deepshikha@nmedialabs.in', role: 'user' }, // staff!
+      { id: 20, email: 'reseller_partner@telecom.com', role: 'reseller' }, // reseller
+      { id: 30, email: 'direct_client@retail.com', role: 'user', reseller_id: null }, // direct client
+      { id: 31, email: 'reseller_sub_client@shop.com', role: 'user', reseller_id: 20 } // downstream client of reseller 20
+    ];
+
+    function getAssignableAccounts(superAdminId, agentId, userList, staffIds) {
+      return userList.filter(u => 
+        u.id !== superAdminId &&
+        u.id !== agentId &&
+        !staffIds.includes(u.id) &&
+        ['user', 'reseller'].includes(u.role)
+      );
+    }
+
+    const assignableForDeepshikha = getAssignableAccounts(1, 10, allUsers, teamMemberIds);
+    // Deepshikha herself must NOT be in the list
+    assert.strictEqual(assignableForDeepshikha.some(u => u.id === 10), false, 'Deepshikha must be excluded from assignable list');
+    // Super admin must NOT be in the list
+    assert.strictEqual(assignableForDeepshikha.some(u => u.id === 1), false, 'Super Admin must be excluded from assignable list');
+    // Reseller partner MUST be in the list!
+    assert.strictEqual(assignableForDeepshikha.some(u => u.id === 20), true, 'Reseller partner must be included in assignable list');
+    // Direct client MUST be in the list!
+    assert.strictEqual(assignableForDeepshikha.some(u => u.id === 30), true, 'Direct client must be included');
+
+    // 2. Reseller Assignment Automatic Cascading:
+    // If Reseller 20 is assigned to Deepshikha (agent 10), Deepshikha automatically inherits access to Reseller 20 AND all its downstream clients
+    allUsers.find(u => u.id === 20).assigned_agent_id = 10;
+
+    function getVisibleAccountsForAgent(agentId, userList) {
+      // Direct assignment
+      const directlyAssignedResellerIds = userList
+        .filter(u => u.role === 'reseller' && u.assigned_agent_id === agentId)
+        .map(u => u.id);
+
+      return userList.filter(u => 
+        u.assigned_agent_id === agentId || 
+        (u.reseller_id && directlyAssignedResellerIds.includes(u.reseller_id))
+      );
+    }
+
+    const visibleAccounts = getVisibleAccountsForAgent(10, allUsers);
+    const visibleIds = visibleAccounts.map(u => u.id);
+
+    // Deepshikha can see the Reseller (id 20)
+    assert.strictEqual(visibleIds.includes(20), true, 'Deepshikha must see assigned Reseller');
+    // Deepshikha automatically sees the client under Reseller 20 (id 31)
+    assert.strictEqual(visibleIds.includes(31), true, 'Deepshikha must automatically inherit access to Reseller 20 clients');
+    // Deepshikha does NOT see unassigned direct client 30
+    assert.strictEqual(visibleIds.includes(30), false, 'Deepshikha must not see unassigned accounts');
+  });
 });

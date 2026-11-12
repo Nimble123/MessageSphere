@@ -76,7 +76,46 @@ async function canAccessCampaign(req, campaign) {
   if (req.user.is_team_member && !req.user.permissions?.can_view_campaigns) return false;
   const effectiveUserId = req.user.effective_user_id || req.user.id;
   const effectiveRole = (req.user.is_team_member && req.user.parent_role) ? req.user.parent_role : req.user.role;
-  if (req.user.role === 'admin' || campaign.user_id === effectiveUserId) return true;
+
+  // Root Super Admin always has full access
+  if (req.user.role === 'admin' && !req.user.is_team_member) return true;
+  // Own campaign
+  if (campaign.user_id === effectiveUserId) return true;
+
+  // If caller is a staff agent under Super Admin
+  if (req.user.is_team_member && req.user.parent_role === 'admin') {
+    if (req.user.permissions?.can_manage_team) return true;
+    const ownerRes = await query('SELECT id, role, reseller_id, assigned_agent_id FROM users WHERE id = $1', [campaign.user_id]);
+    if (!ownerRes.rows[0]) return false;
+    const owner = ownerRes.rows[0];
+
+    // 1. Directly assigned
+    if (owner.assigned_agent_id === req.user.id) return true;
+
+    // 2. Direct leave backup coverage
+    const backupCheck = await query(
+      `SELECT id FROM team_members WHERE user_id = $1 AND parent_user_id = $2 AND is_on_leave = TRUE AND backup_agent_id = $3`,
+      [owner.assigned_agent_id, effectiveUserId, req.user.id]
+    );
+    if (backupCheck.rows.length > 0) return true;
+
+    // 3. User belongs to a Reseller assigned to this agent (Automatic Reseller Cascading)
+    if (owner.reseller_id) {
+      const resCheck = await query('SELECT assigned_agent_id FROM users WHERE id = $1', [owner.reseller_id]);
+      if (resCheck.rows[0]) {
+        const resAgentId = resCheck.rows[0].assigned_agent_id;
+        if (resAgentId === req.user.id) return true;
+        const resBackupCheck = await query(
+          `SELECT id FROM team_members WHERE user_id = $1 AND parent_user_id = $2 AND is_on_leave = TRUE AND backup_agent_id = $3`,
+          [resAgentId, effectiveUserId, req.user.id]
+        );
+        if (resBackupCheck.rows.length > 0) return true;
+      }
+    }
+
+    return false;
+  }
+
   if (effectiveRole !== 'reseller') return false;
 
   const owner = await query('SELECT reseller_id, assigned_agent_id FROM users WHERE id = $1', [campaign.user_id]);

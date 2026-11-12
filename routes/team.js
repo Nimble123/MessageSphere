@@ -171,8 +171,23 @@ router.get('/', authenticate, requirePermission('can_manage_team'), async (req, 
         u.is_blocked,
         bu.email AS backup_agent_email,
         bu.full_name AS backup_agent_name,
-        (SELECT COUNT(*) FROM users u2 WHERE u2.assigned_agent_id = tm.user_id)::int AS assigned_clients_count,
-        (SELECT COUNT(*) FROM users u3 JOIN team_members tm2 ON u3.assigned_agent_id = tm2.user_id WHERE tm2.is_on_leave = TRUE AND tm2.backup_agent_id = tm.user_id)::int AS coverage_clients_count
+        (
+          SELECT COUNT(*) FROM users u2 
+          WHERE u2.assigned_agent_id = tm.user_id 
+             OR u2.reseller_id IN (SELECT res.id FROM users res WHERE res.role = 'reseller' AND res.assigned_agent_id = tm.user_id)
+        )::int AS assigned_clients_count,
+        (
+          SELECT COUNT(*) FROM users u2 
+          WHERE u2.assigned_agent_id = tm.user_id AND u2.role = 'reseller'
+        )::int AS assigned_resellers_count,
+        (
+          SELECT COUNT(*) FROM users u3 
+          JOIN team_members tm2 ON (
+            u3.assigned_agent_id = tm2.user_id 
+            OR u3.reseller_id IN (SELECT res.id FROM users res WHERE res.role = 'reseller' AND res.assigned_agent_id = tm2.user_id)
+          )
+          WHERE tm2.is_on_leave = TRUE AND tm2.backup_agent_id = tm.user_id
+        )::int AS coverage_clients_count
       FROM team_members tm
       JOIN users u ON u.id = tm.user_id
       LEFT JOIN users bu ON bu.id = tm.backup_agent_id
@@ -204,7 +219,11 @@ router.get('/agents', authenticate, async (req, res) => {
         tm.is_on_leave, 
         tm.backup_agent_id,
         bu.full_name AS backup_agent_name,
-        (SELECT COUNT(*) FROM users u2 WHERE u2.assigned_agent_id = tm.user_id)::int AS assigned_clients_count
+        (
+          SELECT COUNT(*) FROM users u2 
+          WHERE u2.assigned_agent_id = tm.user_id 
+             OR u2.reseller_id IN (SELECT res.id FROM users res WHERE res.role = 'reseller' AND res.assigned_agent_id = tm.user_id)
+        )::int AS assigned_clients_count
       FROM team_members tm
       JOIN users u ON tm.user_id = u.id
       LEFT JOIN users bu ON tm.backup_agent_id = bu.id
@@ -399,7 +418,7 @@ router.post('/reassign-clients', authenticate, requirePermission('can_manage_tea
   }
 });
 
-// GET /api/team/:agentId/assignable-clients - List all clients with assignment status for this agent
+// GET /api/team/:agentId/assignable-clients - List all clients & resellers with assignment status for this agent
 router.get('/:agentId/assignable-clients', authenticate, requirePermission('can_manage_team'), async (req, res) => {
   const client = await getClient();
   try {
@@ -416,21 +435,32 @@ router.get('/:agentId/assignable-clients', authenticate, requirePermission('can_
 
     if (effectiveRole === 'admin') {
       query = `
-        SELECT u.id, u.email, u.full_name, u.company_name, u.assigned_agent_id,
-               ag.full_name AS current_agent_name, ag.email AS current_agent_email
+        SELECT u.id, u.email, u.full_name, u.company_name, u.role, u.reseller_id, u.assigned_agent_id,
+               ag.full_name AS current_agent_name, ag.email AS current_agent_email,
+               r.company_name AS parent_reseller_name, r.email AS parent_reseller_email,
+               (SELECT COUNT(*)::int FROM users sub_c WHERE sub_c.reseller_id = u.id) AS downstream_clients_count
         FROM users u
         LEFT JOIN users ag ON u.assigned_agent_id = ag.id
-        WHERE u.id != $1 AND u.role = 'user'
-        ORDER BY (u.assigned_agent_id = $2) DESC, u.email ASC
+        LEFT JOIN users r ON u.reseller_id = r.id
+        WHERE u.id != $1 
+          AND u.id != $2
+          AND u.role IN ('user', 'reseller')
+          AND u.id NOT IN (SELECT user_id FROM team_members)
+        ORDER BY (u.assigned_agent_id = $2) DESC, (u.role = 'reseller') DESC, u.email ASC
       `;
       params = [req.user.id, agentUserId];
     } else {
       query = `
-        SELECT u.id, u.email, u.full_name, u.company_name, u.assigned_agent_id,
-               ag.full_name AS current_agent_name, ag.email AS current_agent_email
+        SELECT u.id, u.email, u.full_name, u.company_name, u.role, u.reseller_id, u.assigned_agent_id,
+               ag.full_name AS current_agent_name, ag.email AS current_agent_email,
+               NULL AS parent_reseller_name, NULL AS parent_reseller_email,
+               0 AS downstream_clients_count
         FROM users u
         LEFT JOIN users ag ON u.assigned_agent_id = ag.id
-        WHERE u.reseller_id = $1 AND u.role = 'user'
+        WHERE u.reseller_id = $1 
+          AND u.id != $2
+          AND u.role = 'user'
+          AND u.id NOT IN (SELECT user_id FROM team_members)
         ORDER BY (u.assigned_agent_id = $2) DESC, u.email ASC
       `;
       params = [parentId, agentUserId];
@@ -446,7 +476,7 @@ router.get('/:agentId/assignable-clients', authenticate, requirePermission('can_
   }
 });
 
-// POST /api/team/:agentId/bulk-assign-clients - Bulk assign or unassign clients for this agent
+// POST /api/team/:agentId/bulk-assign-clients - Bulk assign or unassign clients & resellers for this agent
 router.post('/:agentId/bulk-assign-clients', authenticate, requirePermission('can_manage_team'), async (req, res) => {
   const client = await getClient();
   try {
@@ -470,7 +500,7 @@ router.post('/:agentId/bulk-assign-clients', authenticate, requirePermission('ca
 
     await client.query('BEGIN');
 
-    // 1. Unassign clients previously assigned to this agent that are NOT in client_ids
+    // 1. Unassign accounts previously assigned to this agent that are NOT in client_ids
     let unassignQuery = '';
     let unassignParams = [];
     if (effectiveRole === 'admin') {
@@ -482,16 +512,16 @@ router.post('/:agentId/bulk-assign-clients', authenticate, requirePermission('ca
     }
     await client.query(unassignQuery, unassignParams);
 
-    // 2. Assign the chosen clients to this agent
+    // 2. Assign the chosen accounts to this agent (strictly excluding internal staff)
     let assignCount = 0;
     if (Array.isArray(client_ids) && client_ids.length > 0) {
       let assignQuery = '';
       let assignParams = [];
       if (effectiveRole === 'admin') {
-        assignQuery = `UPDATE users SET assigned_agent_id = $1 WHERE id = ANY($2::int[]) RETURNING id`;
+        assignQuery = `UPDATE users SET assigned_agent_id = $1 WHERE id = ANY($2::int[]) AND role IN ('user', 'reseller') AND id NOT IN (SELECT user_id FROM team_members) RETURNING id, role`;
         assignParams = [agentUserId, client_ids];
       } else {
-        assignQuery = `UPDATE users SET assigned_agent_id = $1 WHERE reseller_id = $2 AND id = ANY($3::int[]) RETURNING id`;
+        assignQuery = `UPDATE users SET assigned_agent_id = $1 WHERE reseller_id = $2 AND id = ANY($3::int[]) AND role = 'user' AND id NOT IN (SELECT user_id FROM team_members) RETURNING id, role`;
         assignParams = [agentUserId, parentId, client_ids];
       }
       const assignRes = await client.query(assignQuery, assignParams);

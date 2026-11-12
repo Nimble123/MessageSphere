@@ -24,20 +24,71 @@ router.get('/', authenticate, requireRoles('admin', 'reseller'), async (req, res
       if (req.user.is_team_member && req.user.permissions?.can_manage_users === false) {
         return res.status(403).json({ error: 'Permission Denied: Your staff account does not have permission to view or manage users.' });
       }
+
+      let agentFilterSql = '';
+      params = [req.user.id];
+
+      if (isStaffAgent) {
+        params.push(req.user.id);
+        agentFilterSql = `
+          AND (
+            u.assigned_agent_id = $2
+            OR u.reseller_id IN (
+              SELECT res.id FROM users res 
+              WHERE res.role = 'reseller' 
+                AND (
+                  res.assigned_agent_id = $2 
+                  OR res.assigned_agent_id IN (
+                    SELECT tm_cov.user_id FROM team_members tm_cov 
+                    WHERE tm_cov.parent_user_id = $1 AND tm_cov.is_on_leave = TRUE AND tm_cov.backup_agent_id = $2
+                  )
+                )
+            )
+            OR u.assigned_agent_id IN (
+              SELECT tm_cov.user_id FROM team_members tm_cov 
+              WHERE tm_cov.parent_user_id = $1 AND tm_cov.is_on_leave = TRUE AND tm_cov.backup_agent_id = $2
+            )
+          )
+        `;
+      } else if (req.query.agent_id) {
+        if (req.query.agent_id === 'unassigned') {
+          agentFilterSql = ` AND u.assigned_agent_id IS NULL AND (u.reseller_id IS NULL OR u.reseller_id IN (SELECT res.id FROM users res WHERE res.role = 'reseller' AND res.assigned_agent_id IS NULL))`;
+        } else {
+          const filterAgentId = parseInt(req.query.agent_id, 10);
+          if (!isNaN(filterAgentId)) {
+            params.push(filterAgentId);
+            agentFilterSql = `
+              AND (
+                u.assigned_agent_id = $${params.length}
+                OR u.reseller_id IN (
+                  SELECT res.id FROM users res WHERE res.role = 'reseller' AND res.assigned_agent_id = $${params.length}
+                )
+              )
+            `;
+          }
+        }
+      }
+
       usersQuery = `
         SELECT u.id, u.email, u.role, u.is_blocked, u.reseller_id, u.full_name, u.company_name, u.phone, u.business_address, u.gstin, u.created_at, u.tax_mode, u.refund_destination, u.assigned_agent_id,
                r.email AS reseller_email, r.full_name AS reseller_full_name, r.company_name AS reseller_company_name,
                ag.email AS agent_email, ag.full_name AS agent_full_name,
-               FALSE AS is_temporary_coverage,
-               NULL AS primary_agent_name
+               (
+                 CASE 
+                   WHEN ${isStaffAgent ? `u.assigned_agent_id != $2` : `FALSE`} THEN TRUE 
+                   ELSE FALSE 
+                 END
+               ) AS is_temporary_coverage,
+               ag.full_name AS primary_agent_name
         FROM users u
         LEFT JOIN users r ON u.reseller_id = r.id
         LEFT JOIN users ag ON u.assigned_agent_id = ag.id
         WHERE u.id != $1
+          AND u.id NOT IN (SELECT user_id FROM team_members)
+          ${agentFilterSql}
         ORDER BY u.created_at DESC
         ${paginationClause}
       `;
-      params = [req.user.id];
     } else {
       let agentFilterSql = '';
       params = [parentId];
@@ -81,7 +132,9 @@ router.get('/', authenticate, requireRoles('admin', 'reseller'), async (req, res
         FROM users u
         LEFT JOIN users r ON u.reseller_id = r.id
         LEFT JOIN users ag ON u.assigned_agent_id = ag.id
-        WHERE u.reseller_id = $1 ${agentFilterSql}
+        WHERE u.reseller_id = $1 
+          AND u.id NOT IN (SELECT user_id FROM team_members)
+          ${agentFilterSql}
         ORDER BY u.created_at DESC
         ${paginationClause}
       `;
@@ -583,6 +636,13 @@ router.patch('/:id/assign-agent', authenticate, requireRoles('admin', 'reseller'
     }
     const targetUser = userRes.rows[0];
 
+    // Safety rule: Internal team members cannot be assigned as managed client accounts
+    const staffCheck = await client.query('SELECT 1 FROM team_members WHERE user_id = $1', [targetUserId]);
+    if (staffCheck.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Internal staff members cannot be assigned as client accounts.' });
+    }
+
     // Check reseller boundary
     if (!isSuperAdmin && targetUser.reseller_id !== parentId) {
       await client.query('ROLLBACK');
@@ -600,10 +660,20 @@ router.patch('/:id/assign-agent', authenticate, requireRoles('admin', 'reseller'
         return res.status(400).json({ error: 'Invalid agent ID provided.' });
       }
 
+      if (targetUserId === agentInt) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'An agent cannot be assigned to manage their own account.' });
+      }
+
       // Verify agent is a team member of this organization
       const agentCheck = await client.query(
-        `SELECT tm.user_id, u.email, u.full_name, tm.is_on_leave FROM team_members tm JOIN users u ON u.id = tm.user_id WHERE tm.user_id = $1 AND tm.parent_user_id = $2 AND tm.status = 'active'`,
-        [agentInt, targetUser.reseller_id || parentId]
+        `SELECT tm.user_id, u.email, u.full_name, tm.is_on_leave 
+         FROM team_members tm 
+         JOIN users u ON u.id = tm.user_id 
+         WHERE tm.user_id = $1 
+           AND (tm.parent_user_id = $2 OR $3 = TRUE) 
+           AND tm.status = 'active'`,
+        [agentInt, targetUser.reseller_id || parentId, isSuperAdmin]
       );
       if (agentCheck.rows.length === 0) {
         await client.query('ROLLBACK');
