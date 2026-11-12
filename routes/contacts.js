@@ -90,12 +90,15 @@ router.get('/groups', authenticate, async (req, res) => {
 
 // POST /api/contacts/groups - Create contact group (with optional initial numbers and proxy assignment)
 router.post('/groups', authenticate, async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_contacts) {
+    return res.status(403).json({ error: 'Permission Denied: Your assigned team role cannot manage contacts.' });
+  }
   const { name, description, numbers, target_user_id } = req.body;
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'Group name is required' });
   }
 
-  let effectiveUserId = req.user.id;
+  let effectiveUserId = req.user.effective_user_id || req.user.id;
   if (target_user_id && (req.user.role === 'admin' || req.user.role === 'reseller')) {
     const targetInt = parseInt(target_user_id, 10);
     if (!isNaN(targetInt)) {
@@ -163,6 +166,9 @@ router.post('/groups', authenticate, async (req, res) => {
 
 // POST /api/contacts/groups/merge - Merge two contact groups
 router.post('/groups/merge', authenticate, async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_contacts) {
+    return res.status(403).json({ error: 'Permission Denied: Your assigned team role cannot merge groups.' });
+  }
   const { source_group_id, target_group_id, delete_source } = req.body;
   const srcId = parseInt(source_group_id, 10);
   const tgtId = parseInt(target_group_id, 10);
@@ -247,6 +253,9 @@ router.post('/groups/merge', authenticate, async (req, res) => {
 
 // PUT /api/contacts/groups/:id - Update group name and description
 router.put('/groups/:id', authenticate, async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_contacts) {
+    return res.status(403).json({ error: 'Permission Denied: Your assigned team role cannot modify contacts.' });
+  }
   const groupId = parseInt(req.params.id, 10);
   const { name, description } = req.body;
   if (!name || !name.trim()) {
@@ -275,6 +284,9 @@ router.put('/groups/:id', authenticate, async (req, res) => {
 
 // DELETE /api/contacts/groups/:id - Delete group
 router.delete('/groups/:id', authenticate, async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_contacts) {
+    return res.status(403).json({ error: 'Permission Denied: Your assigned team role cannot delete contact groups.' });
+  }
   const groupId = parseInt(req.params.id, 10);
   try {
     const group = await checkGroupAccess(groupId, req.user);
@@ -292,6 +304,9 @@ router.delete('/groups/:id', authenticate, async (req, res) => {
 
 // DELETE /api/contacts/groups/:id/clear - Empty all contacts in a group
 router.delete('/groups/:id/clear', authenticate, async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_contacts) {
+    return res.status(403).json({ error: 'Permission Denied: Your assigned team role cannot empty contact groups.' });
+  }
   const groupId = parseInt(req.params.id, 10);
   try {
     const group = await checkGroupAccess(groupId, req.user);
@@ -358,6 +373,9 @@ router.get('/groups/:id/contacts', authenticate, async (req, res) => {
 
 // GET /api/contacts/groups/:id/all-numbers - Get all phone numbers for composer integration
 router.get('/groups/:id/all-numbers', authenticate, async (req, res) => {
+  if (req.user.is_team_member && req.query.export === 'true' && !req.user.permissions?.can_export_contacts) {
+    return res.status(403).json({ error: 'Permission Denied: Organization security policy restricts exporting raw contact numbers.' });
+  }
   const groupId = parseInt(req.params.id, 10);
   try {
     const groupCheck = await checkGroupAccess(groupId, req.user);
@@ -389,6 +407,9 @@ router.get('/groups/:id/all-numbers', authenticate, async (req, res) => {
 
 // DELETE /api/contacts/groups/:groupId/contacts/:contactId - Delete single contact from group
 router.delete('/groups/:groupId/contacts/:contactId', authenticate, async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_contacts) {
+    return res.status(403).json({ error: 'Permission Denied: Your assigned team role cannot remove contacts.' });
+  }
   const groupId = parseInt(req.params.groupId, 10);
   const contactId = parseInt(req.params.contactId, 10);
   if (isNaN(groupId) || isNaN(contactId)) return res.status(400).json({ error: 'Invalid ID parameters' });
@@ -409,6 +430,9 @@ router.delete('/groups/:groupId/contacts/:contactId', authenticate, async (req, 
 
 // POST /api/contacts/groups/:id/contacts - Add single contact to group (Name is optional)
 router.post('/groups/:id/contacts', authenticate, async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_contacts) {
+    return res.status(403).json({ error: 'Permission Denied: Your assigned team role cannot add contacts.' });
+  }
   const groupId = parseInt(req.params.id, 10);
   const { phone_number, name } = req.body;
   const phone = normalizePhone(phone_number);
@@ -447,6 +471,9 @@ router.post('/groups/:id/contacts', authenticate, async (req, res) => {
 
 // POST /api/contacts/groups/:id/bulk-numbers - Add multiple numbers (with or without names) to existing group
 router.post('/groups/:id/bulk-numbers', authenticate, async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_contacts) {
+    return res.status(403).json({ error: 'Permission Denied: Your assigned team role cannot add contacts.' });
+  }
   const groupId = parseInt(req.params.id, 10);
   const { numbers } = req.body; // Array of strings or array of { phone, name }
 
@@ -555,8 +582,9 @@ router.get('/blacklist', authenticate, async (req, res) => {
       params.push(req.user.id);
       paramIdx++;
     } else {
-      whereClauses.push(`b.user_id = $${paramIdx}`);
-      params.push(req.user.id);
+      const targetUserId = req.user.effective_user_id || req.user.id;
+      whereClauses.push(`(b.user_id = $${paramIdx} OR b.user_id IS NULL)`);
+      params.push(targetUserId);
       paramIdx++;
     }
 
@@ -608,13 +636,16 @@ router.get('/blacklist', authenticate, async (req, res) => {
 
 // POST /api/contacts/blacklist - Add single number to blacklist (with duplicate prevention)
 router.post('/blacklist', authenticate, async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_contacts) {
+    return res.status(403).json({ error: 'Permission Denied: Your assigned team role cannot manage blacklist / DND.' });
+  }
   const { phone_number, reason, is_global } = req.body;
   const normalizedPhone = normalizePhone(phone_number);
   if (!normalizedPhone || normalizedPhone.length < 10 || normalizedPhone.length > 15) {
     return res.status(400).json({ error: 'Valid 10-15 digit phone number is required' });
   }
 
-  const assignedUserId = (req.user.role === 'admin' && Boolean(is_global)) ? null : req.user.id;
+  const assignedUserId = (req.user.role === 'admin' && Boolean(is_global)) ? null : (req.user.effective_user_id || req.user.id);
 
   try {
     const existing = await query(`
@@ -640,12 +671,15 @@ router.post('/blacklist', authenticate, async (req, res) => {
 
 // POST /api/contacts/blacklist/bulk - Add multiple numbers to blacklist
 router.post('/blacklist/bulk', authenticate, async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_contacts) {
+    return res.status(403).json({ error: 'Permission Denied: Your assigned team role cannot manage blacklist / DND.' });
+  }
   const { numbers, reason, is_global } = req.body;
   if (!Array.isArray(numbers) || numbers.length === 0) {
     return res.status(400).json({ error: 'No phone numbers provided' });
   }
 
-  const assignedUserId = (req.user.role === 'admin' && Boolean(is_global)) ? null : req.user.id;
+  const assignedUserId = (req.user.role === 'admin' && Boolean(is_global)) ? null : (req.user.effective_user_id || req.user.id);
   const blockReason = String(reason || 'Bulk opt-out / DND list import').slice(0, 255);
 
   const client = await getClient();
@@ -707,6 +741,9 @@ router.post('/blacklist/bulk', authenticate, async (req, res) => {
 
 // DELETE /api/contacts/blacklist/:target - Remove from blacklist by ID or phone number
 router.delete('/blacklist/:target', authenticate, async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_contacts) {
+    return res.status(403).json({ error: 'Permission Denied: Your assigned team role cannot manage blacklist / DND.' });
+  }
   const target = req.params.target;
   try {
     const isSmallId = /^\d+$/.test(target) && target.length <= 9;
@@ -726,8 +763,9 @@ router.delete('/blacklist/:target', authenticate, async (req, res) => {
         authCondition = `(user_id = $4 OR user_id IN (SELECT id FROM users WHERE reseller_id = $4))`;
         params = [idVal, target, norm, req.user.id];
       } else {
+        const targetUserId = req.user.effective_user_id || req.user.id;
         authCondition = `user_id = $4`;
-        params = [idVal, target, norm, req.user.id];
+        params = [idVal, target, norm, targetUserId];
       }
       await query(`DELETE FROM blacklist WHERE (id = $1 OR phone_number = $2 OR phone_number = $3) AND ${authCondition}`, params);
     } else {
@@ -738,8 +776,9 @@ router.delete('/blacklist/:target', authenticate, async (req, res) => {
         authCondition = `(user_id = $3 OR user_id IN (SELECT id FROM users WHERE reseller_id = $3))`;
         params = [target, norm, req.user.id];
       } else {
+        const targetUserId = req.user.effective_user_id || req.user.id;
         authCondition = `user_id = $3`;
-        params = [target, norm, req.user.id];
+        params = [target, norm, targetUserId];
       }
       await query(`DELETE FROM blacklist WHERE (phone_number = $1 OR phone_number = $2) AND ${authCondition}`, params);
     }

@@ -982,6 +982,40 @@ function updateSettingsView() {
     if (field) field.value = value;
   });
 
+  // Team member isolation: lock down company legal & tax fields
+  const isTeam = Boolean(currentUser.isTeamMember);
+  ['profile-company-name', 'profile-gstin', 'profile-business-address'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.disabled = isTeam;
+      el.readOnly = isTeam;
+      if (isTeam) {
+        el.style.backgroundColor = 'var(--slate-100)';
+        el.style.cursor = 'not-allowed';
+      } else {
+        el.style.backgroundColor = '';
+        el.style.cursor = '';
+      }
+    }
+  });
+
+  const teamNotice = document.getElementById('team-settings-notice');
+  if (isTeam) {
+    if (!teamNotice) {
+      const form = document.getElementById('account-profile-form');
+      if (form) {
+        const noticeDiv = document.createElement('div');
+        noticeDiv.id = 'team-settings-notice';
+        noticeDiv.style.cssText = 'background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; font-size: 0.85rem; display: flex; align-items: center; gap: 8px;';
+        noticeDiv.innerHTML = '<i data-lucide="shield" style="width:16px;height:16px;flex-shrink:0;"></i> <span><strong>Team Account Mode:</strong> Company legal & tax profile is managed by your organization administrator. You can update your personal contact info and login password.</span>';
+        form.insertBefore(noticeDiv, form.firstChild);
+        if (window.lucide) lucide.createIcons();
+      }
+    }
+  } else if (teamNotice) {
+    teamNotice.remove();
+  }
+
   // Dedicated Managing Partner Card for client users
   const partnerCard = document.getElementById('settings-partner-card');
   if (partnerCard) {
@@ -1057,18 +1091,27 @@ const accountProfileForm = document.getElementById('account-profile-form');
 if (accountProfileForm) {
   accountProfileForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+    const isTeam = Boolean(currentUser && currentUser.isTeamMember);
     const payload = {
       full_name: document.getElementById('profile-full-name').value.trim(),
-      company_name: document.getElementById('profile-company-name').value.trim(),
-      phone: document.getElementById('profile-phone').value.trim(),
-      gstin: document.getElementById('profile-gstin').value.trim(),
-      business_address: document.getElementById('profile-business-address').value.trim()
+      phone: document.getElementById('profile-phone').value.trim()
     };
+    if (!isTeam) {
+      payload.company_name = document.getElementById('profile-company-name').value.trim();
+      payload.gstin = document.getElementById('profile-gstin').value.trim();
+      payload.business_address = document.getElementById('profile-business-address').value.trim();
+    }
     try {
       const saved = await apiFetch('/auth/profile', { method: 'PATCH', body: JSON.stringify(payload) });
-      Object.assign(currentUser, { fullName: saved.full_name, companyName: saved.company_name, phone: saved.phone, gstin: saved.gstin, businessAddress: saved.business_address });
+      Object.assign(currentUser, { 
+        fullName: saved.full_name, 
+        phone: saved.phone,
+        companyName: saved.company_name, 
+        gstin: saved.gstin, 
+        businessAddress: saved.business_address 
+      });
       updateSettingsView();
-      showToast('success', 'Profile saved', 'Your account and business contact details are updated.');
+      showToast('success', 'Profile saved', isTeam ? 'Your personal details are updated.' : 'Your account and business contact details are updated.');
     } catch (err) { showToast('error', 'Profile update failed', err.message); }
   });
 }
@@ -8095,6 +8138,14 @@ window.openGroupContactsDrawer = async function(groupId, groupName) {
   if (drawerAddName) drawerAddName.value = '';
   drawerGroupContacts.style.display = 'flex';
 
+  if (btnDrawerExportCsv) {
+    if (currentUser?.isTeamMember && !currentUser?.permissions?.can_export_contacts) {
+      btnDrawerExportCsv.style.display = 'none';
+    } else {
+      btnDrawerExportCsv.style.display = 'inline-flex';
+    }
+  }
+
   try {
     const [contacts] = await Promise.all([
       apiFetch(`/contacts/groups/${groupId}/contacts`),
@@ -8111,6 +8162,7 @@ window.openGroupContactsDrawer = async function(groupId, groupName) {
 function renderDrawerContacts() {
   if (!drawerContactsTbody) return;
   const q = (drawerContactsSearch ? drawerContactsSearch.value : '').toLowerCase().trim();
+  const canManage = !currentUser?.isTeamMember || Boolean(currentUser?.permissions?.can_manage_contacts);
   const filtered = currentDrawerContacts.filter(c => {
     if (!q) return true;
     return (c.phone_number || '').includes(q) || (c.name || '').toLowerCase().includes(q);
@@ -8133,9 +8185,11 @@ function renderDrawerContacts() {
       </td>
       <td><span style="color:var(--slate-600);">${escapeHtml(c.name || '—')}</span></td>
       <td>
-        <button type="button" class="btn-action btn-action-danger" onclick="deleteContactFromGroup(${currentDrawerGroupId}, ${c.id})" style="padding:3px 7px;font-size:0.75rem;" title="Delete this number">
-          <i data-lucide="trash-2" style="width:12px;height:12px;"></i>
-        </button>
+        ${canManage ? `
+          <button type="button" class="btn-action btn-action-danger" onclick="deleteContactFromGroup(${currentDrawerGroupId}, ${c.id})" style="padding:3px 7px;font-size:0.75rem;" title="Delete this number">
+            <i data-lucide="trash-2" style="width:12px;height:12px;"></i>
+          </button>
+        ` : '<span style="color:var(--slate-400);font-size:0.75rem;">—</span>'}
       </td>
     </tr>
   `;
@@ -8173,7 +8227,7 @@ if (btnDrawerExportCsv) {
   btnDrawerExportCsv.addEventListener('click', async () => {
     if (!currentDrawerGroupId) return;
     try {
-      const res = await apiFetch(`/contacts/groups/${currentDrawerGroupId}/all-numbers`);
+      const res = await apiFetch(`/contacts/groups/${currentDrawerGroupId}/all-numbers?export=true`);
       const contacts = res.contacts || [];
       if (contacts.length === 0) return showToast('warning', 'Empty Group', 'No numbers to export.');
       const csvContent = 'phone_number,name\n' + contacts.map(c => `"${c.phone_number}","${(c.name || '').replace(/"/g, '""')}"`).join('\n');

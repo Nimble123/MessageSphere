@@ -136,6 +136,7 @@ router.get('/summary', authenticate, async (req, res) => {
         }
       });
     } else {
+      const targetUserId = req.user.effective_user_id || req.user.id;
       const sql = `
         SELECT 
           COALESCE(COUNT(*), 0) AS total_orders,
@@ -148,7 +149,7 @@ router.get('/summary', authenticate, async (req, res) => {
         FROM credit_requests cr
         WHERE cr.user_id = $1 AND cr.status != 'Rejected'
       `;
-      const result = await query(sql, [req.user.id]);
+      const result = await query(sql, [targetUserId]);
       const row = result.rows[0] || {};
       return res.json({
         total_orders: parseInt(row.total_orders, 10) || 0,

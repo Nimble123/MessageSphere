@@ -652,8 +652,20 @@ router.patch('/profile', authenticate, async (req, res) => {
   const client = await getClient();
   try {
     await client.query('BEGIN');
-    const result = await client.query(`UPDATE users SET full_name = $1, company_name = $2, phone = $3, business_address = $4, gstin = $5 WHERE id = $6 RETURNING full_name, company_name, phone, business_address, gstin`, [String(full_name).trim().slice(0, 120), String(company_name || '').trim().slice(0, 160) || null, String(phone).trim().slice(0, 30), String(business_address || '').trim().slice(0, 2000) || null, String(gstin || '').trim().toUpperCase().slice(0, 20) || null, req.user.id]);
-    await logAudit(client, { actorId: req.user.id, entityType: 'user', entityId: req.user.id, action: 'profile_updated', details: {} });
+    let result;
+    if (req.user.is_team_member) {
+      // Team members only update their own personal name and phone; company info remains bounded by parent organization
+      result = await client.query(
+        `UPDATE users SET full_name = $1, phone = $2 WHERE id = $3 RETURNING full_name, company_name, phone, business_address, gstin`,
+        [String(full_name).trim().slice(0, 120), String(phone).trim().slice(0, 30), req.user.id]
+      );
+    } else {
+      result = await client.query(
+        `UPDATE users SET full_name = $1, company_name = $2, phone = $3, business_address = $4, gstin = $5 WHERE id = $6 RETURNING full_name, company_name, phone, business_address, gstin`,
+        [String(full_name).trim().slice(0, 120), String(company_name || '').trim().slice(0, 160) || null, String(phone).trim().slice(0, 30), String(business_address || '').trim().slice(0, 2000) || null, String(gstin || '').trim().toUpperCase().slice(0, 20) || null, req.user.id]
+      );
+    }
+    await logAudit(client, { actorId: req.user.id, entityType: 'user', entityId: req.user.id, action: 'profile_updated', details: { isTeamMember: Boolean(req.user.is_team_member) } });
     await client.query('COMMIT');
     return res.json(result.rows[0]);
   } catch (err) {
