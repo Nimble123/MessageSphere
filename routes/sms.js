@@ -211,10 +211,15 @@ router.post('/', authenticate, async (req, res) => {
 
   const messageText = String(message || text || '').trim();
 
+  if (req.user.is_team_member && !req.user.permissions?.can_send_campaigns) {
+    if (uploadedFile) fs.unlink(uploadedFile.path, () => {});
+    return res.status(403).json({ error: 'Permission Denied: Your assigned team role is not authorized to send SMS broadcasts.' });
+  }
+
   // ------------------------------------------------------------------
-  // Resolve effective user (proxy dispatch support)
+  // Resolve effective user (proxy dispatch & team accounts support)
   // ------------------------------------------------------------------
-  let effectiveUserId = req.user.id;
+  let effectiveUserId = req.user.effective_user_id || req.user.id;
   let targetUser = null;
 
   if (req.user.role === 'admin') {
@@ -539,6 +544,9 @@ router.post('/', authenticate, async (req, res) => {
 // ===========================================================================
 router.get('/', authenticate, async (req, res) => {
   try {
+    if (req.user.is_team_member && !req.user.permissions?.can_view_campaigns) {
+      return res.status(403).json({ error: 'Permission Denied: Your assigned team role cannot view campaigns.' });
+    }
     const baseSelect = `
       SELECT c.*, 
         u.email AS owner_email,
@@ -584,8 +592,9 @@ router.get('/', authenticate, async (req, res) => {
         sql += ` AND c.user_id = $${params.length}`;
       }
     } else {
-      // Regular user sees only their own
-      params.push(req.user.id);
+      // Regular user sees only their own (or team parent's)
+      const targetUserId = req.user.effective_user_id || req.user.id;
+      params.push(targetUserId);
       sql += ` AND c.user_id = $${params.length}`;
     }
 

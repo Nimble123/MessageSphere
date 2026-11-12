@@ -23,8 +23,9 @@ async function checkGroupAccess(groupId, user, clientOrPool = null) {
       sql += ' AND (user_id = $2 OR user_id IN (SELECT id FROM users WHERE reseller_id = $2))';
       params.push(user.id);
     } else {
+      const targetUserId = user.effective_user_id || user.id;
       sql += ' AND user_id = $2';
-      params.push(user.id);
+      params.push(targetUserId);
     }
   }
 
@@ -65,6 +66,7 @@ router.get('/groups', authenticate, async (req, res) => {
       `;
       params = [req.user.id];
     } else {
+      const targetUserId = req.user.effective_user_id || req.user.id;
       sql = `
         SELECT g.*, COUNT(c.id)::int as total_contacts, COUNT(c.id)::int as contact_count,
                u.email as owner_email, u.role as owner_role
@@ -75,7 +77,7 @@ router.get('/groups', authenticate, async (req, res) => {
         GROUP BY g.id, u.email, u.role
         ORDER BY g.created_at DESC
       `;
-      params = [req.user.id];
+      params = [targetUserId];
     }
 
     const result = await query(sql, params);

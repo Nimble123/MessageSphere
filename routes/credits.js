@@ -140,12 +140,17 @@ function resolveTransactionDirection(tx, viewerUserId, viewerRole) {
  * Helper to build SQL query and params for ledger statements
  */
 async function buildLedgerQuery(req, isExport = false) {
+  if (req.user.is_team_member && !req.user.permissions?.can_view_billing) {
+    const err = new Error('Permission Denied: Your assigned team role cannot access credit ledgers.');
+    err.status = 403;
+    throw err;
+  }
   const { userId, credit_type, destination, direction, search, limit, offset } = req.query;
   const whereClauses = [];
   const params = [];
   let paramIdx = 1;
 
-  let viewerUserId = req.user.id;
+  let viewerUserId = req.user.effective_user_id || req.user.id;
 
   if (req.user.role === 'admin') {
     const targetUserId = userId ? parseInt(userId, 10) : null;
@@ -392,7 +397,7 @@ router.get('/transactions', authenticate, async (req, res) => {
     return res.json(enriched);
   } catch (err) {
     console.error('Error fetching transactions:', err);
-    return res.status(err.message.includes('Permission denied') ? 403 : 500).json({ error: err.message || 'Failed to load ledger transactions' });
+    return res.status(err.status || (err.message.includes('Permission') ? 403 : 500)).json({ error: err.message || 'Failed to load ledger transactions' });
   }
 });
 
@@ -462,7 +467,7 @@ router.get('/transactions/export', authenticate, async (req, res) => {
     return res.send(csv);
   } catch (err) {
     console.error('Error exporting ledger:', err);
-    return res.status(500).json({ error: 'Failed to export ledger statement' });
+    return res.status(err.status || 500).json({ error: err.message || 'Failed to export ledger statement' });
   }
 });
 

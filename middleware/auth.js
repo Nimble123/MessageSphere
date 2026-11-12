@@ -58,6 +58,47 @@ async function authenticate(req, res, next) {
       return res.status(401).json({ error: 'Session invalidated. Please sign in again.' });
     }
 
+    // Check if user is a team member under an organization/parent account
+    const teamMemberRes = await query(
+      `SELECT tm.parent_user_id, tm.role_title, tm.permissions, tm.status as team_status,
+              pu.email as parent_email, pu.role as parent_role, pu.reseller_id as parent_reseller_id,
+              u.full_name
+       FROM team_members tm
+       JOIN users pu ON pu.id = tm.parent_user_id
+       JOIN users u ON u.id = tm.user_id
+       WHERE tm.user_id = $1`,
+      [user.id]
+    );
+
+    if (teamMemberRes.rows.length > 0) {
+      const tm = teamMemberRes.rows[0];
+      if (tm.team_status !== 'active') {
+        return res.status(403).json({ error: 'Team member account has been suspended by organization administrator.' });
+      }
+      user.is_team_member = true;
+      user.parent_user_id = tm.parent_user_id;
+      user.parent_email = tm.parent_email;
+      user.parent_role = tm.parent_role;
+      user.team_role = tm.role_title;
+      user.permissions = tm.permissions || {};
+      user.effective_user_id = tm.parent_user_id;
+      user.full_name = tm.full_name || '';
+    } else {
+      user.is_team_member = false;
+      user.effective_user_id = user.id;
+      user.team_role = user.role;
+      user.permissions = {
+        can_send_campaigns: true,
+        can_view_campaigns: true,
+        can_manage_templates: true,
+        can_manage_contacts: true,
+        can_export_contacts: true,
+        can_view_billing: true,
+        can_recharge_wallet: true,
+        can_manage_team: true
+      };
+    }
+
     req.user = user;
     next();
   } catch (err) {
@@ -74,8 +115,27 @@ function requireRoles(...roles) {
   };
 }
 
+function requirePermission(permKey) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    // Platform super admin always has all permissions
+    if (req.user.role === 'admin') return next();
+
+    // If team member and does not have this permission
+    if (req.user.is_team_member && !req.user.permissions?.[permKey]) {
+      return res.status(403).json({
+        error: `Permission Denied: Your assigned team role (${req.user.team_role}) does not have permission '${permKey}'.`
+      });
+    }
+    next();
+  };
+}
+
 module.exports = {
   authenticate,
   requireRoles,
+  requirePermission,
   JWT_SECRET
 };

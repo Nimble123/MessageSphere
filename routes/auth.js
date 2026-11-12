@@ -457,21 +457,28 @@ router.post('/register', registerLimiter, async (req, res) => {
 // GET /api/auth/me
 router.get('/me', authenticate, async (req, res) => {
   try {
-    const userResult = await query(`SELECT full_name, company_name, phone, business_address, gstin FROM users WHERE id = $1`, [req.user.id]);
+    const targetUserId = req.user.effective_user_id || req.user.id;
+    const userResult = await query(`SELECT full_name, company_name, phone, business_address, gstin FROM users WHERE id = $1`, [targetUserId]);
     if (!userResult.rows.length) return res.status(404).json({ error: 'User not found' });
     const profile = userResult.rows[0];
-    const credits = await getUserCredits(req.user.id);
+    const credits = await getUserCredits(targetUserId);
     return res.json({
       id: req.user.id,
       email: req.user.email,
       role: req.user.role,
       isBlocked: req.user.is_blocked,
       resellerId: req.user.reseller_id,
-      fullName: profile.full_name,
+      fullName: req.user.full_name || profile.full_name,
       companyName: profile.company_name,
       phone: profile.phone,
       businessAddress: profile.business_address,
       gstin: profile.gstin,
+      isTeamMember: Boolean(req.user.is_team_member),
+      teamRole: req.user.team_role || req.user.role,
+      parentEmail: req.user.parent_email || null,
+      parentRole: req.user.parent_role || null,
+      permissions: req.user.permissions || {},
+      effectiveUserId: targetUserId,
       ...credits
     });
   } catch (err) {

@@ -128,21 +128,62 @@ async function runDataRetentionPurge() {
       if (fs.existsSync(uploadDir)) {
         const cutoffTime = Date.now() - (settings.uploaded_assets * 24 * 60 * 60 * 1000);
         const files = fs.readdirSync(uploadDir);
+
+        // Bulk collect all referenced file basenames in single queries instead of O(N_files * N_tables) LIKE full-scans
+        const referencedFiles = new Set();
+        try {
+          const campRes = await query(`
+            SELECT attachments::text as att, attachment_url as url, media_url as media 
+            FROM campaigns 
+            WHERE attachments IS NOT NULL OR attachment_url IS NOT NULL OR media_url IS NOT NULL
+          `);
+          for (const row of campRes.rows) {
+            if (row.att) {
+              const matches = row.att.match(/[a-zA-Z0-9_\-\.]+\.[a-zA-Z0-9]{2,5}/g);
+              if (matches) matches.forEach(m => referencedFiles.add(path.basename(m)));
+            }
+            if (row.url) referencedFiles.add(path.basename(row.url));
+            if (row.media) referencedFiles.add(path.basename(row.media));
+          }
+
+          const tplRes = await query(`
+            SELECT attachments::text as att, attachment_url as url 
+            FROM templates 
+            WHERE attachments IS NOT NULL OR attachment_url IS NOT NULL
+          `);
+          for (const row of tplRes.rows) {
+            if (row.att) {
+              const matches = row.att.match(/[a-zA-Z0-9_\-\.]+\.[a-zA-Z0-9]{2,5}/g);
+              if (matches) matches.forEach(m => referencedFiles.add(path.basename(m)));
+            }
+            if (row.url) referencedFiles.add(path.basename(row.url));
+          }
+
+          const profileRes = await query(`
+            SELECT logo_url, favicon_url FROM reseller_profiles 
+            WHERE logo_url IS NOT NULL OR favicon_url IS NOT NULL
+          `);
+          for (const row of profileRes.rows) {
+            if (row.logo_url) referencedFiles.add(path.basename(row.logo_url));
+            if (row.favicon_url) referencedFiles.add(path.basename(row.favicon_url));
+          }
+        } catch (dbErr) {
+          console.warn('[RETENTION PURGE] Warning: Failed to query referenced assets, aborting file purge safely:', dbErr.message);
+        }
+
         for (const file of files) {
           if (file.startsWith('.') || file === '.gitkeep') continue;
           const filePath = path.join(uploadDir, file);
           try {
             const stat = fs.statSync(filePath);
             if (stat.isFile() && stat.mtimeMs < cutoffTime) {
-              const inCamp = await query(`SELECT 1 FROM campaigns WHERE attachments::text LIKE $1 OR attachment_url LIKE $1 LIMIT 1`, [`%${file}%`]);
-              const inTpl = await query(`SELECT 1 FROM templates WHERE attachments::text LIKE $1 OR attachment_url LIKE $1 LIMIT 1`, [`%${file}%`]);
-              if (inCamp.rows.length === 0 && inTpl.rows.length === 0) {
+              if (!referencedFiles.has(file)) {
                 fs.unlinkSync(filePath);
                 purgedCounts.uploaded_assets++;
               }
             }
-          } catch (_) {
-            // Ignore individual file errors
+          } catch (fileErr) {
+            console.warn(`[RETENTION PURGE] Warning: Could not purge file ${file}:`, fileErr.message);
           }
         }
       }

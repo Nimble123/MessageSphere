@@ -199,7 +199,7 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.equal(validUser.role, 'user');
   });
 
-  test('Billing scope and settlement permission boundary rules', () => {
+  await t.test('Billing scope and settlement permission boundary rules', () => {
     // 1. Counterparty partition logic:
     // Direct counterparty: direct user (reseller_id is null) OR reseller account (role is reseller)
     // Downstream retail client: user under reseller (reseller_id is not null AND role != reseller)
@@ -548,7 +548,7 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.equal(resolveBrandingMock({ refCode: 'unknown', profileMap: profiles }).custom_branding, false);
   });
 
-  test('Reseller Profit & Margins Engine calculates wholesale COGS, net profit, and channel breakdowns accurately', () => {
+  await t.test('Reseller Profit & Margins Engine calculates wholesale COGS, net profit, and channel breakdowns accurately', () => {
     const resellersRouter = require('../routes/resellers');
     const { calculateResellerMargins } = resellersRouter;
     assert.equal(typeof calculateResellerMargins, 'function');
@@ -704,5 +704,86 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.strictEqual(getCacheHeaderForFile('/var/www/index.html'), 'no-cache, must-revalidate');
     assert.strictEqual(getCacheHeaderForFile('/var/www/app.js'), 'public, max-age=86400, stale-while-revalidate=604800');
     assert.strictEqual(getCacheHeaderForFile('/var/www/logo.png'), 'public, max-age=31536000, immutable');
+  });
+
+  await t.test('Sub-User Team Accounts & RBAC Role Permission Enforcement', async () => {
+    // 1. Role preset permission definitions
+    const roles = {
+      campaign_manager: {
+        can_send_campaigns: true,
+        can_view_campaigns: true,
+        can_manage_templates: true,
+        can_manage_contacts: true,
+        can_export_contacts: false,
+        can_view_billing: false,
+        can_recharge_wallet: false,
+        can_manage_team: false
+      },
+      support_agent: {
+        can_send_campaigns: false,
+        can_view_campaigns: true,
+        can_manage_templates: false,
+        can_manage_contacts: false,
+        can_export_contacts: false,
+        can_view_billing: false,
+        can_recharge_wallet: false,
+        can_manage_team: false
+      },
+      accountant: {
+        can_send_campaigns: false,
+        can_view_campaigns: false,
+        can_manage_templates: false,
+        can_manage_contacts: false,
+        can_export_contacts: false,
+        can_view_billing: true,
+        can_recharge_wallet: true,
+        can_manage_team: false
+      },
+      viewer: {
+        can_send_campaigns: false,
+        can_view_campaigns: true,
+        can_manage_templates: false,
+        can_manage_contacts: false,
+        can_export_contacts: false,
+        can_view_billing: false,
+        can_recharge_wallet: false,
+        can_manage_team: false
+      },
+      team_admin: {
+        can_send_campaigns: true,
+        can_view_campaigns: true,
+        can_manage_templates: true,
+        can_manage_contacts: true,
+        can_export_contacts: true,
+        can_view_billing: true,
+        can_recharge_wallet: true,
+        can_manage_team: true
+      }
+    };
+
+    // Assert Campaign Manager cannot steal audience data or view billing
+    assert.strictEqual(roles.campaign_manager.can_send_campaigns, true);
+    assert.strictEqual(roles.campaign_manager.can_export_contacts, false);
+    assert.strictEqual(roles.campaign_manager.can_view_billing, false);
+
+    // Assert Support Agent can only view campaigns, cannot send or alter contacts
+    assert.strictEqual(roles.support_agent.can_view_campaigns, true);
+    assert.strictEqual(roles.support_agent.can_send_campaigns, false);
+    assert.strictEqual(roles.support_agent.can_manage_contacts, false);
+
+    // Assert Accountant has access to billing & recharge, but strictly zero message/contact access
+    assert.strictEqual(roles.accountant.can_view_billing, true);
+    assert.strictEqual(roles.accountant.can_recharge_wallet, true);
+    assert.strictEqual(roles.accountant.can_send_campaigns, false);
+    assert.strictEqual(roles.accountant.can_manage_contacts, false);
+
+    // Assert Viewer is strictly read-only
+    assert.strictEqual(roles.viewer.can_send_campaigns, false);
+    assert.strictEqual(roles.viewer.can_view_billing, false);
+    assert.strictEqual(roles.viewer.can_view_campaigns, true);
+
+    // Assert Team Admin has full operational access
+    assert.strictEqual(roles.team_admin.can_manage_team, true);
+    assert.strictEqual(roles.team_admin.can_export_contacts, true);
   });
 });

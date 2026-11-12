@@ -7,6 +7,9 @@ const { authenticate, requireRoles } = require('../middleware/auth');
 // GET /api/billing/summary - Accounts receivable & Khata overview metrics
 router.get('/summary', authenticate, async (req, res) => {
   try {
+    if (req.user.is_team_member && !req.user.permissions?.can_view_billing) {
+      return res.status(403).json({ error: 'Permission Denied: Your assigned team role is not authorized to access billing financial data.' });
+    }
     if (req.user.role === 'admin') {
       const scope = req.query.scope || 'direct'; // 'direct' (default) or 'reseller_sales'
       const summarySql = `
@@ -414,8 +417,8 @@ const approveHandler = async (req, res) => {
       item.gst_amount || 0
     ]);
 
-    // Mark as approved
-    await client.query(`UPDATE credit_requests SET status = 'Approved' WHERE id = $1`, [reqId]);
+    // Mark as approved and track approving authority
+    await client.query(`UPDATE credit_requests SET status = 'Approved', issuer_id = $2, issuer_role = $3 WHERE id = $1`, [reqId, req.user.id, req.user.role]);
     await logAudit(client, {
       actorId: req.user.id,
       entityType: 'credit_request',

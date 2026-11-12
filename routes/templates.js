@@ -208,8 +208,9 @@ router.get('/export/csv', authenticate, async (req, res) => {
         sql += ' WHERE (t.user_id = $1 OR t.user_id IN (SELECT id FROM users WHERE reseller_id = $1))';
         params.push(req.user.id);
       } else {
+        const targetUserId = req.user.effective_user_id || req.user.id;
         sql += ' WHERE t.user_id = $1';
-        params.push(req.user.id);
+        params.push(targetUserId);
       }
     }
     sql += ' ORDER BY t.created_at DESC';
@@ -295,7 +296,8 @@ router.get('/', authenticate, async (req, res) => {
         whereClauses.push(`(t.user_id = $1 OR t.user_id IN (SELECT id FROM users WHERE reseller_id = $1) OR t.user_id IN (SELECT id FROM users WHERE role = 'admin'))`);
       }
     } else {
-      params.push(req.user.id);
+      const targetUserId = req.user.effective_user_id || req.user.id;
+      params.push(targetUserId);
       whereClauses.push(`(t.user_id = $1 OR t.user_id IN (SELECT id FROM users WHERE role = 'admin'))`);
     }
 
@@ -332,6 +334,11 @@ router.get('/', authenticate, async (req, res) => {
 router.post('/', authenticate, upload.any(), async (req, res) => {
   const { title, channel, template_type, cta_data, content, body, target_user_id } = req.body;
   const templateText = String(content || body || '').trim();
+
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_templates) {
+    removeUploadedFiles(req.files);
+    return res.status(403).json({ error: 'Permission Denied: Your assigned team role is not authorized to create templates.' });
+  }
 
   if (!title || !title.trim()) {
     return res.status(400).json({ error: 'Template title is required' });
@@ -436,8 +443,8 @@ router.post('/', authenticate, upload.any(), async (req, res) => {
   const cleanCat = 'MARKETING';
   const cleanSubCat = 'MARKETING';
 
-  // Determine effective user ID for proxy creation (Admin & Reseller)
-  let effectiveUserId = req.user.id;
+  // Determine effective user ID for proxy creation (Admin & Reseller & Team Accounts)
+  let effectiveUserId = req.user.effective_user_id || req.user.id;
   if (target_user_id && (req.user.role === 'admin' || req.user.role === 'reseller')) {
     const targetInt = parseInt(target_user_id, 10);
     if (!isNaN(targetInt)) {

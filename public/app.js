@@ -458,7 +458,8 @@ window.switchView = function(viewId) {
       'view-branding': { title: 'White-label Brand', breadcrumb: 'MessageSphere / Reseller / Brand' },
       'view-settings': { title: 'Account Settings', breadcrumb: 'MessageSphere / Settings / Profile' },
       'view-sms-new': { title: 'Create GSM Bulk SMS Campaign', breadcrumb: 'MessageSphere / GSM SMS / New Broadcast' },
-      'view-sms': { title: 'GSM Bulk SMS Broadcasts', breadcrumb: 'MessageSphere / GSM SMS / Broadcasts' }
+      'view-sms': { title: 'GSM Bulk SMS Broadcasts', breadcrumb: 'MessageSphere / GSM SMS / Broadcasts' },
+      'view-team': { title: 'Team Members & Staff RBAC', breadcrumb: 'MessageSphere / Organization / Team RBAC' }
     };
 
     if (titles[viewId]) {
@@ -502,6 +503,7 @@ window.switchView = function(viewId) {
     if (typeof initSmsComposerView === 'function') initSmsComposerView();
   }
   if (viewId === 'view-sms') loadSmsCampaigns();
+  if (viewId === 'view-team') loadTeamMembers();
 
   if (window.lucide) {
     setTimeout(() => lucide.createIcons(), 50);
@@ -877,6 +879,68 @@ function handleLoginSuccess(user) {
   const navNewCamp = document.querySelector('.nav-item[data-view="view-new-campaign"]');
   if (navNewCamp) navNewCamp.style.display = (user.role === 'admin') ? 'none' : 'flex';
   if (btnNavCreateCampaign) btnNavCreateCampaign.style.display = (user.role === 'admin') ? 'none' : 'inline-flex';
+
+  // Team Management & RBAC section in sidebar
+  const navTeam = document.getElementById('nav-item-team');
+  const navCatTeam = document.getElementById('nav-category-team');
+  const canManageStaff = user.role === 'admin' || user.role === 'reseller' || (!user.isTeamMember) || (user.isTeamMember && user.permissions?.can_manage_team);
+  if (navTeam) navTeam.style.display = canManageStaff ? 'flex' : 'none';
+  if (navCatTeam) navCatTeam.style.display = canManageStaff ? 'block' : 'none';
+
+  // Sub-User Team Member Granular Role Boundaries:
+  if (user.isTeamMember && user.permissions) {
+    const p = user.permissions;
+    if (!p.can_send_campaigns) {
+      const campCreate = document.querySelector('.nav-item[data-view="view-new-campaign"]');
+      const smsCreate = document.querySelector('.nav-item[data-view="view-sms-new"]');
+      if (campCreate) campCreate.style.display = 'none';
+      if (smsCreate) smsCreate.style.display = 'none';
+      if (btnNavCreateCampaign) btnNavCreateCampaign.style.display = 'none';
+    }
+    if (!p.can_view_campaigns) {
+      const campList = document.querySelector('.nav-item[data-view="view-campaigns"]');
+      const smsList = document.querySelector('.nav-item[data-view="view-sms"]');
+      if (campList) campList.style.display = 'none';
+      if (smsList) smsList.style.display = 'none';
+    }
+    if (!p.can_manage_contacts) {
+      const contNav = document.querySelector('.nav-item[data-view="view-contacts"]');
+      if (contNav) contNav.style.display = 'none';
+    }
+    if (!p.can_manage_templates) {
+      const tplNav = document.querySelector('.nav-item[data-view="view-templates"]');
+      if (tplNav) tplNav.style.display = 'none';
+    }
+    if (!p.can_view_billing) {
+      const walletNav = document.querySelector('.nav-item[data-view="view-wallet"]');
+      const billNav = document.querySelector('.nav-item[data-view="view-billing"]');
+      const planNav = document.querySelector('.nav-item[data-view="view-plans"]');
+      if (walletNav) walletNav.style.display = 'none';
+      if (billNav) billNav.style.display = 'none';
+      if (planNav) planNav.style.display = 'none';
+    }
+  }
+
+  // Display team role in sidebar profile
+  if (user.isTeamMember) {
+    if (sidebarUserRole) {
+      const roleMap = {
+        campaign_manager: 'Staff • Campaign Mgr',
+        support_agent: 'Staff • Chat Agent',
+        accountant: 'Staff • Accountant',
+        viewer: 'Staff • Auditor',
+        team_admin: 'Staff • Admin'
+      };
+      sidebarUserRole.textContent = roleMap[user.teamRole] || `Staff • ${user.teamRole}`;
+      sidebarUserRole.className = 'role-badge';
+      sidebarUserRole.style.background = '#f3e8ff';
+      sidebarUserRole.style.color = '#7e22ce';
+      sidebarUserRole.style.border = '1px solid #d8b4fe';
+    }
+    if (sidebarUserEmail && user.parentEmail) {
+      sidebarUserEmail.innerHTML = `${escapeHtml(user.email)}<br><span style="font-size:0.72rem;color:#94a3b8;">Org: ${escapeHtml(user.parentEmail)}</span>`;
+    }
+  }
 
   applyWhiteLabel().catch(() => {});
 
@@ -15614,3 +15678,398 @@ window.orderCreditPlan = function(planId) {
 function escHtml(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// ============================================================================
+// SUB-USER TEAM ACCOUNTS & ROLE-BASED ACCESS CONTROL (RBAC) CONTROLLER
+// ============================================================================
+
+let teamMembersCache = [];
+
+const TEAM_ROLE_PRESETS = {
+  campaign_manager: {
+    label: 'Campaign Manager',
+    color: '#4f46e5',
+    bg: '#eef2ff',
+    permissions: {
+      can_send_campaigns: true,
+      can_view_campaigns: true,
+      can_manage_templates: true,
+      can_manage_contacts: true,
+      can_export_contacts: false,
+      can_view_billing: false,
+      can_recharge_wallet: false,
+      can_manage_team: false
+    }
+  },
+  support_agent: {
+    label: 'Support / Chat Agent',
+    color: '#0284c7',
+    bg: '#e0f2fe',
+    permissions: {
+      can_send_campaigns: false,
+      can_view_campaigns: true,
+      can_manage_templates: false,
+      can_manage_contacts: false,
+      can_export_contacts: false,
+      can_view_billing: false,
+      can_recharge_wallet: false,
+      can_manage_team: false
+    }
+  },
+  accountant: {
+    label: 'Accountant / Finance',
+    color: '#16a34a',
+    bg: '#f0fdf4',
+    permissions: {
+      can_send_campaigns: false,
+      can_view_campaigns: false,
+      can_manage_templates: false,
+      can_manage_contacts: false,
+      can_export_contacts: false,
+      can_view_billing: true,
+      can_recharge_wallet: true,
+      can_manage_team: false
+    }
+  },
+  viewer: {
+    label: 'Viewer / Auditor',
+    color: '#64748b',
+    bg: '#f1f5f9',
+    permissions: {
+      can_send_campaigns: false,
+      can_view_campaigns: true,
+      can_manage_templates: false,
+      can_manage_contacts: false,
+      can_export_contacts: false,
+      can_view_billing: false,
+      can_recharge_wallet: false,
+      can_manage_team: false
+    }
+  },
+  team_admin: {
+    label: 'Team Administrator',
+    color: '#9333ea',
+    bg: '#faf5ff',
+    permissions: {
+      can_send_campaigns: true,
+      can_view_campaigns: true,
+      can_manage_templates: true,
+      can_manage_contacts: true,
+      can_export_contacts: true,
+      can_view_billing: true,
+      can_recharge_wallet: true,
+      can_manage_team: true
+    }
+  }
+};
+
+window.applyRolePreset = function(presetKey) {
+  const preset = TEAM_ROLE_PRESETS[presetKey];
+  if (!preset) return;
+  const p = preset.permissions;
+  document.getElementById('perm-send-campaigns').checked = Boolean(p.can_send_campaigns);
+  document.getElementById('perm-view-campaigns').checked = Boolean(p.can_view_campaigns);
+  document.getElementById('perm-manage-templates').checked = Boolean(p.can_manage_templates);
+  document.getElementById('perm-manage-contacts').checked = Boolean(p.can_manage_contacts);
+  document.getElementById('perm-export-contacts').checked = Boolean(p.can_export_contacts);
+  document.getElementById('perm-view-billing').checked = Boolean(p.can_view_billing);
+  document.getElementById('perm-recharge-wallet').checked = Boolean(p.can_recharge_wallet);
+  document.getElementById('perm-manage-team').checked = Boolean(p.can_manage_team);
+};
+
+window.onPermCheckboxChanged = function() {
+  const select = document.getElementById('team-role-select');
+  if (select && select.value !== 'custom') {
+    select.value = 'custom';
+  }
+};
+
+window.loadTeamMembers = async function() {
+  const tbody = document.getElementById('team-members-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:#94a3b8;">Loading team directory...</td></tr>';
+
+  try {
+    const res = await apiFetch('/team');
+    teamMembersCache = res.members || [];
+    renderTeamMembersTable(teamMembersCache);
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:#ef4444;">Failed to load team: ${escapeHtml(err.message)}</td></tr>`;
+  }
+};
+
+window.renderTeamMembersTable = function(members) {
+  const tbody = document.getElementById('team-members-tbody');
+  if (!tbody) return;
+
+  const totalEl = document.getElementById('metric-team-total');
+  const activeEl = document.getElementById('metric-team-active');
+  if (totalEl) totalEl.textContent = members.length;
+  if (activeEl) activeEl.textContent = members.filter(m => m.status === 'active' && !m.is_blocked).length;
+
+  if (members.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" style="text-align:center;padding:40px;color:#64748b;">
+          <div style="font-size:1.05rem;font-weight:600;color:#334155;">No Staff Members Added Yet</div>
+          <p style="margin-top:6px;font-size:0.86rem;color:#64748b;">Add team members to delegate campaign dispatches, live chat support, and accounting securely.</p>
+          <button type="button" class="btn btn-primary" onclick="openAddTeamModal()" style="margin-top:12px;background:var(--primary);color:#fff;padding:8px 18px;border-radius:6px;font-weight:600;border:none;cursor:pointer;">+ Add First Staff Member</button>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  const pill = (label, active, warn = false) => `
+    <span style="font-size:0.7rem;padding:2px 7px;border-radius:4px;font-weight:600;display:inline-block;margin:2px;${
+      active 
+        ? (warn ? 'background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;' : 'background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;') 
+        : 'background:#f1f5f9;color:#94a3b8;text-decoration:line-through;'
+    }">${label}</span>
+  `;
+
+  tbody.innerHTML = members.map(m => {
+    const meta = TEAM_ROLE_PRESETS[m.role_title] || { label: m.role_title || 'Custom', color: '#475569', bg: '#f8fafc' };
+    const p = m.permissions || {};
+    const isActive = m.status === 'active' && !m.is_blocked;
+    const initial = (m.full_name || m.email || 'S').charAt(0).toUpperCase();
+
+    return `
+      <tr style="border-bottom:1px solid #e2e8f0;">
+        <td style="padding:14px 16px;">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div style="width:36px;height:36px;border-radius:50%;background:#e0e7ff;color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.95rem;">
+              ${initial}
+            </div>
+            <div>
+              <div style="font-weight:600;color:#1e293b;font-size:0.92rem;">${escapeHtml(m.full_name || 'Staff Member')}</div>
+              <div style="font-size:0.8rem;color:#64748b;">${escapeHtml(m.email)}</div>
+            </div>
+          </div>
+        </td>
+        <td style="padding:14px 16px;">
+          <span style="padding:4px 10px;border-radius:20px;font-size:0.78rem;font-weight:600;background:${meta.bg};color:${meta.color};border:1px solid ${meta.color}33;">
+            ${meta.label}
+          </span>
+        </td>
+        <td style="padding:14px 16px;max-width:280px;">
+          ${pill('Campaigns', p.can_send_campaigns)}
+          ${pill('Contacts', p.can_manage_contacts)}
+          ${pill('Export CSV 🔒', p.can_export_contacts, true)}
+          ${pill('Billing', p.can_view_billing)}
+        </td>
+        <td style="padding:14px 16px;">
+          <span style="padding:4px 10px;border-radius:20px;font-size:0.75rem;font-weight:600;background:${isActive ? '#dcfce7' : '#fee2e2'};color:${isActive ? '#15803d' : '#b91c1c'};">
+            ${isActive ? 'Active' : 'Suspended'}
+          </span>
+        </td>
+        <td style="padding:14px 16px;font-size:0.82rem;color:#64748b;">
+          ${new Date(m.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+        </td>
+        <td style="padding:14px 16px;text-align:right;">
+          <div style="display:inline-flex;gap:6px;">
+            <button onclick="openEditTeamModal(${m.id})" title="Edit Permissions" style="padding:6px 9px;border:1px solid #cbd5e1;background:#fff;border-radius:5px;cursor:pointer;color:#334155;">
+              <i data-lucide="sliders-horizontal" style="width:14px;height:14px;"></i>
+            </button>
+            <button onclick="openResetPasswordModal(${m.id}, '${escapeHtml(m.email)}')" title="Reset Password" style="padding:6px 9px;border:1px solid #cbd5e1;background:#fff;border-radius:5px;cursor:pointer;color:#d97706;">
+              <i data-lucide="key-round" style="width:14px;height:14px;"></i>
+            </button>
+            <button onclick="toggleTeamMemberStatus(${m.id}, '${m.status}')" title="${isActive ? 'Suspend Staff' : 'Activate Staff'}" style="padding:6px 9px;border:1px solid #cbd5e1;background:#fff;border-radius:5px;cursor:pointer;color:${isActive ? '#b91c1c' : '#15803d'};">
+              <i data-lucide="${isActive ? 'user-x' : 'user-check'}" style="width:14px;height:14px;"></i>
+            </button>
+            <button onclick="deleteTeamMember(${m.id}, '${escapeHtml(m.email)}')" title="Delete Staff Account" style="padding:6px 9px;border:1px solid #fee2e2;background:#fff5f5;border-radius:5px;cursor:pointer;color:#dc2626;">
+              <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  if (window.lucide) lucide.createIcons();
+};
+
+window.filterTeamTable = function() {
+  const query = (document.getElementById('team-search-input')?.value || '').toLowerCase().trim();
+  if (!query) {
+    renderTeamMembersTable(teamMembersCache);
+    return;
+  }
+  const filtered = teamMembersCache.filter(m => 
+    (m.full_name || '').toLowerCase().includes(query) ||
+    (m.email || '').toLowerCase().includes(query) ||
+    (m.role_title || '').toLowerCase().includes(query)
+  );
+  renderTeamMembersTable(filtered);
+};
+
+window.openAddTeamModal = function() {
+  document.getElementById('modal-team-title').innerHTML = '<i data-lucide="user-plus" style="width:20px;height:20px;color:var(--primary);"></i> Add Team Member';
+  document.getElementById('team-member-edit-id').value = '';
+  document.getElementById('team-input-name').value = '';
+  document.getElementById('team-input-email').value = '';
+  document.getElementById('team-input-email').readOnly = false;
+  document.getElementById('team-input-password').value = '';
+  document.getElementById('team-password-group').style.display = 'block';
+  document.getElementById('team-input-password').required = true;
+  document.getElementById('team-role-select').value = 'campaign_manager';
+  applyRolePreset('campaign_manager');
+  const modal = document.getElementById('modal-team-member');
+  if (modal) {
+    modal.style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
+  }
+};
+
+window.openEditTeamModal = function(id) {
+  const member = teamMembersCache.find(m => m.id === id);
+  if (!member) return;
+  document.getElementById('modal-team-title').innerHTML = '<i data-lucide="sliders-horizontal" style="width:20px;height:20px;color:var(--primary);"></i> Edit Staff Permissions';
+  document.getElementById('team-member-edit-id').value = member.id;
+  document.getElementById('team-input-name').value = member.full_name || '';
+  document.getElementById('team-input-email').value = member.email || '';
+  document.getElementById('team-input-email').readOnly = true;
+  document.getElementById('team-password-group').style.display = 'none';
+  document.getElementById('team-input-password').required = false;
+
+  const roleSelect = document.getElementById('team-role-select');
+  if (TEAM_ROLE_PRESETS[member.role_title]) {
+    roleSelect.value = member.role_title;
+  } else {
+    roleSelect.value = 'custom';
+  }
+
+  const p = member.permissions || {};
+  document.getElementById('perm-send-campaigns').checked = Boolean(p.can_send_campaigns);
+  document.getElementById('perm-view-campaigns').checked = Boolean(p.can_view_campaigns);
+  document.getElementById('perm-manage-templates').checked = Boolean(p.can_manage_templates);
+  document.getElementById('perm-manage-contacts').checked = Boolean(p.can_manage_contacts);
+  document.getElementById('perm-export-contacts').checked = Boolean(p.can_export_contacts);
+  document.getElementById('perm-view-billing').checked = Boolean(p.can_view_billing);
+  document.getElementById('perm-recharge-wallet').checked = Boolean(p.can_recharge_wallet);
+  document.getElementById('perm-manage-team').checked = Boolean(p.can_manage_team);
+
+  const modal = document.getElementById('modal-team-member');
+  if (modal) {
+    modal.style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
+  }
+};
+
+window.closeTeamModal = function() {
+  const modal = document.getElementById('modal-team-member');
+  if (modal) modal.style.display = 'none';
+};
+
+window.handleTeamFormSubmit = async function(e) {
+  e.preventDefault();
+  const editId = document.getElementById('team-member-edit-id').value;
+  const full_name = document.getElementById('team-input-name').value.trim();
+  const email = document.getElementById('team-input-email').value.trim();
+  const password = document.getElementById('team-input-password').value;
+  const role_title = document.getElementById('team-role-select').value;
+
+  const permissions = {
+    can_send_campaigns: document.getElementById('perm-send-campaigns').checked,
+    can_view_campaigns: document.getElementById('perm-view-campaigns').checked,
+    can_manage_templates: document.getElementById('perm-manage-templates').checked,
+    can_manage_contacts: document.getElementById('perm-manage-contacts').checked,
+    can_export_contacts: document.getElementById('perm-export-contacts').checked,
+    can_view_billing: document.getElementById('perm-view-billing').checked,
+    can_recharge_wallet: document.getElementById('perm-recharge-wallet').checked,
+    can_manage_team: document.getElementById('perm-manage-team').checked
+  };
+
+  const btn = document.getElementById('btn-save-team-member');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  try {
+    let res;
+    if (editId) {
+      res = await apiFetch(`/team/${editId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ full_name, role_title, permissions })
+      });
+    } else {
+      res = await apiFetch('/team', {
+        method: 'POST',
+        body: JSON.stringify({ email, password, full_name, role_title, permissions })
+      });
+    }
+
+    showToast('success', 'Staff Member Saved', res.message || 'Staff permissions configured.');
+    closeTeamModal();
+    loadTeamMembers();
+  } catch (err) {
+    showToast('error', 'Action Failed', err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save Member';
+  }
+};
+
+window.toggleTeamMemberStatus = async function(id, currentStatus) {
+  const newStatus = currentStatus === 'active' ? 'suspended' : 'active';
+  const confirmMsg = newStatus === 'suspended'
+    ? 'Are you sure you want to suspend this staff member? Their access will be immediately blocked and active sessions revoked.'
+    : 'Activate this staff member account?';
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const res = await apiFetch(`/team/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: newStatus })
+    });
+    showToast('success', 'Status Updated', res.message || 'Member status updated.');
+    loadTeamMembers();
+  } catch (err) {
+    showToast('error', 'Status Update Failed', err.message);
+  }
+};
+
+window.deleteTeamMember = async function(id, email) {
+  if (!confirm(`Are you sure you want to permanently remove staff member: ${email}? This action cannot be undone.`)) {
+    return;
+  }
+  try {
+    const res = await apiFetch(`/team/${id}`, { method: 'DELETE' });
+    showToast('success', 'Staff Removed', res.message || 'Staff member deleted.');
+    loadTeamMembers();
+  } catch (err) {
+    showToast('error', 'Deletion Failed', err.message);
+  }
+};
+
+window.openResetPasswordModal = function(id, email) {
+  document.getElementById('reset-team-member-id').value = id;
+  document.getElementById('reset-team-email-display').innerHTML = `Resetting credentials for: <strong>${escapeHtml(email)}</strong>`;
+  document.getElementById('reset-team-new-password').value = '';
+  const modal = document.getElementById('modal-reset-team-password');
+  if (modal) {
+    modal.style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
+  }
+};
+
+window.closeResetTeamPasswordModal = function() {
+  const modal = document.getElementById('modal-reset-team-password');
+  if (modal) modal.style.display = 'none';
+};
+
+window.handleResetTeamPasswordSubmit = async function(e) {
+  e.preventDefault();
+  const id = document.getElementById('reset-team-member-id').value;
+  const new_password = document.getElementById('reset-team-new-password').value;
+  try {
+    const res = await apiFetch(`/team/${id}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ new_password })
+    });
+    showToast('success', 'Password Updated', res.message || 'Password updated and sessions revoked.');
+    closeResetTeamPasswordModal();
+  } catch (err) {
+    showToast('error', 'Password Reset Failed', err.message);
+  }
+};
+

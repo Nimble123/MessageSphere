@@ -73,7 +73,8 @@ function buildFileUrl(filename) {
 }
 
 async function canAccessCampaign(req, campaign) {
-  if (req.user.role === 'admin' || campaign.user_id === req.user.id) return true;
+  const effectiveUserId = req.user.effective_user_id || req.user.id;
+  if (req.user.role === 'admin' || campaign.user_id === effectiveUserId) return true;
   if (req.user.role !== 'reseller') return false;
   const owner = await query('SELECT reseller_id FROM users WHERE id = $1', [campaign.user_id]);
   return owner.rows[0] && owner.rows[0].reseller_id === req.user.id;
@@ -97,8 +98,13 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
   const { title, text, numbers: rawNumbers, destination, channel_type, scheduled_at, cta_data, target_user_id } = req.body;
   const files = req.files || {};
 
-  // Resolve Effective Account (Self vs On-Behalf-Of Proxy Dispatch)
-  let effectiveUserId = req.user.id;
+  if (req.user.is_team_member && !req.user.permissions?.can_send_campaigns) {
+    removeUploadedFiles(files);
+    return res.status(403).json({ error: 'Permission Denied: Your assigned team role is not authorized to create or dispatch campaigns.' });
+  }
+
+  // Resolve Effective Account (Self vs On-Behalf-Of Proxy Dispatch vs Team Organization)
+  let effectiveUserId = req.user.effective_user_id || req.user.id;
   let targetUser = null;
 
   if (req.user.role === 'admin') {
@@ -568,10 +574,11 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
     );
 
     // 3. Create campaign record with user_id = effectiveUserId
+    const subUserId = req.user.is_team_member ? req.user.id : null;
     const insertCampaign = await client.query(`
       INSERT INTO campaigns 
-        (user_id, title, channel_type, scheduled_at, campaign_type, destination, message_text, total_numbers, status, attachment_url, attachments, cta_data)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        (user_id, title, channel_type, scheduled_at, campaign_type, destination, message_text, total_numbers, status, attachment_url, attachments, cta_data, created_by_sub_user_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING id, created_at, status
     `, [
       effectiveUserId, 
@@ -585,7 +592,8 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
       initialStatus, 
       attachmentUrl, 
       JSON.stringify(attachments),
-      parsedCta ? JSON.stringify(parsedCta) : null
+      parsedCta ? JSON.stringify(parsedCta) : null,
+      subUserId
     ]);
 
     const campaignId = insertCampaign.rows[0].id;
@@ -594,9 +602,12 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
     await batchInsertRecipients(client, campaignId, uniqueNumbers);
 
     // 5. Record credit transaction
-    const txReason = effectiveUserId !== req.user.id
-      ? `Deduction for campaign #${campaignId} (${campaignTitle}) [Created by ${req.user.role.toUpperCase()} on behalf of account]`
-      : `Deduction for campaign #${campaignId} (${campaignTitle})`;
+    let txReason = `Deduction for campaign #${campaignId} (${campaignTitle})`;
+    if (req.user.is_team_member) {
+      txReason += ` [Dispatched by Team Member: ${req.user.email}]`;
+    } else if (effectiveUserId !== req.user.id) {
+      txReason += ` [Created by ${req.user.role.toUpperCase()} on behalf of account]`;
+    }
 
     await client.query(`
       INSERT INTO credit_transactions (from_user_id, to_user_id, credit_type, destination, amount, reason, direction, refund_campaign_id)
@@ -763,6 +774,9 @@ router.post('/reminders/dismiss-all', authenticate, requireRoles('admin', 'resel
 // GET /api/campaigns - List campaigns (Strictly WhatsApp campaigns by default)
 router.get('/', authenticate, async (req, res) => {
   try {
+    if (req.user.is_team_member && !req.user.permissions?.can_view_campaigns) {
+      return res.status(403).json({ error: 'Permission Denied: Your assigned team role is not authorized to view campaigns.' });
+    }
     const channelFilter = req.query.channel_type;
     let channelClause = "AND COALESCE(c.channel_type, 'whatsapp') != 'sms' AND COALESCE(c.campaign_type, '') != 'gsm_sms'";
     if (channelFilter === 'all') {
@@ -819,6 +833,7 @@ router.get('/', authenticate, async (req, res) => {
       `;
       params = [req.user.id];
     } else {
+      const targetUserId = req.user.effective_user_id || req.user.id;
       listSql = `
         SELECT ${listColumns}
         FROM campaigns c
@@ -828,7 +843,7 @@ router.get('/', authenticate, async (req, res) => {
         ORDER BY c.created_at DESC
         ${paginationClause}
       `;
-      params = [req.user.id];
+      params = [targetUserId];
     }
 
     const result = await query(listSql, params);

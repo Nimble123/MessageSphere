@@ -400,7 +400,37 @@ async function initDB() {
     `);
 
     await client.query(`ALTER TABLE credit_requests ADD COLUMN IF NOT EXISTS user_email VARCHAR(255);`);
+    await client.query(`ALTER TABLE credit_requests ADD COLUMN IF NOT EXISTS issuer_id INTEGER REFERENCES users(id) ON DELETE SET NULL;`);
+    await client.query(`ALTER TABLE credit_requests ADD COLUMN IF NOT EXISTS issuer_role VARCHAR(20);`);
     await client.query(`ALTER TABLE credit_requests ALTER COLUMN utr_number DROP NOT NULL;`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(120);`);
+    await client.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS created_by_sub_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;`);
+
+    // Sub-User Team Accounts & Role-Based Access Control (RBAC)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS team_members (
+        id SERIAL PRIMARY KEY,
+        parent_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role_title VARCHAR(50) NOT NULL DEFAULT 'campaign_manager',
+        permissions JSONB NOT NULL DEFAULT '{
+          "can_send_campaigns": true,
+          "can_view_campaigns": true,
+          "can_manage_templates": true,
+          "can_manage_contacts": true,
+          "can_export_contacts": false,
+          "can_view_billing": false,
+          "can_recharge_wallet": false,
+          "can_manage_team": false
+        }'::jsonb,
+        status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended')),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(parent_user_id, user_id)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_team_members_parent ON team_members(parent_user_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_team_members_user ON team_members(user_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_transactions_from_user ON credit_transactions(from_user_id, created_at DESC);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_transactions_to_user_created ON credit_transactions(to_user_id, created_at DESC);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_transactions_from_to ON credit_transactions(from_user_id, to_user_id);`);

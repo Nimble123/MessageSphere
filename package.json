@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "check-syntax": "node scripts/check-syntax.js",
     "test": "node --test tests/",
     "lint": "eslint server.js db.js middleware/ routes/ services/ tests/",
     "reset-admin": "node scripts/reset-admin.js"
