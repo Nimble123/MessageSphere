@@ -21,6 +21,9 @@ router.get('/', authenticate, requireRoles('admin', 'reseller'), async (req, res
     const isStaffAgent = req.user.is_team_member && !req.user.permissions?.can_manage_team;
 
     if (effectiveRole === 'admin') {
+      if (req.user.is_team_member && req.user.permissions?.can_manage_users === false) {
+        return res.status(403).json({ error: 'Permission Denied: Your staff account does not have permission to view or manage users.' });
+      }
       usersQuery = `
         SELECT u.id, u.email, u.role, u.is_blocked, u.reseller_id, u.full_name, u.company_name, u.phone, u.business_address, u.gstin, u.created_at, u.tax_mode, u.refund_destination, u.assigned_agent_id,
                r.email AS reseller_email, r.full_name AS reseller_full_name, r.company_name AS reseller_company_name,
@@ -403,6 +406,13 @@ router.get('/:id/360', authenticate, async (req, res) => {
 
 // POST /api/users - Create a new user
 router.post('/', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  if (req.user.is_team_member && req.user.permissions?.can_manage_users === false) {
+    return res.status(403).json({ error: 'Permission Denied: Your staff account does not have permission to create user accounts.' });
+  }
+  if (req.user.is_team_member && req.body.role === 'admin') {
+    return res.status(403).json({ error: 'Sub-admins cannot create root administrator accounts.' });
+  }
+
   const { email, password, role, full_name, company_name, phone, business_address, gstin, reseller_id, tax_mode, refund_destination } = req.body;
 
   if (!email || !password) {
@@ -729,6 +739,10 @@ router.patch('/:id/settings', authenticate, requireRoles('admin', 'reseller'), a
 
 // POST /api/users/:id/credits - Add/allot credits
 router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  if (req.user.is_team_member && req.user.permissions?.can_allot_credits === false && req.user.permissions?.can_recharge_wallet === false) {
+    return res.status(403).json({ error: 'Permission Denied: Your staff account does not have permission to allot credits or adjust balances.' });
+  }
+
   const targetId = parseInt(req.params.id, 10);
   if (isNaN(targetId)) return res.status(400).json({ error: 'Invalid user ID' });
 
@@ -1082,11 +1096,15 @@ router.patch('/:id/reset-password', authenticate, requireRoles('admin', 'reselle
 
 // DELETE /api/users/:id - Admin or Reseller deletes user
 router.delete('/:id', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  if (req.user.is_team_member && req.user.permissions?.can_manage_users === false) {
+    return res.status(403).json({ error: 'Permission Denied: Your staff account does not have permission to delete user accounts.' });
+  }
+
   const targetId = parseInt(req.params.id, 10);
   if (isNaN(targetId)) return res.status(400).json({ error: 'Invalid user ID' });
 
-  if (targetId === req.user.id) {
-    return res.status(400).json({ error: 'You cannot delete your own account' });
+  if (targetId === req.user.id || (req.user.is_team_member && targetId === req.user.parent_user_id)) {
+    return res.status(400).json({ error: 'You cannot delete this administrator account' });
   }
 
   try {

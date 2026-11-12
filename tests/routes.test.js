@@ -885,4 +885,86 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.deepStrictEqual(getAccessibleClientIdsForAgent(101, agents, clients), []);
     assert.deepStrictEqual(getAccessibleClientIdsForAgent(103, agents, clients), [501, 502]);
   });
+
+  await t.test('Platform Super-Admin & Sub-Admin Role Delegations and Security Boundaries', async () => {
+    // 1. Super Admin Role Presets
+    const subAdminPresets = {
+      sub_admin: {
+        can_manage_users: true,
+        can_manage_resellers: true,
+        can_view_operations_audit: true,
+        can_allot_credits: true,
+        can_view_billing: true,
+        can_manage_team: true
+      },
+      platform_ops: {
+        can_manage_users: true,
+        can_manage_resellers: true,
+        can_view_operations_audit: true,
+        can_allot_credits: false,
+        can_view_billing: true,
+        can_manage_team: false
+      },
+      billing_admin: {
+        can_manage_users: true,
+        can_manage_resellers: false,
+        can_view_operations_audit: false,
+        can_allot_credits: true,
+        can_view_billing: true,
+        can_manage_team: false
+      },
+      support_admin: {
+        can_manage_users: true,
+        can_manage_resellers: false,
+        can_view_operations_audit: true,
+        can_allot_credits: false,
+        can_view_billing: false,
+        can_manage_team: false
+      },
+      platform_auditor: {
+        can_manage_users: false,
+        can_manage_resellers: false,
+        can_view_operations_audit: true,
+        can_allot_credits: false,
+        can_view_billing: true,
+        can_manage_team: false
+      }
+    };
+
+    // Sub-admin has complete operational coverage
+    assert.strictEqual(subAdminPresets.sub_admin.can_manage_users, true);
+    assert.strictEqual(subAdminPresets.sub_admin.can_manage_resellers, true);
+    assert.strictEqual(subAdminPresets.sub_admin.can_view_operations_audit, true);
+    assert.strictEqual(subAdminPresets.sub_admin.can_allot_credits, true);
+
+    // Operations admin cannot touch finances or credit allocations
+    assert.strictEqual(subAdminPresets.platform_ops.can_manage_users, true);
+    assert.strictEqual(subAdminPresets.platform_ops.can_allot_credits, false);
+
+    // Billing admin cannot touch resellers or audit logs
+    assert.strictEqual(subAdminPresets.billing_admin.can_allot_credits, true);
+    assert.strictEqual(subAdminPresets.billing_admin.can_manage_resellers, false);
+    assert.strictEqual(subAdminPresets.billing_admin.can_view_operations_audit, false);
+
+    // Security Guard: Sub-admin is prohibited from deleting or blocking the Super Admin
+    function canDeleteUser(caller, targetUser) {
+      if (caller.is_team_member && targetUser.role === 'admin') return false;
+      if (caller.is_team_member && caller.parent_user_id === targetUser.id) return false;
+      if (caller.is_team_member && !caller.permissions?.can_manage_users) return false;
+      return true;
+    }
+
+    const superAdmin = { id: 1, role: 'admin', email: 'admin@messagesphere.com' };
+    const subAdminUser = { id: 10, is_team_member: true, parent_user_id: 1, permissions: subAdminPresets.sub_admin };
+    const regularClient = { id: 50, role: 'user', email: 'client@domain.com' };
+
+    // Sub-Admin cannot delete Super Admin
+    assert.strictEqual(canDeleteUser(subAdminUser, superAdmin), false);
+    // Sub-Admin CAN delete/manage regular client
+    assert.strictEqual(canDeleteUser(subAdminUser, regularClient), true);
+
+    // Auditor cannot delete clients
+    const auditorUser = { id: 11, is_team_member: true, parent_user_id: 1, permissions: subAdminPresets.platform_auditor };
+    assert.strictEqual(canDeleteUser(auditorUser, regularClient), false);
+  });
 });

@@ -5,6 +5,9 @@ const { authenticate, requireRoles } = require('../middleware/auth');
 const { logAudit } = require('../services/audit');
 
 router.get('/events', authenticate, requireRoles('admin'), async (req, res) => {
+  if (req.user.is_team_member && req.user.permissions?.can_view_operations_audit === false) {
+    return res.status(403).json({ error: 'Permission Denied: Your staff account does not have permission to view operations audit logs.' });
+  }
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
   const action = String(req.query.action || '').trim();
   const entityType = String(req.query.entityType || '').trim();
@@ -48,6 +51,9 @@ router.get('/retention', authenticate, requireRoles('admin'), async (req, res) =
 });
 
 router.patch('/retention/:key', authenticate, requireRoles('admin'), async (req, res) => {
+  if (req.user.is_team_member) {
+    return res.status(403).json({ error: 'Permission Denied: System data retention policies can only be altered by the Root Super Administrator.' });
+  }
   const days = Number(req.body.retention_days);
   if (!Number.isInteger(days) || days < 30 || days > 3650) return res.status(400).json({ error: 'Retention must be between 30 and 3650 days' });
   const client = await getClient();

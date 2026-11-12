@@ -857,20 +857,46 @@ function handleLoginSuccess(user) {
   // Sidebar profile
   sidebarUserEmail.textContent = user.email;
   sidebarUserAvatar.textContent = user.email.charAt(0).toUpperCase();
-  sidebarUserRole.textContent = user.role;
-  sidebarUserRole.className = `role-badge role-${user.role}`;
+
+  const isSubAdmin = Boolean(user.is_team_member && user.parent_role === 'admin');
+  if (isSubAdmin) {
+    sidebarUserRole.textContent = user.team_role ? user.team_role.toUpperCase().replace(/_/g, ' ') : 'SUB-ADMIN';
+    sidebarUserRole.className = 'role-badge';
+    sidebarUserRole.style.cssText = 'background:#7c3aed;color:#fff;font-weight:700;padding:2px 8px;border-radius:12px;font-size:0.7rem;letter-spacing:0.5px;';
+  } else {
+    sidebarUserRole.textContent = user.role.toUpperCase();
+    sidebarUserRole.className = `role-badge role-${user.role}`;
+    sidebarUserRole.style.cssText = '';
+  }
 
   // Settings profile
   updateSettingsView();
 
-  // Role permissions: Show admin-only items if admin or reseller
+  const p = user.permissions || {};
+  const effectiveRole = (user.is_team_member && user.parent_role) ? user.parent_role : user.role;
+
+  // Role permissions: Show admin-only items if admin or reseller or permitted sub-admin
   const adminElements = document.querySelectorAll('.admin-only');
   adminElements.forEach(el => {
-    el.style.display = (user.role === 'admin' || user.role === 'reseller') ? 'flex' : 'none';
+    if (isSubAdmin) {
+      el.style.display = (p.can_manage_users !== false) ? 'flex' : 'none';
+    } else {
+      el.style.display = (user.role === 'admin' || user.role === 'reseller') ? 'flex' : 'none';
+    }
   });
-  document.querySelectorAll('.super-admin-only').forEach(el => {
-    el.style.display = user.role === 'admin' ? 'flex' : 'none';
-  });
+
+  // Operations Audit
+  const opsAuditNav = document.querySelector('.nav-item[data-view="view-operations"]');
+  if (opsAuditNav) {
+    opsAuditNav.style.display = (user.role === 'admin' || (isSubAdmin && p.can_view_operations_audit !== false)) ? 'flex' : 'none';
+  }
+
+  // Reseller Network
+  const resellerNav = document.querySelector('.nav-item[data-view="view-resellers"]');
+  if (resellerNav) {
+    resellerNav.style.display = (user.role === 'admin' || (isSubAdmin && p.can_manage_resellers !== false)) ? 'flex' : 'none';
+  }
+
   document.querySelectorAll('.reseller-branding').forEach(el => {
     el.style.display = user.role === 'reseller' ? 'flex' : 'none';
   });
@@ -883,7 +909,7 @@ function handleLoginSuccess(user) {
   // Team Management & RBAC section in sidebar
   const navTeam = document.getElementById('nav-item-team');
   const navCatTeam = document.getElementById('nav-category-team');
-  const canManageStaff = user.role === 'admin' || user.role === 'reseller' || (!user.isTeamMember) || (user.isTeamMember && user.permissions?.can_manage_team);
+  const canManageStaff = user.role === 'admin' || user.role === 'reseller' || (!user.is_team_member) || (user.is_team_member && p.can_manage_team);
   if (navTeam) navTeam.style.display = canManageStaff ? 'flex' : 'none';
   if (navCatTeam) navCatTeam.style.display = canManageStaff ? 'block' : 'none';
 
@@ -15817,7 +15843,11 @@ const TEAM_ROLE_PRESETS = {
       can_export_contacts: false,
       can_view_billing: false,
       can_recharge_wallet: false,
-      can_manage_team: false
+      can_manage_team: false,
+      can_manage_users: false,
+      can_manage_resellers: false,
+      can_view_operations_audit: false,
+      can_allot_credits: false
     }
   },
   support_agent: {
@@ -15832,7 +15862,11 @@ const TEAM_ROLE_PRESETS = {
       can_export_contacts: false,
       can_view_billing: false,
       can_recharge_wallet: false,
-      can_manage_team: false
+      can_manage_team: false,
+      can_manage_users: false,
+      can_manage_resellers: false,
+      can_view_operations_audit: false,
+      can_allot_credits: false
     }
   },
   accountant: {
@@ -15847,7 +15881,11 @@ const TEAM_ROLE_PRESETS = {
       can_export_contacts: false,
       can_view_billing: true,
       can_recharge_wallet: true,
-      can_manage_team: false
+      can_manage_team: false,
+      can_manage_users: false,
+      can_manage_resellers: false,
+      can_view_operations_audit: false,
+      can_allot_credits: false
     }
   },
   viewer: {
@@ -15862,7 +15900,11 @@ const TEAM_ROLE_PRESETS = {
       can_export_contacts: false,
       can_view_billing: false,
       can_recharge_wallet: false,
-      can_manage_team: false
+      can_manage_team: false,
+      can_manage_users: false,
+      can_manage_resellers: false,
+      can_view_operations_audit: false,
+      can_allot_credits: false
     }
   },
   team_admin: {
@@ -15877,7 +15919,107 @@ const TEAM_ROLE_PRESETS = {
       can_export_contacts: true,
       can_view_billing: true,
       can_recharge_wallet: true,
-      can_manage_team: true
+      can_manage_team: true,
+      can_manage_users: false,
+      can_manage_resellers: false,
+      can_view_operations_audit: false,
+      can_allot_credits: false
+    }
+  },
+  // Platform Super-Admin Delegated Employee Roles
+  sub_admin: {
+    label: 'Platform Sub-Admin',
+    color: '#7c3aed',
+    bg: '#f5f3ff',
+    permissions: {
+      can_manage_users: true,
+      can_manage_resellers: true,
+      can_view_operations_audit: true,
+      can_allot_credits: true,
+      can_view_billing: true,
+      can_manage_team: true,
+      can_send_campaigns: true,
+      can_view_campaigns: true,
+      can_manage_templates: true,
+      can_manage_contacts: true,
+      can_export_contacts: true,
+      can_recharge_wallet: true
+    }
+  },
+  platform_ops: {
+    label: 'Platform Operations Admin',
+    color: '#0284c7',
+    bg: '#f0f9ff',
+    permissions: {
+      can_manage_users: true,
+      can_manage_resellers: true,
+      can_view_operations_audit: true,
+      can_allot_credits: false,
+      can_view_billing: true,
+      can_manage_team: false,
+      can_send_campaigns: false,
+      can_view_campaigns: true,
+      can_manage_templates: true,
+      can_manage_contacts: true,
+      can_export_contacts: false,
+      can_recharge_wallet: false
+    }
+  },
+  billing_admin: {
+    label: 'Platform Finance & Billing Lead',
+    color: '#059669',
+    bg: '#ecfdf5',
+    permissions: {
+      can_manage_users: true,
+      can_manage_resellers: false,
+      can_view_operations_audit: false,
+      can_allot_credits: true,
+      can_view_billing: true,
+      can_manage_team: false,
+      can_send_campaigns: false,
+      can_view_campaigns: false,
+      can_manage_templates: false,
+      can_manage_contacts: false,
+      can_export_contacts: false,
+      can_recharge_wallet: true
+    }
+  },
+  support_admin: {
+    label: 'Platform Tech & Support Lead',
+    color: '#d97706',
+    bg: '#fffbeb',
+    permissions: {
+      can_manage_users: true,
+      can_manage_resellers: false,
+      can_view_operations_audit: true,
+      can_allot_credits: false,
+      can_view_billing: false,
+      can_manage_team: false,
+      can_send_campaigns: false,
+      can_view_campaigns: true,
+      can_manage_templates: true,
+      can_manage_contacts: false,
+      can_export_contacts: false,
+      can_recharge_wallet: false
+    }
+  },
+  platform_auditor: {
+    label: 'Platform Auditor (Read-Only)',
+    color: '#475569',
+    bg: '#f8fafc',
+    permissions: {
+      can_manage_users: false,
+      can_manage_resellers: false,
+      can_view_operations_audit: true,
+      can_allot_credits: false,
+      can_view_billing: true,
+      can_manage_team: false,
+      can_send_campaigns: false,
+      can_view_campaigns: true,
+      can_manage_templates: false,
+      can_manage_contacts: false,
+      can_export_contacts: false,
+      can_recharge_wallet: false
     }
   }
 };
@@ -15894,6 +16036,55 @@ window.applyRolePreset = function(presetKey) {
   document.getElementById('perm-view-billing').checked = Boolean(p.can_view_billing);
   document.getElementById('perm-recharge-wallet').checked = Boolean(p.can_recharge_wallet);
   document.getElementById('perm-manage-team').checked = Boolean(p.can_manage_team);
+
+  const elUsers = document.getElementById('perm-manage-users');
+  if (elUsers) elUsers.checked = Boolean(p.can_manage_users);
+  const elResellers = document.getElementById('perm-manage-resellers');
+  if (elResellers) elResellers.checked = Boolean(p.can_manage_resellers);
+  const elAudit = document.getElementById('perm-view-operations-audit');
+  if (elAudit) elAudit.checked = Boolean(p.can_view_operations_audit);
+  const elAllot = document.getElementById('perm-allot-credits');
+  if (elAllot) elAllot.checked = Boolean(p.can_allot_credits);
+};
+
+window.populateTeamRoleSelect = function(selectedRole = null) {
+  const select = document.getElementById('team-role-select');
+  if (!select) return;
+  const isPlatformAdmin = Boolean(currentUser && currentUser.role === 'admin');
+  const platformSection = document.getElementById('platform-admin-perms-section');
+  if (platformSection) {
+    platformSection.style.display = isPlatformAdmin ? 'block' : 'none';
+  }
+
+  let html = '';
+  if (isPlatformAdmin) {
+    html = `
+      <option value="sub_admin">Platform Sub-Admin (Full Delegated Operations)</option>
+      <option value="platform_ops">Platform Operations Admin (Users, Resellers & Audit)</option>
+      <option value="billing_admin">Platform Finance & Billing Lead (Credits & Invoices)</option>
+      <option value="support_admin">Platform Tech & Support Lead (Users & Audit)</option>
+      <option value="platform_auditor">Platform Auditor (Read-Only Analytics)</option>
+      <option value="team_admin">Team Administrator (Full Access)</option>
+      <option value="campaign_manager">Campaign Manager</option>
+      <option value="support_agent">Support / Chat Agent</option>
+      <option value="accountant">Accountant / Finance</option>
+      <option value="viewer">Viewer (Read-Only)</option>
+      <option value="custom">Custom Permissions (Manually toggle below)</option>
+    `;
+  } else {
+    html = `
+      <option value="campaign_manager">Campaign Manager (Broadcasts & Templates, No Billing, No Data Export)</option>
+      <option value="support_agent">Support / Chat Agent (Customer Replies & Live Chat, No Blasting)</option>
+      <option value="accountant">Accountant / Finance (Wallet Recharges, Invoices, Ledgers Only)</option>
+      <option value="viewer">Viewer / Auditor (Read-Only Analytics & Reports)</option>
+      <option value="team_admin">Team Administrator (Full Delegated Access)</option>
+      <option value="custom">Custom Permissions (Manually toggle below)</option>
+    `;
+  }
+  select.innerHTML = html;
+  if (selectedRole) {
+    select.value = selectedRole;
+  }
 };
 
 window.onPermCheckboxChanged = function() {
@@ -16022,7 +16213,11 @@ window.renderTeamMembersTable = function(members) {
         <td style="padding:14px 16px;">
           ${dutyStatusHtml}
         </td>
-        <td style="padding:14px 16px;max-width:240px;">
+        <td style="padding:14px 16px;max-width:260px;">
+          ${p.can_manage_users ? pill('Users', true) : ''}
+          ${p.can_manage_resellers ? pill('Resellers', true) : ''}
+          ${p.can_view_operations_audit ? pill('Audit', true) : ''}
+          ${p.can_allot_credits ? pill('Credits', true) : ''}
           ${pill('Campaigns', p.can_send_campaigns)}
           ${pill('Contacts', p.can_manage_contacts)}
           ${pill('Export CSV 🔒', p.can_export_contacts, true)}
@@ -16075,7 +16270,8 @@ window.filterTeamTable = function() {
 };
 
 window.openAddTeamModal = function() {
-  document.getElementById('modal-team-title').innerHTML = '<i data-lucide="user-plus" style="width:20px;height:20px;color:var(--primary);"></i> Add Team Member';
+  const isPlatformAdmin = Boolean(currentUser && currentUser.role === 'admin');
+  document.getElementById('modal-team-title').innerHTML = `<i data-lucide="${isPlatformAdmin ? 'shield-check' : 'user-plus'}" style="width:20px;height:20px;color:var(--primary);"></i> ${isPlatformAdmin ? 'Add Platform Sub-Admin / Staff' : 'Add Team Member'}`;
   document.getElementById('team-member-edit-id').value = '';
   document.getElementById('team-input-name').value = '';
   document.getElementById('team-input-email').value = '';
@@ -16083,8 +16279,11 @@ window.openAddTeamModal = function() {
   document.getElementById('team-input-password').value = '';
   document.getElementById('team-password-group').style.display = 'block';
   document.getElementById('team-input-password').required = true;
-  document.getElementById('team-role-select').value = 'campaign_manager';
-  applyRolePreset('campaign_manager');
+
+  const defaultRole = isPlatformAdmin ? 'sub_admin' : 'campaign_manager';
+  populateTeamRoleSelect(defaultRole);
+  applyRolePreset(defaultRole);
+
   const modal = document.getElementById('modal-team-member');
   if (modal) {
     modal.style.display = 'flex';
@@ -16095,6 +16294,7 @@ window.openAddTeamModal = function() {
 window.openEditTeamModal = function(id) {
   const member = teamMembersCache.find(m => m.id === id);
   if (!member) return;
+  const isPlatformAdmin = Boolean(currentUser && currentUser.role === 'admin');
   document.getElementById('modal-team-title').innerHTML = '<i data-lucide="sliders-horizontal" style="width:20px;height:20px;color:var(--primary);"></i> Edit Staff Permissions';
   document.getElementById('team-member-edit-id').value = member.id;
   document.getElementById('team-input-name').value = member.full_name || '';
@@ -16103,12 +16303,7 @@ window.openEditTeamModal = function(id) {
   document.getElementById('team-password-group').style.display = 'none';
   document.getElementById('team-input-password').required = false;
 
-  const roleSelect = document.getElementById('team-role-select');
-  if (TEAM_ROLE_PRESETS[member.role_title]) {
-    roleSelect.value = member.role_title;
-  } else {
-    roleSelect.value = 'custom';
-  }
+  populateTeamRoleSelect(TEAM_ROLE_PRESETS[member.role_title] ? member.role_title : 'custom');
 
   const p = member.permissions || {};
   document.getElementById('perm-send-campaigns').checked = Boolean(p.can_send_campaigns);
@@ -16119,6 +16314,15 @@ window.openEditTeamModal = function(id) {
   document.getElementById('perm-view-billing').checked = Boolean(p.can_view_billing);
   document.getElementById('perm-recharge-wallet').checked = Boolean(p.can_recharge_wallet);
   document.getElementById('perm-manage-team').checked = Boolean(p.can_manage_team);
+
+  const elUsers = document.getElementById('perm-manage-users');
+  if (elUsers) elUsers.checked = Boolean(p.can_manage_users);
+  const elResellers = document.getElementById('perm-manage-resellers');
+  if (elResellers) elResellers.checked = Boolean(p.can_manage_resellers);
+  const elAudit = document.getElementById('perm-view-operations-audit');
+  if (elAudit) elAudit.checked = Boolean(p.can_view_operations_audit);
+  const elAllot = document.getElementById('perm-allot-credits');
+  if (elAllot) elAllot.checked = Boolean(p.can_allot_credits);
 
   const modal = document.getElementById('modal-team-member');
   if (modal) {
@@ -16148,7 +16352,11 @@ window.handleTeamFormSubmit = async function(e) {
     can_export_contacts: document.getElementById('perm-export-contacts').checked,
     can_view_billing: document.getElementById('perm-view-billing').checked,
     can_recharge_wallet: document.getElementById('perm-recharge-wallet').checked,
-    can_manage_team: document.getElementById('perm-manage-team').checked
+    can_manage_team: document.getElementById('perm-manage-team').checked,
+    can_manage_users: Boolean(document.getElementById('perm-manage-users')?.checked),
+    can_manage_resellers: Boolean(document.getElementById('perm-manage-resellers')?.checked),
+    can_view_operations_audit: Boolean(document.getElementById('perm-view-operations-audit')?.checked),
+    can_allot_credits: Boolean(document.getElementById('perm-allot-credits')?.checked)
   };
 
   const btn = document.getElementById('btn-save-team-member');

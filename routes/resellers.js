@@ -678,6 +678,9 @@ router.get('/me', authenticate, async (req, res) => {
 });
 
 router.get('/', authenticate, requireRoles('admin'), async (req, res) => {
+  if (req.user.is_team_member && req.user.permissions?.can_manage_resellers === false) {
+    return res.status(403).json({ error: 'Permission Denied: Your staff account does not have permission to view or manage the reseller network.' });
+  }
   try {
     const result = await query(`
       SELECT u.id, u.email, u.full_name, u.phone, u.company_name, u.is_blocked, u.created_at, u.gstin,

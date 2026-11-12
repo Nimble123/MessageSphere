@@ -9188,6 +9188,28 @@
           <div style="font-size:0.82rem;font-weight:700;color:#475569;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px;display:flex;align-items:center;gap:6px;">
             <i data-lucide="shield" style="width:14px;height:14px;color:var(--primary);"></i> Granular Security Boundaries
           </div>
+
+          <!-- Platform Super Admin Specific Delegated Privileges -->
+          <div id="platform-admin-perms-section" style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px dashed #cbd5e1;display:none;">
+            <div style="font-size:0.75rem;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;display:flex;align-items:center;gap:5px;">
+              <i data-lucide="shield-check" style="width:13px;height:13px;"></i> Platform Delegated Privileges
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:#1e293b;font-weight:600;cursor:pointer;">
+                <input type="checkbox" id="perm-manage-users" onchange="onPermCheckboxChanged()"> Manage Users & Clients
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:#1e293b;font-weight:600;cursor:pointer;">
+                <input type="checkbox" id="perm-manage-resellers" onchange="onPermCheckboxChanged()"> Manage Resellers
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:#1e293b;font-weight:600;cursor:pointer;">
+                <input type="checkbox" id="perm-view-operations-audit" onchange="onPermCheckboxChanged()"> Operations Audit
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:#1e293b;font-weight:600;cursor:pointer;">
+                <input type="checkbox" id="perm-allot-credits" onchange="onPermCheckboxChanged()"> Allot Credits / Top-ups
+              </label>
+            </div>
+          </div>
+
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
             <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:#334155;cursor:pointer;">
               <input type="checkbox" id="perm-send-campaigns" onchange="onPermCheckboxChanged()"> Can Send Campaigns
@@ -9399,6 +9421,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=202611121455"></script>
+  <script src="app.js?v=202611121515"></script>
 </body>
 </html>

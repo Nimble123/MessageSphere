@@ -56,6 +56,77 @@ const DEFAULT_ROLE_PERMISSIONS = {
     can_view_billing: true,
     can_recharge_wallet: true,
     can_manage_team: true
+  },
+  // Platform Super-Admin delegated employee roles
+  sub_admin: {
+    can_manage_users: true,
+    can_manage_resellers: true,
+    can_view_operations_audit: true,
+    can_allot_credits: true,
+    can_view_billing: true,
+    can_manage_team: true,
+    can_send_campaigns: true,
+    can_view_campaigns: true,
+    can_manage_templates: true,
+    can_manage_contacts: true,
+    can_export_contacts: true,
+    can_recharge_wallet: true
+  },
+  platform_ops: {
+    can_manage_users: true,
+    can_manage_resellers: true,
+    can_view_operations_audit: true,
+    can_allot_credits: false,
+    can_view_billing: true,
+    can_manage_team: false,
+    can_send_campaigns: false,
+    can_view_campaigns: true,
+    can_manage_templates: true,
+    can_manage_contacts: true,
+    can_export_contacts: false,
+    can_recharge_wallet: false
+  },
+  billing_admin: {
+    can_manage_users: true,
+    can_manage_resellers: false,
+    can_view_operations_audit: false,
+    can_allot_credits: true,
+    can_view_billing: true,
+    can_manage_team: false,
+    can_send_campaigns: false,
+    can_view_campaigns: false,
+    can_manage_templates: false,
+    can_manage_contacts: false,
+    can_export_contacts: false,
+    can_recharge_wallet: true
+  },
+  support_admin: {
+    can_manage_users: true,
+    can_manage_resellers: false,
+    can_view_operations_audit: true,
+    can_allot_credits: false,
+    can_view_billing: false,
+    can_manage_team: false,
+    can_send_campaigns: false,
+    can_view_campaigns: true,
+    can_manage_templates: true,
+    can_manage_contacts: false,
+    can_export_contacts: false,
+    can_recharge_wallet: false
+  },
+  platform_auditor: {
+    can_manage_users: false,
+    can_manage_resellers: false,
+    can_view_operations_audit: true,
+    can_allot_credits: false,
+    can_view_billing: true,
+    can_manage_team: false,
+    can_send_campaigns: false,
+    can_view_campaigns: true,
+    can_manage_templates: false,
+    can_manage_contacts: false,
+    can_export_contacts: false,
+    can_recharge_wallet: false
   }
 };
 
@@ -69,7 +140,11 @@ function normalizePermissions(roleTitle, customPermissions = {}) {
     can_export_contacts: Boolean(customPermissions.can_export_contacts !== undefined ? customPermissions.can_export_contacts : base.can_export_contacts),
     can_view_billing: Boolean(customPermissions.can_view_billing !== undefined ? customPermissions.can_view_billing : base.can_view_billing),
     can_recharge_wallet: Boolean(customPermissions.can_recharge_wallet !== undefined ? customPermissions.can_recharge_wallet : base.can_recharge_wallet),
-    can_manage_team: Boolean(customPermissions.can_manage_team !== undefined ? customPermissions.can_manage_team : base.can_manage_team)
+    can_manage_team: Boolean(customPermissions.can_manage_team !== undefined ? customPermissions.can_manage_team : base.can_manage_team),
+    can_manage_users: Boolean(customPermissions.can_manage_users !== undefined ? customPermissions.can_manage_users : (base.can_manage_users || false)),
+    can_manage_resellers: Boolean(customPermissions.can_manage_resellers !== undefined ? customPermissions.can_manage_resellers : (base.can_manage_resellers || false)),
+    can_view_operations_audit: Boolean(customPermissions.can_view_operations_audit !== undefined ? customPermissions.can_view_operations_audit : (base.can_view_operations_audit || false)),
+    can_allot_credits: Boolean(customPermissions.can_allot_credits !== undefined ? customPermissions.can_allot_credits : (base.can_allot_credits || false))
   };
 }
 
