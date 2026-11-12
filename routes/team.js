@@ -324,6 +324,131 @@ router.post('/reassign-clients', authenticate, requirePermission('can_manage_tea
   }
 });
 
+// GET /api/team/:agentId/assignable-clients - List all clients with assignment status for this agent
+router.get('/:agentId/assignable-clients', authenticate, requirePermission('can_manage_team'), async (req, res) => {
+  const client = await getClient();
+  try {
+    const parentId = req.user.effective_user_id || req.user.id;
+    const effectiveRole = (req.user.is_team_member && req.user.parent_role) ? req.user.parent_role : req.user.role;
+    const agentUserId = parseInt(req.params.agentId, 10);
+
+    if (isNaN(agentUserId)) {
+      return res.status(400).json({ error: 'Valid agent ID required' });
+    }
+
+    let query = '';
+    let params = [];
+
+    if (effectiveRole === 'admin') {
+      query = `
+        SELECT u.id, u.email, u.full_name, u.company_name, u.assigned_agent_id,
+               ag.full_name AS current_agent_name, ag.email AS current_agent_email
+        FROM users u
+        LEFT JOIN users ag ON u.assigned_agent_id = ag.id
+        WHERE u.id != $1 AND u.role = 'user'
+        ORDER BY (u.assigned_agent_id = $2) DESC, u.email ASC
+      `;
+      params = [req.user.id, agentUserId];
+    } else {
+      query = `
+        SELECT u.id, u.email, u.full_name, u.company_name, u.assigned_agent_id,
+               ag.full_name AS current_agent_name, ag.email AS current_agent_email
+        FROM users u
+        LEFT JOIN users ag ON u.assigned_agent_id = ag.id
+        WHERE u.reseller_id = $1 AND u.role = 'user'
+        ORDER BY (u.assigned_agent_id = $2) DESC, u.email ASC
+      `;
+      params = [parentId, agentUserId];
+    }
+
+    const { rows } = await client.query(query, params);
+    return res.json({ clients: rows });
+  } catch (err) {
+    console.error('Fetch assignable clients error:', err);
+    return res.status(500).json({ error: 'Failed to fetch clients' });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/team/:agentId/bulk-assign-clients - Bulk assign or unassign clients for this agent
+router.post('/:agentId/bulk-assign-clients', authenticate, requirePermission('can_manage_team'), async (req, res) => {
+  const client = await getClient();
+  try {
+    const parentId = req.user.effective_user_id || req.user.id;
+    const effectiveRole = (req.user.is_team_member && req.user.parent_role) ? req.user.parent_role : req.user.role;
+    const agentUserId = parseInt(req.params.agentId, 10);
+    const { client_ids = [] } = req.body;
+
+    if (isNaN(agentUserId)) {
+      return res.status(400).json({ error: 'Valid agent ID required' });
+    }
+
+    const agentCheck = await client.query(
+      `SELECT tm.user_id, tm.full_name, u.email FROM team_members tm JOIN users u ON tm.user_id = u.id WHERE tm.user_id = $1 AND tm.parent_user_id = $2`,
+      [agentUserId, parentId]
+    );
+    if (agentCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Agent not found in your team directory' });
+    }
+    const agentName = agentCheck.rows[0].full_name || agentCheck.rows[0].email;
+
+    await client.query('BEGIN');
+
+    // 1. Unassign clients previously assigned to this agent that are NOT in client_ids
+    let unassignQuery = '';
+    let unassignParams = [];
+    if (effectiveRole === 'admin') {
+      unassignQuery = `UPDATE users SET assigned_agent_id = NULL WHERE assigned_agent_id = $1 AND NOT (id = ANY($2::int[]))`;
+      unassignParams = [agentUserId, client_ids];
+    } else {
+      unassignQuery = `UPDATE users SET assigned_agent_id = NULL WHERE reseller_id = $1 AND assigned_agent_id = $2 AND NOT (id = ANY($3::int[]))`;
+      unassignParams = [parentId, agentUserId, client_ids];
+    }
+    await client.query(unassignQuery, unassignParams);
+
+    // 2. Assign the chosen clients to this agent
+    let assignCount = 0;
+    if (Array.isArray(client_ids) && client_ids.length > 0) {
+      let assignQuery = '';
+      let assignParams = [];
+      if (effectiveRole === 'admin') {
+        assignQuery = `UPDATE users SET assigned_agent_id = $1 WHERE id = ANY($2::int[]) RETURNING id`;
+        assignParams = [agentUserId, client_ids];
+      } else {
+        assignQuery = `UPDATE users SET assigned_agent_id = $1 WHERE reseller_id = $2 AND id = ANY($3::int[]) RETURNING id`;
+        assignParams = [agentUserId, parentId, client_ids];
+      }
+      const assignRes = await client.query(assignQuery, assignParams);
+      assignCount = assignRes.rowCount;
+    }
+
+    await logAudit(client, {
+      actorId: req.user.id,
+      entityType: 'team_member',
+      entityId: agentUserId,
+      action: 'clients_portfolio_bulk_assigned',
+      details: {
+        agentUserId,
+        agentName,
+        assignedClientCount: assignCount
+      }
+    });
+
+    await client.query('COMMIT');
+    return res.json({
+      message: `Portfolio updated successfully. ${assignCount} client(s) assigned to ${agentName}.`,
+      assignedCount: assignCount
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Bulk assign clients error:', err);
+    return res.status(500).json({ error: 'Failed to update client assignments' });
+  } finally {
+    client.release();
+  }
+});
+
 // POST /api/team - Create and invite a new team member
 router.post('/', authenticate, requirePermission('can_manage_team'), async (req, res) => {
   const client = await getClient();

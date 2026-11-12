@@ -15956,6 +15956,7 @@ window.renderTeamMembersTable = function(members) {
     const coverageCount = Number(m.coverage_clients_count) || 0;
 
     // Managed clients badge
+    const canManageTeam = Boolean(currentUser && (currentUser.role === 'admin' || currentUser.role === 'reseller' || currentUser.permissions?.can_manage_team));
     const clientsBadgeHtml = `
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
         <span style="background:#e0e7ff;color:#3730a3;font-weight:700;font-size:0.75rem;padding:3px 9px;border-radius:12px;border:1px solid #c7d2fe;">
@@ -15965,6 +15966,11 @@ window.renderTeamMembersTable = function(members) {
           <span style="background:#fef3c7;color:#92400e;font-weight:700;font-size:0.72rem;padding:2px 7px;border-radius:10px;border:1px solid #fde68a;" title="Temporarily covering for colleagues on leave">
             +${coverageCount} Covering
           </span>
+        ` : ''}
+        ${canManageTeam ? `
+          <button type="button" onclick="openPortfolioManagerModal(${m.user_id}, '${escapeHtml(m.full_name || m.email)}')" title="Manage Client Portfolio for ${escapeHtml(m.full_name || m.email)}" style="padding:2px 8px;font-size:0.72rem;font-weight:600;background:#eff6ff;border:1px solid #c7d2fe;border-radius:6px;color:#4f46e5;cursor:pointer;display:inline-flex;align-items:center;gap:3px;">
+            <i data-lucide="plus-circle" style="width:11px;height:11px;"></i> Manage
+          </button>
         ` : ''}
       </div>
     `;
@@ -16467,6 +16473,158 @@ window.handleTeamReassignSubmit = async function(e) {
   } finally {
     btn.disabled = false;
     btn.textContent = 'Transfer Clients';
+  }
+};
+
+// ============================================================================
+// BATCH CLIENT PORTFOLIO MANAGER MODAL
+// ============================================================================
+let portfolioModalAgentUserId = null;
+let portfolioClientsCache = [];
+
+window.openPortfolioManagerModal = async function(agentUserId, agentName) {
+  portfolioModalAgentUserId = agentUserId;
+  const nameDisp = document.getElementById('portfolio-agent-name-display');
+  if (nameDisp) nameDisp.innerHTML = `Assigning clients to: <strong>${escapeHtml(agentName)}</strong>`;
+
+  const searchInput = document.getElementById('portfolio-client-search');
+  if (searchInput) searchInput.value = '';
+
+  const listContainer = document.getElementById('portfolio-clients-list');
+  if (listContainer) {
+    listContainer.innerHTML = '<div style="text-align:center;padding:24px;color:#94a3b8;">Loading clients...</div>';
+  }
+
+  const modal = document.getElementById('modal-portfolio-manager');
+  if (modal) {
+    modal.style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
+  }
+
+  try {
+    const res = await apiFetch(`/team/${agentUserId}/assignable-clients`);
+    portfolioClientsCache = res.clients || [];
+    renderPortfolioClientsList(portfolioClientsCache);
+  } catch (err) {
+    if (listContainer) {
+      listContainer.innerHTML = `<div style="text-align:center;padding:24px;color:#ef4444;">Failed to load clients: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+};
+
+window.closePortfolioManagerModal = function() {
+  const modal = document.getElementById('modal-portfolio-manager');
+  if (modal) modal.style.display = 'none';
+  portfolioModalAgentUserId = null;
+  portfolioClientsCache = [];
+};
+
+function renderPortfolioClientsList(clients) {
+  const listContainer = document.getElementById('portfolio-clients-list');
+  if (!listContainer) return;
+
+  if (!clients || clients.length === 0) {
+    listContainer.innerHTML = `
+      <div style="text-align:center;padding:32px;color:#94a3b8;">
+        <i data-lucide="users" style="width:32px;height:32px;opacity:0.4;display:block;margin:0 auto 8px;"></i>
+        No clients found in your directory.
+      </div>
+    `;
+    updatePortfolioSelectedCount();
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
+
+  listContainer.innerHTML = clients.map(c => {
+    const isAssignedToThis = Number(c.assigned_agent_id) === Number(portfolioModalAgentUserId);
+    const hasOtherAgent = c.assigned_agent_id && !isAssignedToThis;
+
+    let statusBadge = '';
+    if (isAssignedToThis) {
+      statusBadge = '<span style="font-size:0.7rem;padding:2px 7px;border-radius:10px;background:#dcfce7;color:#15803d;font-weight:600;">Managed by this agent</span>';
+    } else if (hasOtherAgent) {
+      statusBadge = `<span style="font-size:0.7rem;padding:2px 7px;border-radius:10px;background:#f1f5f9;color:#64748b;">Assigned: ${escapeHtml(c.current_agent_name || c.current_agent_email || 'Other')}</span>`;
+    } else {
+      statusBadge = '<span style="font-size:0.7rem;padding:2px 7px;border-radius:10px;background:#fffbeb;color:#b45309;">Unassigned</span>';
+    }
+
+    return `
+      <label style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:8px;background:${isAssignedToThis ? '#f8fafc' : '#fff'};cursor:pointer;transition:all 0.15s ease;">
+        <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
+          <input type="checkbox" class="portfolio-client-chk" value="${c.id}" ${isAssignedToThis ? 'checked' : ''} onchange="updatePortfolioSelectedCount()" style="width:17px;height:17px;accent-color:var(--primary);cursor:pointer;">
+          <div style="min-width:0;">
+            <div style="font-weight:600;font-size:0.88rem;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+              ${escapeHtml(c.company_name || c.full_name || c.email)}
+            </div>
+            <div style="font-size:0.78rem;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+              ${escapeHtml(c.email)}
+            </div>
+          </div>
+        </div>
+        <div style="margin-left:8px;flex-shrink:0;">
+          ${statusBadge}
+        </div>
+      </label>
+    `;
+  }).join('');
+
+  updatePortfolioSelectedCount();
+  if (window.lucide) lucide.createIcons();
+}
+
+function updatePortfolioSelectedCount() {
+  const checkboxes = document.querySelectorAll('.portfolio-client-chk:checked');
+  const countDisp = document.getElementById('portfolio-selected-count');
+  if (countDisp) {
+    countDisp.textContent = `${checkboxes.length} client${checkboxes.length === 1 ? '' : 's'} selected`;
+  }
+}
+
+window.filterPortfolioClientsList = function() {
+  const query = (document.getElementById('portfolio-client-search')?.value || '').toLowerCase().trim();
+  if (!query) {
+    renderPortfolioClientsList(portfolioClientsCache);
+    return;
+  }
+  const filtered = portfolioClientsCache.filter(c => 
+    (c.email || '').toLowerCase().includes(query) ||
+    (c.full_name || '').toLowerCase().includes(query) ||
+    (c.company_name || '').toLowerCase().includes(query)
+  );
+  renderPortfolioClientsList(filtered);
+};
+
+window.toggleAllPortfolioCheckboxes = function(check) {
+  const visibleCheckboxes = document.querySelectorAll('.portfolio-client-chk');
+  visibleCheckboxes.forEach(chk => {
+    chk.checked = Boolean(check);
+  });
+  updatePortfolioSelectedCount();
+};
+
+window.savePortfolioManagerChanges = async function() {
+  if (!portfolioModalAgentUserId) return;
+  const checkboxes = document.querySelectorAll('.portfolio-client-chk:checked');
+  const selectedClientIds = Array.from(checkboxes).map(chk => parseInt(chk.value, 10)).filter(n => !isNaN(n));
+
+  const btn = document.getElementById('btn-save-portfolio');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  try {
+    const res = await apiFetch(`/team/${portfolioModalAgentUserId}/bulk-assign-clients`, {
+      method: 'POST',
+      body: JSON.stringify({ client_ids: selectedClientIds })
+    });
+    showToast('success', 'Portfolio Saved', res.message || 'Client portfolio updated.');
+    closePortfolioManagerModal();
+    loadTeamMembers();
+    if (typeof loadUsers === 'function') loadUsers();
+  } catch (err) {
+    showToast('error', 'Update Failed', err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save Portfolio';
   }
 };
 
