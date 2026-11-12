@@ -5754,14 +5754,16 @@ window.filterByUserReseller = function(resellerId) {
 };
 
 async function loadUsers() {
-  if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'reseller')) return;
+  const canManage = currentUser && (currentUser.role === 'admin' || currentUser.role === 'reseller' || (currentUser.isTeamMember && currentUser.parentRole === 'reseller'));
+  if (!canManage) return;
   const tbody = document.getElementById('users-table-tbody');
   if (tbody && (!allUsers || allUsers.length === 0)) {
-    window.renderTableSkeleton(tbody, 8, 3);
+    window.renderTableSkeleton(tbody, 9, 3);
   }
   try {
     allUsers = await apiFetch('/users');
     populateResellerFilterDropdown();
+    if (typeof populateUserAgentFilter === 'function') populateUserAgentFilter();
     renderUsersTable();
     refreshDashboardMetrics();
     if (currentUser.role === 'admin') await loadPasswordResetRequests();
@@ -5858,6 +5860,30 @@ function renderUsersTable() {
   const search = (userSearchInput ? userSearchInput.value : '').toLowerCase().trim();
   const resellerFilter = document.getElementById('user-reseller-filter') ? document.getElementById('user-reseller-filter').value : 'all';
   const roleFilter = document.getElementById('user-role-filter') ? document.getElementById('user-role-filter').value : 'all';
+  const agentFilter = document.getElementById('user-agent-filter') ? document.getElementById('user-agent-filter').value : 'all';
+
+  // Staff Agent Portfolio Banner
+  const portfolioBanner = document.getElementById('staff-portfolio-banner');
+  if (portfolioBanner) {
+    const isStaff = Boolean(currentUser && currentUser.isTeamMember && !currentUser.permissions?.can_manage_team);
+    if (isStaff) {
+      portfolioBanner.style.display = 'flex';
+      const myDirect = allUsers.filter(u => u.assignedAgentId === currentUser.id).length;
+      const myCoverage = allUsers.filter(u => u.isTemporaryCoverage).length;
+      const statsEl = document.getElementById('staff-portfolio-stats');
+      const subHeadingEl = document.getElementById('staff-portfolio-subheading');
+      if (statsEl) {
+        statsEl.textContent = `${myDirect} Direct Clients${myCoverage > 0 ? ` + ${myCoverage} Temporary Coverage` : ''}`;
+      }
+      if (subHeadingEl) {
+        subHeadingEl.textContent = myCoverage > 0
+          ? `Showing your dedicated client accounts plus active backup coverage for colleagues on leave.`
+          : `Showing clients directly assigned to your management account.`;
+      }
+    } else {
+      portfolioBanner.style.display = 'none';
+    }
+  }
 
   let filtered = allUsers.filter(u => {
     // Top segment filter
@@ -5866,10 +5892,20 @@ function renderUsersTable() {
     if (currentUserSegmentFilter === 'direct' && (u.role !== 'user' || u.resellerId)) return false;
 
     // Search query
-    if (search && ![u.email, u.fullName, u.companyName, u.phone, u.resellerEmail, u.resellerFullName, u.resellerCompanyName].filter(Boolean).some(value => String(value).toLowerCase().includes(search))) return false;
+    if (search && ![u.email, u.fullName, u.companyName, u.phone, u.resellerEmail, u.resellerFullName, u.resellerCompanyName, u.agentFullName, u.agentEmail].filter(Boolean).some(value => String(value).toLowerCase().includes(search))) return false;
 
     // Role dropdown filter
     if (roleFilter !== 'all' && u.role !== roleFilter) return false;
+
+    // Agent / Account Manager dropdown filter
+    if (agentFilter !== 'all') {
+      if (agentFilter === 'unassigned') {
+        if (u.assignedAgentId) return false;
+      } else {
+        const targetAgentId = parseInt(agentFilter, 10);
+        if (u.assignedAgentId !== targetAgentId) return false;
+      }
+    }
 
     // Reseller dropdown filter
     if (currentUser && currentUser.role === 'admin' && resellerFilter !== 'all') {
@@ -5958,6 +5994,34 @@ function renderUsersTable() {
       `;
     }
 
+    // Col 2.5: Account Manager / Assigned Staff Agent
+    let agentCellHtml = '';
+    if (u.role === 'user') {
+      const isCovering = Boolean(u.isTemporaryCoverage);
+      const agName = escapeHtml(u.agentFullName || u.agentEmail || 'Unassigned');
+      if (u.assignedAgentId) {
+        agentCellHtml = `
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-weight:600;font-size:0.82rem;color:#1e293b;">👤 ${agName}</span>
+          </div>
+          ${isCovering ? `<div style="margin-top:2px;"><span style="font-size:0.68rem;font-weight:700;padding:1px 6px;border-radius:4px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;" title="Covering for staff on leave">🏖️ Leave Coverage</span></div>` : ''}
+        `;
+      } else {
+        agentCellHtml = `<span style="font-size:0.75rem;color:#94a3b8;font-style:italic;">Unassigned</span>`;
+      }
+      if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'reseller' || currentUser.permissions?.can_manage_team)) {
+        agentCellHtml += `
+          <div style="margin-top:4px;">
+            <button type="button" onclick="openAssignAgentModal(${u.id}, '${escapeHtml(u.email)}', ${u.assignedAgentId || 'null'})" style="font-size:0.72rem;padding:2px 6px;border:1px solid #cbd5e1;background:#fff;border-radius:4px;color:#4f46e5;cursor:pointer;font-weight:600;">
+              ⇄ Assign
+            </button>
+          </div>
+        `;
+      }
+    } else {
+      agentCellHtml = `<span style="color:#94a3b8;font-size:0.75rem;">—</span>`;
+    }
+
     // Col 3: Dedicated Tax Invoicing Mode
     const isWithGst = u.taxMode === 'with_gst';
     const taxCellHtml = isWithGst
@@ -6024,6 +6088,7 @@ function renderUsersTable() {
           </div>
         </td>
         <td>${roleHierarchyHtml}</td>
+        <td>${agentCellHtml}</td>
         <td>${taxCellHtml}</td>
         <td>${refundCellHtml}</td>
         <td>
@@ -15841,14 +15906,14 @@ window.onPermCheckboxChanged = function() {
 window.loadTeamMembers = async function() {
   const tbody = document.getElementById('team-members-tbody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:#94a3b8;">Loading team directory...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:#94a3b8;">Loading team directory...</td></tr>';
 
   try {
     const res = await apiFetch('/team');
     teamMembersCache = res.members || [];
     renderTeamMembersTable(teamMembersCache);
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:#ef4444;">Failed to load team: ${escapeHtml(err.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:30px;color:#ef4444;">Failed to load team: ${escapeHtml(err.message)}</td></tr>`;
   }
 };
 
@@ -15859,12 +15924,12 @@ window.renderTeamMembersTable = function(members) {
   const totalEl = document.getElementById('metric-team-total');
   const activeEl = document.getElementById('metric-team-active');
   if (totalEl) totalEl.textContent = members.length;
-  if (activeEl) activeEl.textContent = members.filter(m => m.status === 'active' && !m.is_blocked).length;
+  if (activeEl) activeEl.textContent = members.filter(m => m.status === 'active' && !m.is_blocked && !m.is_on_leave).length;
 
   if (members.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="6" style="text-align:center;padding:40px;color:#64748b;">
+        <td colspan="7" style="text-align:center;padding:40px;color:#64748b;">
           <div style="font-size:1.05rem;font-weight:600;color:#334155;">No Staff Members Added Yet</div>
           <p style="margin-top:6px;font-size:0.86rem;color:#64748b;">Add team members to delegate campaign dispatches, live chat support, and accounting securely.</p>
           <button type="button" class="btn btn-primary" onclick="openAddTeamModal()" style="margin-top:12px;background:var(--primary);color:#fff;padding:8px 18px;border-radius:6px;font-weight:600;border:none;cursor:pointer;">+ Add First Staff Member</button>
@@ -15887,6 +15952,45 @@ window.renderTeamMembersTable = function(members) {
     const p = m.permissions || {};
     const isActive = m.status === 'active' && !m.is_blocked;
     const initial = (m.full_name || m.email || 'S').charAt(0).toUpperCase();
+    const assignedCount = Number(m.assigned_clients_count) || 0;
+    const coverageCount = Number(m.coverage_clients_count) || 0;
+
+    // Managed clients badge
+    const clientsBadgeHtml = `
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <span style="background:#e0e7ff;color:#3730a3;font-weight:700;font-size:0.75rem;padding:3px 9px;border-radius:12px;border:1px solid #c7d2fe;">
+          ${assignedCount} Client${assignedCount === 1 ? '' : 's'}
+        </span>
+        ${coverageCount > 0 ? `
+          <span style="background:#fef3c7;color:#92400e;font-weight:700;font-size:0.72rem;padding:2px 7px;border-radius:10px;border:1px solid #fde68a;" title="Temporarily covering for colleagues on leave">
+            +${coverageCount} Covering
+          </span>
+        ` : ''}
+      </div>
+    `;
+
+    // Duty & Leave Status badge
+    let dutyStatusHtml = '';
+    if (m.is_on_leave) {
+      const backupName = escapeHtml(m.backup_agent_name || m.backup_agent_email || 'Unassigned');
+      dutyStatusHtml = `
+        <div>
+          <span style="padding:3px 8px;border-radius:12px;font-size:0.75rem;font-weight:700;background:#fef3c7;color:#92400e;border:1px solid #fde68a;display:inline-flex;align-items:center;gap:4px;">
+            <span>🏖️ On Leave</span>
+          </span>
+          <div style="font-size:0.73rem;color:#64748b;margin-top:3px;line-height:1.3;">
+            Covered by: <strong style="color:#1e293b;">${backupName}</strong>
+            ${m.leave_end_date ? `<div style="color:#94a3b8;">Until ${new Date(m.leave_end_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</div>` : ''}
+          </div>
+        </div>
+      `;
+    } else {
+      dutyStatusHtml = `
+        <span style="padding:4px 10px;border-radius:20px;font-size:0.75rem;font-weight:600;background:${isActive ? '#dcfce7' : '#fee2e2'};color:${isActive ? '#15803d' : '#b91c1c'};display:inline-flex;align-items:center;gap:4px;">
+          <i data-lucide="${isActive ? 'check-circle-2' : 'x-circle'}" style="width:12px;height:12px;"></i> ${isActive ? 'Active On Duty' : 'Suspended'}
+        </span>
+      `;
+    }
 
     return `
       <tr style="border-bottom:1px solid #e2e8f0;">
@@ -15906,16 +16010,17 @@ window.renderTeamMembersTable = function(members) {
             ${meta.label}
           </span>
         </td>
-        <td style="padding:14px 16px;max-width:280px;">
+        <td style="padding:14px 16px;">
+          ${clientsBadgeHtml}
+        </td>
+        <td style="padding:14px 16px;">
+          ${dutyStatusHtml}
+        </td>
+        <td style="padding:14px 16px;max-width:240px;">
           ${pill('Campaigns', p.can_send_campaigns)}
           ${pill('Contacts', p.can_manage_contacts)}
           ${pill('Export CSV 🔒', p.can_export_contacts, true)}
           ${pill('Billing', p.can_view_billing)}
-        </td>
-        <td style="padding:14px 16px;">
-          <span style="padding:4px 10px;border-radius:20px;font-size:0.75rem;font-weight:600;background:${isActive ? '#dcfce7' : '#fee2e2'};color:${isActive ? '#15803d' : '#b91c1c'};">
-            ${isActive ? 'Active' : 'Suspended'}
-          </span>
         </td>
         <td style="padding:14px 16px;font-size:0.82rem;color:#64748b;">
           ${new Date(m.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -15924,6 +16029,12 @@ window.renderTeamMembersTable = function(members) {
           <div style="display:inline-flex;gap:6px;">
             <button onclick="openEditTeamModal(${m.id})" title="Edit Permissions" style="padding:6px 9px;border:1px solid #cbd5e1;background:#fff;border-radius:5px;cursor:pointer;color:#334155;">
               <i data-lucide="sliders-horizontal" style="width:14px;height:14px;"></i>
+            </button>
+            <button onclick="openTeamLeaveModal(${m.id})" title="${m.is_on_leave ? 'Resume Duty / End Leave' : 'Leave Handover / Set Backup'}" style="padding:6px 9px;border:1px solid ${m.is_on_leave ? '#fde68a' : '#cbd5e1'};background:${m.is_on_leave ? '#fffbeb' : '#fff'};border-radius:5px;cursor:pointer;color:${m.is_on_leave ? '#d97706' : '#64748b'};">
+              <i data-lucide="${m.is_on_leave ? 'sun' : 'palmtree'}" style="width:14px;height:14px;"></i>
+            </button>
+            <button onclick="openTeamReassignModal(${m.user_id}, '${escapeHtml(m.full_name || m.email)}')" title="Transfer Client Portfolio to Another Agent" style="padding:6px 9px;border:1px solid #cbd5e1;background:#fff;border-radius:5px;cursor:pointer;color:#4f46e5;">
+              <i data-lucide="arrow-right-left" style="width:14px;height:14px;"></i>
             </button>
             <button onclick="openResetPasswordModal(${m.id}, '${escapeHtml(m.email)}')" title="Reset Password" style="padding:6px 9px;border:1px solid #cbd5e1;background:#fff;border-radius:5px;cursor:pointer;color:#d97706;">
               <i data-lucide="key-round" style="width:14px;height:14px;"></i>
@@ -16124,6 +16235,238 @@ window.handleResetTeamPasswordSubmit = async function(e) {
     closeResetTeamPasswordModal();
   } catch (err) {
     showToast('error', 'Password Reset Failed', err.message);
+  }
+};
+
+// ============================================================================
+// ACCOUNT MANAGER CLIENT PORTFOLIO & LEAVE COVERAGE ENGINE
+// ============================================================================
+
+window.populateUserAgentFilter = async function() {
+  const select = document.getElementById('user-agent-filter');
+  if (!select) return;
+  const currentVal = select.value || 'all';
+  try {
+    const agents = await apiFetch('/team/agents');
+    let opts = '<option value="all">All Account Managers</option><option value="unassigned">Unassigned Clients</option>';
+    (agents || []).forEach(ag => {
+      opts += `<option value="${ag.id}">${escapeHtml(ag.full_name || ag.email)} (${ag.assigned_clients_count || 0})</option>`;
+    });
+    select.innerHTML = opts;
+    if (Array.from(select.options).some(o => o.value === currentVal)) {
+      select.value = currentVal;
+    }
+  } catch (_) {}
+};
+
+window.openAssignAgentModal = async function(userId, clientEmail, currentAgentId) {
+  document.getElementById('assign-agent-user-id').value = userId;
+  document.getElementById('assign-agent-client-display').innerHTML = `Assigning dedicated manager for: <strong>${escapeHtml(clientEmail)}</strong>`;
+  const select = document.getElementById('assign-agent-select');
+  select.innerHTML = '<option value="">Loading active agents...</option>';
+  
+  const modal = document.getElementById('modal-assign-agent');
+  if (modal) {
+    modal.style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
+  }
+
+  try {
+    const agents = await apiFetch('/team/agents');
+    let opts = '<option value="">— Unassigned (No Dedicated Agent) —</option>';
+    (agents || []).forEach(ag => {
+      const isSelected = String(ag.id) === String(currentAgentId);
+      const leaveTag = ag.is_on_leave ? ' [On Leave - Backup: ' + (ag.backup_agent_name || 'Assigned') + ']' : '';
+      opts += `<option value="${ag.id}" ${isSelected ? 'selected' : ''}>${escapeHtml(ag.full_name || ag.email)} (${ag.role_title || 'Agent'}) — ${ag.assigned_clients_count || 0} Clients${leaveTag}</option>`;
+    });
+    select.innerHTML = opts;
+  } catch (err) {
+    select.innerHTML = `<option value="">Failed to load agents: ${escapeHtml(err.message)}</option>`;
+  }
+};
+
+window.closeAssignAgentModal = function() {
+  const modal = document.getElementById('modal-assign-agent');
+  if (modal) modal.style.display = 'none';
+};
+
+window.handleAssignAgentSubmit = async function(e) {
+  e.preventDefault();
+  const userId = document.getElementById('assign-agent-user-id').value;
+  const agentId = document.getElementById('assign-agent-select').value || null;
+  const btn = document.getElementById('btn-save-assign-agent');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  try {
+    const res = await apiFetch(`/users/${userId}/assign-agent`, {
+      method: 'PATCH',
+      body: JSON.stringify({ agent_id: agentId })
+    });
+    showToast('success', 'Account Manager Assigned', res.message || 'Client portfolio updated.');
+    closeAssignAgentModal();
+    if (typeof loadUsers === 'function') loadUsers();
+    if (typeof loadTeamMembers === 'function') loadTeamMembers();
+  } catch (err) {
+    showToast('error', 'Assignment Failed', err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Update Assignment';
+  }
+};
+
+window.openTeamLeaveModal = async function(memberId) {
+  const member = (teamMembersCache || []).find(m => m.id === memberId);
+  if (!member) return;
+
+  document.getElementById('leave-member-id').value = member.id;
+  document.getElementById('leave-member-name-display').textContent = member.full_name || member.email;
+  document.getElementById('leave-member-email-display').textContent = member.email;
+  const assigned = member.assigned_clients_count || 0;
+  document.getElementById('leave-member-clients-count').textContent = `Currently managing ${assigned} client account${assigned === 1 ? '' : 's'}`;
+
+  const statusSelect = document.getElementById('leave-status-select');
+  statusSelect.value = member.is_on_leave ? 'leave' : 'active';
+
+  const backupSelect = document.getElementById('leave-backup-agent-select');
+  backupSelect.innerHTML = '<option value="">Loading colleagues...</option>';
+
+  const dateInput = document.getElementById('leave-end-date');
+  if (dateInput) {
+    dateInput.value = member.leave_end_date ? new Date(member.leave_end_date).toISOString().split('T')[0] : '';
+  }
+  const noteInput = document.getElementById('leave-note');
+  if (noteInput) {
+    noteInput.value = member.leave_note || '';
+  }
+
+  toggleLeaveFieldsVisibility();
+
+  const modal = document.getElementById('modal-team-leave');
+  if (modal) {
+    modal.style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
+  }
+
+  try {
+    const agents = await apiFetch('/team/agents');
+    let opts = '<option value="">— Select Colleague / Backup Agent —</option>';
+    (agents || []).forEach(ag => {
+      if (ag.id !== member.user_id) {
+        const isSel = String(ag.id) === String(member.backup_agent_id);
+        opts += `<option value="${ag.id}" ${isSel ? 'selected' : ''}>${escapeHtml(ag.full_name || ag.email)} (${ag.role_title || 'Staff'}) — ${ag.assigned_clients_count || 0} Clients</option>`;
+      }
+    });
+    backupSelect.innerHTML = opts;
+  } catch (err) {
+    backupSelect.innerHTML = `<option value="">Failed to load colleagues</option>`;
+  }
+};
+
+window.closeTeamLeaveModal = function() {
+  const modal = document.getElementById('modal-team-leave');
+  if (modal) modal.style.display = 'none';
+};
+
+window.toggleLeaveFieldsVisibility = function() {
+  const statusSelect = document.getElementById('leave-status-select');
+  const detailsDiv = document.getElementById('leave-details-container');
+  const btn = document.getElementById('btn-save-team-leave');
+  if (statusSelect && detailsDiv) {
+    const isLeave = statusSelect.value === 'leave';
+    detailsDiv.style.display = isLeave ? 'block' : 'none';
+    if (btn) {
+      btn.textContent = isLeave ? 'Mark On Leave & Delegate' : 'Resume Normal Duty';
+      btn.style.background = isLeave ? '#f59e0b' : '#16a34a';
+    }
+  }
+};
+
+window.handleTeamLeaveSubmit = async function(e) {
+  e.preventDefault();
+  const memberId = document.getElementById('leave-member-id').value;
+  const status = document.getElementById('leave-status-select').value;
+  const is_on_leave = (status === 'leave');
+  const backup_agent_id = is_on_leave ? (document.getElementById('leave-backup-agent-select').value || null) : null;
+  const leave_end_date = is_on_leave ? (document.getElementById('leave-end-date').value || null) : null;
+  const leave_note = is_on_leave ? (document.getElementById('leave-note').value || null) : null;
+
+  const btn = document.getElementById('btn-save-team-leave');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  try {
+    const res = await apiFetch(`/team/${memberId}/leave-status`, {
+      method: 'POST',
+      body: JSON.stringify({ is_on_leave, backup_agent_id, leave_end_date, leave_note })
+    });
+    showToast('success', is_on_leave ? 'Leave Delegated' : 'Duty Resumed', res.message);
+    closeTeamLeaveModal();
+    loadTeamMembers();
+    if (typeof loadUsers === 'function') loadUsers();
+  } catch (err) {
+    showToast('error', 'Status Update Failed', err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save Status';
+  }
+};
+
+window.openTeamReassignModal = async function(userId, userName) {
+  document.getElementById('reassign-from-user-id').value = userId;
+  document.getElementById('reassign-from-name-display').textContent = userName || 'Staff Member';
+
+  const select = document.getElementById('reassign-to-agent-select');
+  select.innerHTML = '<option value="">Loading available agents...</option>';
+
+  const modal = document.getElementById('modal-team-reassign');
+  if (modal) {
+    modal.style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
+  }
+
+  try {
+    const agents = await apiFetch('/team/agents');
+    let opts = '<option value="">— Select Target Account Manager —</option><option value="null">— Clear Assignment (Make Clients Unassigned) —</option>';
+    (agents || []).forEach(ag => {
+      if (ag.id !== userId) {
+        opts += `<option value="${ag.id}">${escapeHtml(ag.full_name || ag.email)} (${ag.role_title || 'Agent'}) — Currently ${ag.assigned_clients_count || 0} Clients</option>`;
+      }
+    });
+    select.innerHTML = opts;
+  } catch (err) {
+    select.innerHTML = `<option value="">Failed to load agents</option>`;
+  }
+};
+
+window.closeTeamReassignModal = function() {
+  const modal = document.getElementById('modal-team-reassign');
+  if (modal) modal.style.display = 'none';
+};
+
+window.handleTeamReassignSubmit = async function(e) {
+  e.preventDefault();
+  const from_agent_id = document.getElementById('reassign-from-user-id').value;
+  const toVal = document.getElementById('reassign-to-agent-select').value;
+  const to_agent_id = toVal === 'null' ? null : (toVal || null);
+
+  const btn = document.getElementById('btn-save-team-reassign');
+  btn.disabled = true;
+  btn.textContent = 'Transferring...';
+
+  try {
+    const res = await apiFetch('/team/reassign-clients', {
+      method: 'POST',
+      body: JSON.stringify({ from_agent_id, to_agent_id })
+    });
+    showToast('success', 'Portfolio Transferred', res.message || 'Client portfolio successfully reassigned.');
+    closeTeamReassignModal();
+    loadTeamMembers();
+    if (typeof loadUsers === 'function') loadUsers();
+  } catch (err) {
+    showToast('error', 'Reassignment Failed', err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Transfer Clients';
   }
 };
 

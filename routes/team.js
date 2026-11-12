@@ -84,13 +84,23 @@ router.get('/', authenticate, requirePermission('can_manage_team'), async (req, 
         tm.role_title,
         tm.permissions,
         tm.status,
+        tm.is_on_leave,
+        tm.backup_agent_id,
+        tm.leave_start_date,
+        tm.leave_end_date,
+        tm.leave_note,
         tm.created_at,
         tm.updated_at,
         u.email,
         u.full_name,
-        u.is_blocked
+        u.is_blocked,
+        bu.email AS backup_agent_email,
+        bu.full_name AS backup_agent_name,
+        (SELECT COUNT(*) FROM users u2 WHERE u2.assigned_agent_id = tm.user_id)::int AS assigned_clients_count,
+        (SELECT COUNT(*) FROM users u3 JOIN team_members tm2 ON u3.assigned_agent_id = tm2.user_id WHERE tm2.is_on_leave = TRUE AND tm2.backup_agent_id = tm.user_id)::int AS coverage_clients_count
       FROM team_members tm
       JOIN users u ON u.id = tm.user_id
+      LEFT JOIN users bu ON bu.id = tm.backup_agent_id
       WHERE tm.parent_user_id = $1
       ORDER BY tm.created_at DESC
     `, [parentId]);
@@ -102,6 +112,215 @@ router.get('/', authenticate, requirePermission('can_manage_team'), async (req, 
   } catch (err) {
     console.error('List team error:', err);
     return res.status(500).json({ error: 'Failed to retrieve team members' });
+  }
+});
+
+// GET /api/team/agents - Quick list of active agents/account managers for dropdown mapping
+router.get('/agents', authenticate, async (req, res) => {
+  try {
+    const parentId = req.user.effective_user_id || req.user.id;
+    const result = await query(`
+      SELECT 
+        u.id, 
+        u.email, 
+        u.full_name, 
+        tm.id AS team_member_id,
+        tm.role_title, 
+        tm.is_on_leave, 
+        tm.backup_agent_id,
+        bu.full_name AS backup_agent_name,
+        (SELECT COUNT(*) FROM users u2 WHERE u2.assigned_agent_id = tm.user_id)::int AS assigned_clients_count
+      FROM team_members tm
+      JOIN users u ON tm.user_id = u.id
+      LEFT JOIN users bu ON tm.backup_agent_id = bu.id
+      WHERE tm.parent_user_id = $1 AND tm.status = 'active'
+      ORDER BY u.full_name ASC, u.email ASC
+    `, [parentId]);
+
+    return res.json(result.rows);
+  } catch (err) {
+    console.error('List agents error:', err);
+    return res.status(500).json({ error: 'Failed to retrieve active agents' });
+  }
+});
+
+// POST /api/team/:id/leave-status - Toggle Leave / Vacation mode and assign backup coverage agent
+router.post('/:id/leave-status', authenticate, requirePermission('can_manage_team'), async (req, res) => {
+  const client = await getClient();
+  try {
+    const parentId = req.user.effective_user_id || req.user.id;
+    const memberId = parseInt(req.params.id, 10);
+    const { is_on_leave, backup_agent_id, leave_end_date, leave_note } = req.body;
+
+    await client.query('BEGIN');
+
+    // Verify member exists under this organization
+    const memberRes = await client.query(
+      `SELECT tm.*, u.email, u.full_name FROM team_members tm JOIN users u ON u.id = tm.user_id WHERE tm.id = $1 AND tm.parent_user_id = $2`,
+      [memberId, parentId]
+    );
+    if (memberRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Staff member not found in your organization.' });
+    }
+
+    const member = memberRes.rows[0];
+    const willBeOnLeave = Boolean(is_on_leave);
+    let finalBackupId = null;
+
+    if (willBeOnLeave) {
+      if (backup_agent_id) {
+        const backupInt = parseInt(backup_agent_id, 10);
+        if (backupInt === member.user_id) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Staff member cannot be their own backup coverage agent.' });
+        }
+        // Verify backup agent is an active team member of the same parent
+        const backupCheck = await client.query(
+          `SELECT tm.user_id, u.email, u.full_name FROM team_members tm JOIN users u ON u.id = tm.user_id WHERE tm.user_id = $1 AND tm.parent_user_id = $2 AND tm.status = 'active'`,
+          [backupInt, parentId]
+        );
+        if (backupCheck.rows.length === 0) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Selected backup coverage agent is not an active team member.' });
+        }
+        finalBackupId = backupInt;
+      }
+    }
+
+    const updateRes = await client.query(`
+      UPDATE team_members
+      SET 
+        is_on_leave = $1,
+        backup_agent_id = $2,
+        leave_start_date = CASE WHEN $1 = TRUE THEN CURRENT_DATE ELSE NULL END,
+        leave_end_date = CASE WHEN $1 = TRUE THEN $3::date ELSE NULL END,
+        leave_note = CASE WHEN $1 = TRUE THEN $4 ELSE NULL END,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $5
+      RETURNING *
+    `, [willBeOnLeave, finalBackupId, leave_end_date || null, leave_note ? String(leave_note).trim().slice(0, 255) : null, memberId]);
+
+    // Count affected clients
+    const clientCountRes = await client.query(
+      `SELECT COUNT(*)::int AS count FROM users WHERE assigned_agent_id = $1`,
+      [member.user_id]
+    );
+    const affectedClients = clientCountRes.rows[0]?.count || 0;
+
+    await logAudit(client, {
+      actorId: req.user.id,
+      entityType: 'team_member',
+      entityId: memberId,
+      action: willBeOnLeave ? 'agent_leave_started' : 'agent_leave_ended',
+      details: {
+        agentEmail: member.email,
+        agentName: member.full_name,
+        isOnLeave: willBeOnLeave,
+        backupAgentId: finalBackupId,
+        leaveEndDate: leave_end_date || null,
+        affectedClients
+      }
+    });
+
+    await client.query('COMMIT');
+
+    const message = willBeOnLeave
+      ? `${member.full_name || member.email} is now marked On Leave. ${affectedClients} clients temporarily delegated${finalBackupId ? ' to backup agent.' : '.'}`
+      : `${member.full_name || member.email} has resumed duty. Client access restored to original agent.`;
+
+    return res.json({
+      message,
+      member: updateRes.rows[0],
+      affectedClients
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Update leave status error:', err);
+    return res.status(500).json({ error: 'Failed to update leave coverage status' });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/team/reassign-clients - Transfer an agent's entire client portfolio to another agent
+router.post('/reassign-clients', authenticate, requirePermission('can_manage_team'), async (req, res) => {
+  const client = await getClient();
+  try {
+    const parentId = req.user.effective_user_id || req.user.id;
+    const { from_agent_id, to_agent_id } = req.body;
+
+    const fromId = parseInt(from_agent_id, 10);
+    const toId = to_agent_id ? parseInt(to_agent_id, 10) : null;
+
+    if (isNaN(fromId)) {
+      return res.status(400).json({ error: 'Source agent ID is required' });
+    }
+    if (fromId === toId) {
+      return res.status(400).json({ error: 'Source and destination agent cannot be the same.' });
+    }
+
+    await client.query('BEGIN');
+
+    // Verify source agent
+    const fromCheck = await client.query(
+      `SELECT tm.user_id, u.email, u.full_name FROM team_members tm JOIN users u ON u.id = tm.user_id WHERE tm.user_id = $1 AND tm.parent_user_id = $2`,
+      [fromId, parentId]
+    );
+    if (fromCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Source agent not found in your organization.' });
+    }
+
+    // Verify target agent (if specified)
+    let toName = 'Unassigned';
+    if (toId) {
+      const toCheck = await client.query(
+        `SELECT tm.user_id, u.email, u.full_name FROM team_members tm JOIN users u ON u.id = tm.user_id WHERE tm.user_id = $1 AND tm.parent_user_id = $2 AND tm.status = 'active'`,
+        [toId, parentId]
+      );
+      if (toCheck.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Target agent is not an active team member.' });
+      }
+      toName = toCheck.rows[0].full_name || toCheck.rows[0].email;
+    }
+
+    // Reassign clients
+    const updateRes = await client.query(
+      `UPDATE users SET assigned_agent_id = $1 WHERE reseller_id = $2 AND assigned_agent_id = $3 RETURNING id, email, full_name, company_name`,
+      [toId, parentId, fromId]
+    );
+
+    const transferredCount = updateRes.rowCount;
+
+    await logAudit(client, {
+      actorId: req.user.id,
+      entityType: 'team_member',
+      entityId: fromId,
+      action: 'clients_portfolio_reassigned',
+      details: {
+        fromAgentId: fromId,
+        fromAgentName: fromCheck.rows[0].full_name,
+        toAgentId: toId,
+        toAgentName: toName,
+        transferredCount
+      }
+    });
+
+    await client.query('COMMIT');
+
+    return res.json({
+      message: `Successfully transferred ${transferredCount} clients from ${fromCheck.rows[0].full_name || fromCheck.rows[0].email} to ${toName}.`,
+      transferredCount,
+      clients: updateRes.rows
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Reassign clients error:', err);
+    return res.status(500).json({ error: 'Failed to reassign client portfolio' });
+  } finally {
+    client.release();
   }
 });
 

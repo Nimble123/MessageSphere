@@ -798,4 +798,91 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.strictEqual(checkEscalation(roles.campaign_manager, { can_send_campaigns: true }), true);
     assert.strictEqual(checkEscalation(roles.team_admin, roles.accountant), true);
   });
+
+  await t.test('Account Manager Client Portfolio & Leave Coverage Handover Logic', async () => {
+    // 1. Mock Agent & Client Setup
+    const agents = [
+      { id: 101, name: 'Agent Rahul', email: 'rahul@reseller.com', is_on_leave: false, backup_agent_id: null },
+      { id: 102, name: 'Agent Priya', email: 'priya@reseller.com', is_on_leave: false, backup_agent_id: null },
+      { id: 103, name: 'Agent Amit', email: 'amit@reseller.com', is_on_leave: false, backup_agent_id: null }
+    ];
+
+    let clients = [
+      { id: 501, name: 'Client Apex', assigned_agent_id: 101 },
+      { id: 502, name: 'Client Zenith', assigned_agent_id: 101 },
+      { id: 503, name: 'Client Omega', assigned_agent_id: 102 },
+      { id: 504, name: 'Client Nova', assigned_agent_id: null }
+    ];
+
+    // Portfolio resolution function matching the SQL filter in routes/users.js & routes/campaigns.js
+    function getAccessibleClientIdsForAgent(callerAgentId, agentList, clientList) {
+      // Find which agents are on leave with caller as backup
+      const coveringForAgentIds = agentList
+        .filter(a => a.is_on_leave && a.backup_agent_id === callerAgentId)
+        .map(a => a.id);
+
+      return clientList
+        .filter(c => c.assigned_agent_id === callerAgentId || coveringForAgentIds.includes(c.assigned_agent_id))
+        .map(c => c.id);
+    }
+
+    // Baseline: Rahul sees 501, 502; Priya sees 503; Amit sees none
+    assert.deepStrictEqual(getAccessibleClientIdsForAgent(101, agents, clients), [501, 502]);
+    assert.deepStrictEqual(getAccessibleClientIdsForAgent(102, agents, clients), [503]);
+    assert.deepStrictEqual(getAccessibleClientIdsForAgent(103, agents, clients), []);
+
+    // 2. Leave Delegation Activation
+    // Rahul goes on leave and marks Priya as backup
+    const rahul = agents.find(a => a.id === 101);
+    rahul.is_on_leave = true;
+    rahul.backup_agent_id = 102;
+    rahul.leave_start_date = '2026-11-12';
+    rahul.leave_end_date = '2026-11-18';
+    rahul.leave_note = 'Diwali vacation';
+
+    // Now Priya temporarily has access to her own clients (503) PLUS Rahul's clients (501, 502)
+    const priyaCoveringClients = getAccessibleClientIdsForAgent(102, agents, clients);
+    assert.strictEqual(priyaCoveringClients.includes(501), true);
+    assert.strictEqual(priyaCoveringClients.includes(502), true);
+    assert.strictEqual(priyaCoveringClients.includes(503), true);
+    assert.strictEqual(priyaCoveringClients.length, 3);
+
+    // Amit still sees nothing
+    assert.deepStrictEqual(getAccessibleClientIdsForAgent(103, agents, clients), []);
+
+    // 3. Leave Deactivation (Return from leave)
+    rahul.is_on_leave = false;
+    rahul.backup_agent_id = null;
+    const priyaPostLeaveClients = getAccessibleClientIdsForAgent(102, agents, clients);
+    assert.deepStrictEqual(priyaPostLeaveClients, [503]);
+    assert.deepStrictEqual(getAccessibleClientIdsForAgent(101, agents, clients), [501, 502]);
+
+    // 4. Validation: Self-delegation as backup agent is strictly forbidden
+    function validateLeaveParameters(agentId, backupId) {
+      if (backupId && Number(backupId) === Number(agentId)) {
+        return { valid: false, error: 'Self-backup not permitted' };
+      }
+      return { valid: true };
+    }
+    assert.strictEqual(validateLeaveParameters(101, 101).valid, false);
+    assert.strictEqual(validateLeaveParameters(101, 102).valid, true);
+
+    // 5. Bulk Client Portfolio Reassignment
+    function reassignPortfolio(sourceAgentId, targetAgentId, clientList) {
+      let count = 0;
+      clientList.forEach(c => {
+        if (c.assigned_agent_id === sourceAgentId) {
+          c.assigned_agent_id = targetAgentId;
+          count++;
+        }
+      });
+      return count;
+    }
+
+    // Transfer Rahul's portfolio permanently to Amit
+    const transferred = reassignPortfolio(101, 103, clients);
+    assert.strictEqual(transferred, 2);
+    assert.deepStrictEqual(getAccessibleClientIdsForAgent(101, agents, clients), []);
+    assert.deepStrictEqual(getAccessibleClientIdsForAgent(103, agents, clients), [501, 502]);
+  });
 });

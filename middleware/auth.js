@@ -108,7 +108,11 @@ async function authenticate(req, res, next) {
 
 function requireRoles(...roles) {
   return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
+    if (!req.user) {
+      return res.status(403).json({ error: 'Forbidden: Insufficient permissions' });
+    }
+    const effectiveRole = (req.user.is_team_member && req.user.parent_role) ? req.user.parent_role : req.user.role;
+    if (!roles.includes(req.user.role) && !roles.includes(effectiveRole)) {
       return res.status(403).json({ error: 'Forbidden: Insufficient permissions' });
     }
     next();

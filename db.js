@@ -442,6 +442,16 @@ async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_blacklist_user_created ON blacklist(user_id, created_at DESC);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_blacklist_phone ON blacklist(phone_number);`);
 
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_agent_id INTEGER REFERENCES users(id) ON DELETE SET NULL;`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_users_assigned_agent ON users(assigned_agent_id);`);
+
+    await client.query(`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS is_on_leave BOOLEAN NOT NULL DEFAULT FALSE;`);
+    await client.query(`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS backup_agent_id INTEGER REFERENCES users(id) ON DELETE SET NULL;`);
+    await client.query(`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS leave_start_date DATE;`);
+    await client.query(`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS leave_end_date DATE;`);
+    await client.query(`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS leave_note VARCHAR(255);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_team_members_backup ON team_members(backup_agent_id);`);
+
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 1;`);
     await client.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS direction VARCHAR(10) DEFAULT 'credit';`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_transactions_direction ON credit_transactions(direction);`);

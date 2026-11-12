@@ -75,10 +75,25 @@ function buildFileUrl(filename) {
 async function canAccessCampaign(req, campaign) {
   if (req.user.is_team_member && !req.user.permissions?.can_view_campaigns) return false;
   const effectiveUserId = req.user.effective_user_id || req.user.id;
+  const effectiveRole = (req.user.is_team_member && req.user.parent_role) ? req.user.parent_role : req.user.role;
   if (req.user.role === 'admin' || campaign.user_id === effectiveUserId) return true;
-  if (req.user.role !== 'reseller') return false;
-  const owner = await query('SELECT reseller_id FROM users WHERE id = $1', [campaign.user_id]);
-  return owner.rows[0] && owner.rows[0].reseller_id === req.user.id;
+  if (effectiveRole !== 'reseller') return false;
+
+  const owner = await query('SELECT reseller_id, assigned_agent_id FROM users WHERE id = $1', [campaign.user_id]);
+  if (!owner.rows[0] || owner.rows[0].reseller_id !== effectiveUserId) return false;
+
+  // If caller is an agent under a reseller without can_manage_team, enforce assigned portfolio or active leave coverage
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_team) {
+    const assignedAgentId = owner.rows[0].assigned_agent_id;
+    if (assignedAgentId === req.user.id) return true;
+    const backupCheck = await query(
+      `SELECT id FROM team_members WHERE user_id = $1 AND parent_user_id = $2 AND is_on_leave = TRUE AND backup_agent_id = $3`,
+      [assignedAgentId, effectiveUserId, req.user.id]
+    );
+    return backupCheck.rows.length > 0;
+  }
+
+  return true;
 }
 
 // Helper to batch insert recipients

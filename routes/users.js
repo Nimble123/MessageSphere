@@ -16,28 +16,72 @@ router.get('/', authenticate, requireRoles('admin', 'reseller'), async (req, res
     const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
     const paginationClause = ` LIMIT ${limit} OFFSET ${offset}`;
 
-    if (req.user.role === 'admin') {
+    const effectiveRole = (req.user.is_team_member && req.user.parent_role) ? req.user.parent_role : req.user.role;
+    const parentId = req.user.effective_user_id || req.user.id;
+    const isStaffAgent = req.user.is_team_member && !req.user.permissions?.can_manage_team;
+
+    if (effectiveRole === 'admin') {
       usersQuery = `
-        SELECT u.id, u.email, u.role, u.is_blocked, u.reseller_id, u.full_name, u.company_name, u.phone, u.business_address, u.gstin, u.created_at, u.tax_mode, u.refund_destination,
-               r.email AS reseller_email, r.full_name AS reseller_full_name, r.company_name AS reseller_company_name
+        SELECT u.id, u.email, u.role, u.is_blocked, u.reseller_id, u.full_name, u.company_name, u.phone, u.business_address, u.gstin, u.created_at, u.tax_mode, u.refund_destination, u.assigned_agent_id,
+               r.email AS reseller_email, r.full_name AS reseller_full_name, r.company_name AS reseller_company_name,
+               ag.email AS agent_email, ag.full_name AS agent_full_name,
+               FALSE AS is_temporary_coverage,
+               NULL AS primary_agent_name
         FROM users u
         LEFT JOIN users r ON u.reseller_id = r.id
+        LEFT JOIN users ag ON u.assigned_agent_id = ag.id
         WHERE u.id != $1
         ORDER BY u.created_at DESC
         ${paginationClause}
       `;
       params = [req.user.id];
     } else {
+      let agentFilterSql = '';
+      params = [parentId];
+
+      if (isStaffAgent) {
+        // Scoped strictly to staff agent's direct portfolio + active leave backup coverage
+        params.push(req.user.id);
+        agentFilterSql = `
+          AND (
+            u.assigned_agent_id = $2 
+            OR u.assigned_agent_id IN (
+              SELECT tm_cov.user_id 
+              FROM team_members tm_cov 
+              WHERE tm_cov.parent_user_id = $1 
+                AND tm_cov.is_on_leave = TRUE 
+                AND tm_cov.backup_agent_id = $2
+            )
+          )
+        `;
+      } else if (req.query.agent_id) {
+        if (req.query.agent_id === 'unassigned') {
+          agentFilterSql = ` AND u.assigned_agent_id IS NULL`;
+        } else {
+          const filterAgentId = parseInt(req.query.agent_id, 10);
+          if (!isNaN(filterAgentId)) {
+            params.push(filterAgentId);
+            agentFilterSql = ` AND u.assigned_agent_id = $${params.length}`;
+          }
+        }
+      }
+
       usersQuery = `
-        SELECT u.id, u.email, u.role, u.is_blocked, u.reseller_id, u.full_name, u.company_name, u.phone, u.business_address, u.gstin, u.created_at, u.tax_mode, u.refund_destination,
-               r.email AS reseller_email, r.full_name AS reseller_full_name, r.company_name AS reseller_company_name
+        SELECT u.id, u.email, u.role, u.is_blocked, u.reseller_id, u.full_name, u.company_name, u.phone, u.business_address, u.gstin, u.created_at, u.tax_mode, u.refund_destination, u.assigned_agent_id,
+               r.email AS reseller_email, r.full_name AS reseller_full_name, r.company_name AS reseller_company_name,
+               ag.email AS agent_email, ag.full_name AS agent_full_name,
+               CASE 
+                 WHEN ${isStaffAgent ? `u.assigned_agent_id != $2` : `FALSE`} THEN TRUE 
+                 ELSE FALSE 
+               END AS is_temporary_coverage,
+               ag.full_name AS primary_agent_name
         FROM users u
         LEFT JOIN users r ON u.reseller_id = r.id
-        WHERE u.reseller_id = $1
+        LEFT JOIN users ag ON u.assigned_agent_id = ag.id
+        WHERE u.reseller_id = $1 ${agentFilterSql}
         ORDER BY u.created_at DESC
         ${paginationClause}
       `;
-      params = [req.user.id];
     }
 
     const usersResult = await query(usersQuery, params);
@@ -77,6 +121,11 @@ router.get('/', authenticate, requireRoles('admin', 'reseller'), async (req, res
       gstin: u.gstin,
       taxMode: u.tax_mode || 'non_gst',
       refundDestination: u.refund_destination || 'user',
+      assignedAgentId: u.assigned_agent_id || null,
+      agentEmail: u.agent_email || null,
+      agentFullName: u.agent_full_name || null,
+      isTemporaryCoverage: Boolean(u.is_temporary_coverage),
+      primaryAgentName: u.primary_agent_name || u.agent_full_name || null,
       createdAt: u.created_at,
       ...(creditsMap[u.id] || {})
     }));
@@ -497,6 +546,94 @@ router.patch('/:id/block', authenticate, requireRoles('admin', 'reseller'), asyn
   } catch (err) {
     console.error('Block user error:', err);
     return res.status(500).json({ error: 'Failed to update user block status' });
+  }
+});
+
+// PATCH /api/users/:id/assign-agent - Assign or reassign client to an Account Manager / Agent
+router.patch('/:id/assign-agent', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  const client = await getClient();
+  try {
+    const targetUserId = parseInt(req.params.id, 10);
+    const { agent_id } = req.body;
+    const parentId = req.user.effective_user_id || req.user.id;
+    const isSuperAdmin = req.user.role === 'admin';
+
+    // Verify caller can manage team/assignment
+    if (req.user.is_team_member && !req.user.permissions?.can_manage_team) {
+      return res.status(403).json({ error: 'Permission Denied: Only Resellers or Team Administrators can assign account managers.' });
+    }
+
+    await client.query('BEGIN');
+
+    // Verify target client
+    const userRes = await client.query('SELECT * FROM users WHERE id = $1', [targetUserId]);
+    if (userRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Client account not found.' });
+    }
+    const targetUser = userRes.rows[0];
+
+    // Check reseller boundary
+    if (!isSuperAdmin && targetUser.reseller_id !== parentId) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Permission Denied: You can only assign agents to your own clients.' });
+    }
+
+    let finalAgentId = null;
+    let agentName = 'Unassigned';
+    let agentEmail = null;
+
+    if (agent_id !== null && agent_id !== undefined && agent_id !== '' && agent_id !== 'unassigned') {
+      const agentInt = parseInt(agent_id, 10);
+      if (isNaN(agentInt)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Invalid agent ID provided.' });
+      }
+
+      // Verify agent is a team member of this organization
+      const agentCheck = await client.query(
+        `SELECT tm.user_id, u.email, u.full_name, tm.is_on_leave FROM team_members tm JOIN users u ON u.id = tm.user_id WHERE tm.user_id = $1 AND tm.parent_user_id = $2 AND tm.status = 'active'`,
+        [agentInt, targetUser.reseller_id || parentId]
+      );
+      if (agentCheck.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Selected account manager is not an active team member.' });
+      }
+      finalAgentId = agentInt;
+      agentName = agentCheck.rows[0].full_name || agentCheck.rows[0].email;
+      agentEmail = agentCheck.rows[0].email;
+    }
+
+    await client.query('UPDATE users SET assigned_agent_id = $1 WHERE id = $2', [finalAgentId, targetUserId]);
+
+    await logAudit(client, {
+      actorId: req.user.id,
+      entityType: 'user',
+      entityId: targetUserId,
+      action: 'client_agent_assigned',
+      details: {
+        clientEmail: targetUser.email,
+        assignedAgentId: finalAgentId,
+        assignedAgentName: agentName
+      }
+    });
+
+    await client.query('COMMIT');
+
+    return res.json({
+      message: finalAgentId
+        ? `Client ${targetUser.email} assigned to ${agentName}.`
+        : `Client ${targetUser.email} is now unassigned.`,
+      assignedAgentId: finalAgentId,
+      agentFullName: finalAgentId ? agentName : null,
+      agentEmail: agentEmail
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Assign agent error:', err);
+    return res.status(500).json({ error: 'Failed to assign account manager.' });
+  } finally {
+    client.release();
   }
 });
 
