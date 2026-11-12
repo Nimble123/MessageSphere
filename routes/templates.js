@@ -78,8 +78,9 @@ async function checkTemplateAccess(templateId, user) {
       sql += ' AND (user_id = $2 OR user_id IN (SELECT id FROM users WHERE reseller_id = $2))';
       params.push(user.id);
     } else {
+      const targetUserId = user.effective_user_id || user.id;
       sql += ' AND user_id = $2';
-      params.push(user.id);
+      params.push(targetUserId);
     }
   }
 
@@ -521,6 +522,10 @@ router.get('/:id', authenticate, async (req, res) => {
 
 // PUT /api/templates/:id - Update existing template
 router.put('/:id', authenticate, upload.any(), async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_templates) {
+    removeUploadedFiles(req.files);
+    return res.status(403).json({ error: 'Permission Denied: Your assigned team role cannot modify templates.' });
+  }
   const templateId = parseInt(req.params.id, 10);
   const { title, channel, template_type, cta_data, content, body, remove_attachment, existing_attachments } = req.body;
   const templateText = String(content || body || '').trim();
@@ -751,6 +756,9 @@ router.post('/:id/duplicate', authenticate, async (req, res) => {
 
 // DELETE /api/templates/:id - Delete template
 router.delete('/:id', authenticate, async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_templates) {
+    return res.status(403).json({ error: 'Permission Denied: Your assigned team role cannot delete templates.' });
+  }
   const templateId = parseInt(req.params.id, 10);
   if (isNaN(templateId)) return res.status(400).json({ error: 'Invalid template ID' });
 

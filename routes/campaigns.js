@@ -1015,6 +1015,7 @@ router.get('/:id/export', authenticate, async (req, res) => {
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="campaign_${campaignId}_report.csv"`);
 
+    const shouldMaskNumbers = req.user.is_team_member && !req.user.permissions?.can_export_contacts;
     let csvContent = 'Phone Number,Status,Timestamp\n';
     recipients.rows.forEach(r => {
       let exportStatus = r.status || 'Pending';
@@ -1027,7 +1028,11 @@ router.get('/:id/export', authenticate, async (req, res) => {
           exportStatus = 'Queued';
         }
       }
-      csvContent += `${sanitizeCsvCell(r.phone_number)},${sanitizeCsvCell(exportStatus)},${sanitizeCsvCell(new Date(r.updated_at).toISOString())}\n`;
+      let exportPhone = r.phone_number;
+      if (shouldMaskNumbers && exportPhone && exportPhone.length >= 7) {
+        exportPhone = exportPhone.slice(0, 4) + '******' + exportPhone.slice(-2);
+      }
+      csvContent += `${sanitizeCsvCell(exportPhone)},${sanitizeCsvCell(exportStatus)},${sanitizeCsvCell(new Date(r.updated_at).toISOString())}\n`;
     });
 
     return res.send(csvContent);
@@ -1048,6 +1053,9 @@ router.get('/:id/export-numbers', authenticate, async (req, res) => {
     if (campResult.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
 
     const campaign = campResult.rows[0];
+    if (req.user.is_team_member && !req.user.permissions?.can_export_contacts) {
+      return res.status(403).json({ error: 'Permission Denied: Organization security policy restricts exporting raw audience phone numbers.' });
+    }
     if (!(await canAccessCampaign(req, campaign))) {
       return res.status(403).json({ error: 'Permission denied: Cannot export audience numbers for this campaign' });
     }
