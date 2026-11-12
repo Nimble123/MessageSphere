@@ -169,6 +169,9 @@ router.get('/summary', authenticate, async (req, res) => {
 // GET /api/billing/requests - List top-up requests
 router.get('/requests', authenticate, async (req, res) => {
   try {
+    if (req.user.is_team_member && !req.user.permissions?.can_view_billing) {
+      return res.status(403).json({ error: 'Permission Denied: Your assigned team role cannot access billing requests.' });
+    }
     let sql = '';
     let params = [];
 
@@ -224,6 +227,7 @@ router.get('/requests', authenticate, async (req, res) => {
       `;
       params = [req.user.id];
     } else {
+      const targetUserId = req.user.effective_user_id || req.user.id;
       sql = `
         SELECT 
           cr.*, 
@@ -239,7 +243,7 @@ router.get('/requests', authenticate, async (req, res) => {
         WHERE cr.user_id = $1 
         ORDER BY cr.created_at DESC
       `;
-      params = [req.user.id];
+      params = [targetUserId];
     }
 
     const result = await query(sql, params);
@@ -252,6 +256,10 @@ router.get('/requests', authenticate, async (req, res) => {
 
 // POST /api/billing/requests - Submit new credit purchase request
 router.post('/requests', authenticate, async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_recharge_wallet) {
+    return res.status(403).json({ error: 'Permission Denied: Your assigned team role cannot request credit recharges.' });
+  }
+  const effectiveUserId = req.user.effective_user_id || req.user.id;
   const credits = req.body.credits_requested || req.body.credits;
   const utr = req.body.utr_number || req.body.notes || 'ONLINE_REQ';
   const cType = req.body.credit_type || 'normal';
@@ -274,7 +282,7 @@ router.post('/requests', authenticate, async (req, res) => {
   let userRate = 0.1500;
   let effectiveTaxMode = 'non_gst';
   try {
-    const userRow = await query(`SELECT tax_mode, gstin FROM users WHERE id = $1`, [req.user.id]);
+    const userRow = await query(`SELECT tax_mode, gstin FROM users WHERE id = $1`, [effectiveUserId]);
     if (userRow.rows.length > 0) {
       const u = userRow.rows[0];
       if (u.tax_mode === 'with_gst' || (u.gstin && String(u.gstin).trim())) {
@@ -283,7 +291,7 @@ router.post('/requests', authenticate, async (req, res) => {
     }
     const rateCheck = await query(
       `SELECT rate_inr FROM user_credits WHERE user_id = $1 AND credit_type = $2 AND destination = $3`,
-      [req.user.id, cType, cDest]
+      [effectiveUserId, cType, cDest]
     );
     if (rateCheck.rows.length > 0 && Number(rateCheck.rows[0].rate_inr) > 0) {
       userRate = Number(rateCheck.rows[0].rate_inr);
@@ -310,7 +318,7 @@ router.post('/requests', authenticate, async (req, res) => {
         (user_id, package_name, credits_requested, credit_type, destination, amount_inr, rate_per_credit, paid_amount, payment_status, utr_number, receipt_url, status, invoice_number, tax_mode, base_amount, gst_amount)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'Pending', 'INV-' || TO_CHAR(CURRENT_DATE, 'YYYY') || '-' || LPAD(nextval('invoice_number_seq')::text, 6, '0'), $12, $13, $14)
       RETURNING *
-    `, [req.user.id, package_name, requestedQty, cType, cDest, calculatedAmount, userRate, paidAmount, paymentStatus, utr.trim(), receiptUrl, effectiveTaxMode, baseAmount, gstAmount]);
+    `, [effectiveUserId, package_name, requestedQty, cType, cDest, calculatedAmount, userRate, paidAmount, paymentStatus, utr.trim(), receiptUrl, effectiveTaxMode, baseAmount, gstAmount]);
 
     return res.status(201).json({
       message: 'Top-up request submitted successfully. Credits will be allocated upon verification.',
@@ -972,6 +980,10 @@ router.delete('/plans/:id', authenticate, requireRoles('admin', 'reseller'), asy
 
 // POST /api/billing/plans/:id/order - Instant book / order from plan
 router.post('/plans/:id/order', authenticate, async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_recharge_wallet) {
+    return res.status(403).json({ error: 'Permission Denied: Your assigned team role cannot order credit plans.' });
+  }
+  const effectiveUserId = req.user.effective_user_id || req.user.id;
   const planId = parseInt(req.params.id, 10);
   if (isNaN(planId)) return res.status(400).json({ error: 'Invalid plan ID' });
 
@@ -990,7 +1002,7 @@ router.post('/plans/:id/order', authenticate, async (req, res) => {
     }
 
     let effectiveTaxMode = 'non_gst';
-    const userRow = await query(`SELECT tax_mode, gstin FROM users WHERE id = $1`, [req.user.id]);
+    const userRow = await query(`SELECT tax_mode, gstin FROM users WHERE id = $1`, [effectiveUserId]);
     if (userRow.rows.length > 0) {
       const u = userRow.rows[0];
       if (u.tax_mode === 'with_gst' || (u.gstin && String(u.gstin).trim())) {
@@ -1009,7 +1021,7 @@ router.post('/plans/:id/order', authenticate, async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6, $7, 0.00, 'Unpaid', $8, 'Pending', 'INV-' || TO_CHAR(CURRENT_DATE, 'YYYY') || '-' || LPAD(nextval('invoice_number_seq')::text, 6, '0'), $9, $10, $11)
       RETURNING *
     `, [
-      req.user.id,
+      effectiveUserId,
       plan.plan_name,
       plan.credits,
       plan.credit_type,

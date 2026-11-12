@@ -124,6 +124,15 @@ router.post('/', authenticate, requirePermission('can_manage_team'), async (req,
     const cleanName = String(full_name || '').trim().slice(0, 100) || cleanEmail.split('@')[0];
     const finalPermissions = normalizePermissions(role_title, permissions);
 
+    // Privilege escalation guard: A team member cannot grant permissions that they themselves do not possess
+    if (req.user.is_team_member) {
+      for (const [permKey, val] of Object.entries(finalPermissions)) {
+        if (val && !req.user.permissions?.[permKey]) {
+          return res.status(403).json({ error: `Privilege escalation blocked: You cannot grant permission '${permKey}' because you do not hold it.` });
+        }
+      }
+    }
+
     await client.query('BEGIN');
 
     // Check if email already registered in system
@@ -212,6 +221,16 @@ router.put('/:id', authenticate, requirePermission('can_manage_team'), async (re
     const current = checkRes.rows[0];
     const newRole = role_title || current.role_title;
     const newPermissions = permissions ? normalizePermissions(newRole, permissions) : current.permissions;
+
+    // Privilege escalation guard: A team member cannot grant permissions that they themselves do not possess
+    if (req.user.is_team_member && permissions) {
+      for (const [permKey, val] of Object.entries(newPermissions)) {
+        if (val && !req.user.permissions?.[permKey]) {
+          await client.query('ROLLBACK');
+          return res.status(403).json({ error: `Privilege escalation blocked: You cannot grant permission '${permKey}' because you do not hold it.` });
+        }
+      }
+    }
     const newStatus = (status === 'suspended' || status === 'active') ? status : current.status;
     const cleanName = full_name !== undefined ? String(full_name).trim().slice(0, 100) : null;
 

@@ -73,6 +73,7 @@ function buildFileUrl(filename) {
 }
 
 async function canAccessCampaign(req, campaign) {
+  if (req.user.is_team_member && !req.user.permissions?.can_view_campaigns) return false;
   const effectiveUserId = req.user.effective_user_id || req.user.id;
   if (req.user.role === 'admin' || campaign.user_id === effectiveUserId) return true;
   if (req.user.role !== 'reseller') return false;
@@ -1210,6 +1211,9 @@ router.patch('/:id/status', authenticate, requireRoles('admin', 'reseller'), asy
 
 // POST /api/campaigns/:id/cancel - Customer self-cancellation for 'Submitted' campaigns
 router.post('/:id/cancel', authenticate, async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_send_campaigns) {
+    return res.status(403).json({ error: 'Permission Denied: Your assigned team role cannot cancel campaigns.' });
+  }
   const campaignId = parseInt(req.params.id, 10);
   if (isNaN(campaignId)) return res.status(400).json({ error: 'Invalid campaign ID' });
 

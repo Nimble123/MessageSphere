@@ -785,5 +785,17 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     // Assert Team Admin has full operational access
     assert.strictEqual(roles.team_admin.can_manage_team, true);
     assert.strictEqual(roles.team_admin.can_export_contacts, true);
+
+    // Privilege Escalation Prevention Verification
+    function checkEscalation(callerPerms, targetPerms) {
+      for (const [k, v] of Object.entries(targetPerms)) {
+        if (v && !callerPerms[k]) return false;
+      }
+      return true;
+    }
+    assert.strictEqual(checkEscalation(roles.campaign_manager, { can_view_billing: true }), false);
+    assert.strictEqual(checkEscalation(roles.campaign_manager, { can_manage_team: true }), false);
+    assert.strictEqual(checkEscalation(roles.campaign_manager, { can_send_campaigns: true }), true);
+    assert.strictEqual(checkEscalation(roles.team_admin, roles.accountant), true);
   });
 });

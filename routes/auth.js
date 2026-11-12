@@ -107,7 +107,46 @@ router.post('/login', loginLimiter, async (req, res) => {
       details: { email: user.email, role: user.role, ip: clientIp }
     });
 
-    const credits = await getUserCredits(user.id);
+    // Check if user is a team member under an organization
+    const teamMemberRes = await query(
+      `SELECT tm.parent_user_id, tm.role_title, tm.permissions, tm.status as team_status,
+              pu.email as parent_email, pu.role as parent_role
+       FROM team_members tm
+       JOIN users pu ON pu.id = tm.parent_user_id
+       WHERE tm.user_id = $1`,
+      [user.id]
+    );
+
+    let isTeamMember = false;
+    let teamRole = user.role;
+    let permissions = {
+      can_send_campaigns: true,
+      can_view_campaigns: true,
+      can_manage_templates: true,
+      can_manage_contacts: true,
+      can_export_contacts: true,
+      can_view_billing: true,
+      can_recharge_wallet: true,
+      can_manage_team: true
+    };
+    let effectiveUserId = user.id;
+    let parentEmail = null;
+    let parentRole = null;
+
+    if (teamMemberRes.rows.length > 0) {
+      const tm = teamMemberRes.rows[0];
+      if (tm.team_status !== 'active') {
+        return res.status(403).json({ error: 'Your staff account has been suspended by your organization administrator.' });
+      }
+      isTeamMember = true;
+      teamRole = tm.role_title;
+      permissions = tm.permissions || {};
+      effectiveUserId = tm.parent_user_id;
+      parentEmail = tm.parent_email;
+      parentRole = tm.parent_role;
+    }
+
+    const credits = await getUserCredits(effectiveUserId);
 
     return res.json({
       token,
@@ -122,6 +161,12 @@ router.post('/login', loginLimiter, async (req, res) => {
         phone: user.phone,
         businessAddress: user.business_address,
         gstin: user.gstin,
+        isTeamMember,
+        teamRole,
+        parentEmail,
+        parentRole,
+        permissions,
+        effectiveUserId,
         ...credits
       }
     });

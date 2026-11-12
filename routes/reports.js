@@ -7,7 +7,7 @@ const { authenticate } = require('../middleware/auth');
 router.get('/dashboard', authenticate, async (req, res) => {
   try {
     const role = req.user.role;
-    const userId = req.user.id;
+    const userId = req.user.effective_user_id || req.user.id;
 
     if (role === 'admin') {
       // 1. SUPER ADMIN METRICS
