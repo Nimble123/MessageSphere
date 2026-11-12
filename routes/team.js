@@ -490,7 +490,7 @@ router.post('/:agentId/bulk-assign-clients', authenticate, requirePermission('ca
     }
 
     const agentCheck = await client.query(
-      `SELECT tm.user_id, tm.full_name, u.email FROM team_members tm JOIN users u ON tm.user_id = u.id WHERE tm.user_id = $1 AND tm.parent_user_id = $2`,
+      `SELECT tm.user_id, u.full_name, u.email FROM team_members tm JOIN users u ON tm.user_id = u.id WHERE tm.user_id = $1 AND tm.parent_user_id = $2`,
       [agentUserId, parentId]
     );
     if (agentCheck.rows.length === 0) {
@@ -498,31 +498,45 @@ router.post('/:agentId/bulk-assign-clients', authenticate, requirePermission('ca
     }
     const agentName = agentCheck.rows[0].full_name || agentCheck.rows[0].email;
 
+    const cleanIds = (Array.isArray(client_ids) ? client_ids : [])
+      .map(x => parseInt(x, 10))
+      .filter(n => !isNaN(n));
+
     await client.query('BEGIN');
 
-    // 1. Unassign accounts previously assigned to this agent that are NOT in client_ids
+    // 1. Unassign accounts previously assigned to this agent that are NOT in cleanIds
     let unassignQuery = '';
     let unassignParams = [];
     if (effectiveRole === 'admin') {
-      unassignQuery = `UPDATE users SET assigned_agent_id = NULL WHERE assigned_agent_id = $1 AND NOT (id = ANY($2::int[]))`;
-      unassignParams = [agentUserId, client_ids];
+      if (cleanIds.length === 0) {
+        unassignQuery = `UPDATE users SET assigned_agent_id = NULL WHERE assigned_agent_id = $1`;
+        unassignParams = [agentUserId];
+      } else {
+        unassignQuery = `UPDATE users SET assigned_agent_id = NULL WHERE assigned_agent_id = $1 AND NOT (id = ANY($2::int[]))`;
+        unassignParams = [agentUserId, cleanIds];
+      }
     } else {
-      unassignQuery = `UPDATE users SET assigned_agent_id = NULL WHERE reseller_id = $1 AND assigned_agent_id = $2 AND NOT (id = ANY($3::int[]))`;
-      unassignParams = [parentId, agentUserId, client_ids];
+      if (cleanIds.length === 0) {
+        unassignQuery = `UPDATE users SET assigned_agent_id = NULL WHERE reseller_id = $1 AND assigned_agent_id = $2`;
+        unassignParams = [parentId, agentUserId];
+      } else {
+        unassignQuery = `UPDATE users SET assigned_agent_id = NULL WHERE reseller_id = $1 AND assigned_agent_id = $2 AND NOT (id = ANY($3::int[]))`;
+        unassignParams = [parentId, agentUserId, cleanIds];
+      }
     }
     await client.query(unassignQuery, unassignParams);
 
     // 2. Assign the chosen accounts to this agent (strictly excluding internal staff)
     let assignCount = 0;
-    if (Array.isArray(client_ids) && client_ids.length > 0) {
+    if (cleanIds.length > 0) {
       let assignQuery = '';
       let assignParams = [];
       if (effectiveRole === 'admin') {
         assignQuery = `UPDATE users SET assigned_agent_id = $1 WHERE id = ANY($2::int[]) AND role IN ('user', 'reseller') AND id NOT IN (SELECT user_id FROM team_members) RETURNING id, role`;
-        assignParams = [agentUserId, client_ids];
+        assignParams = [agentUserId, cleanIds];
       } else {
         assignQuery = `UPDATE users SET assigned_agent_id = $1 WHERE reseller_id = $2 AND id = ANY($3::int[]) AND role = 'user' AND id NOT IN (SELECT user_id FROM team_members) RETURNING id, role`;
-        assignParams = [agentUserId, parentId, client_ids];
+        assignParams = [agentUserId, parentId, cleanIds];
       }
       const assignRes = await client.query(assignQuery, assignParams);
       assignCount = assignRes.rowCount;
