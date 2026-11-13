@@ -3444,7 +3444,7 @@ async function loadCampaigns() {
     window.renderTableSkeleton(tbody, 8, 3);
   }
   try {
-    allCampaigns = await apiFetch('/campaigns');
+    allCampaigns = await apiFetch('/campaigns?channel_type=all');
     populateCampaignUserFilter();
     renderRecentDashboardCampaigns();
     renderCampaignsTable();
@@ -3459,14 +3459,55 @@ async function loadCampaigns() {
   }
 }
 
-let campaignChannelScope = 'whatsapp';
+let campaignChannelScope = 'all';
 
-window.setCampaignChannelScope = function(scope) {
-  if (scope === 'sms') {
-    switchView('view-sms');
-    return;
+window.setCampaignChannelScope = function(scope, btn) {
+  campaignChannelScope = scope || 'all';
+
+  const tabContainer = document.getElementById('campaign-channel-filter-tabs');
+  if (tabContainer) {
+    tabContainer.querySelectorAll('.tab-pill').forEach(p => p.classList.remove('active'));
+    if (btn) {
+      btn.classList.add('active');
+    } else {
+      const targetBtn = document.getElementById(`tab-channel-${campaignChannelScope}`);
+      if (targetBtn) targetBtn.classList.add('active');
+    }
   }
-  campaignChannelScope = 'whatsapp';
+
+  const activeBadge = document.getElementById('campaigns-active-channel-badge');
+  const headerIcon = document.getElementById('campaigns-channel-header-icon');
+  if (activeBadge) {
+    if (campaignChannelScope === 'whatsapp') {
+      activeBadge.textContent = 'WHATSAPP MESSAGING';
+      activeBadge.style.background = '#dcfce7';
+      activeBadge.style.color = '#15803d';
+      activeBadge.style.borderColor = '#bbf7d0';
+      if (headerIcon) {
+        headerIcon.style.background = '#16a34a';
+        headerIcon.innerHTML = '<i data-lucide="message-circle" style="width:22px;height:22px;"></i>';
+      }
+    } else if (campaignChannelScope === 'sms') {
+      activeBadge.textContent = 'GSM BULK SMS';
+      activeBadge.style.background = '#eff6ff';
+      activeBadge.style.color = '#1d4ed8';
+      activeBadge.style.borderColor = '#bfdbfe';
+      if (headerIcon) {
+        headerIcon.style.background = 'linear-gradient(135deg, #6366f1, #4f46e5)';
+        headerIcon.innerHTML = '<i data-lucide="radio" style="width:22px;height:22px;"></i>';
+      }
+    } else {
+      activeBadge.textContent = 'ALL CHANNELS';
+      activeBadge.style.background = '#e0e7ff';
+      activeBadge.style.color = '#3730a3';
+      activeBadge.style.borderColor = '#c7d2fe';
+      if (headerIcon) {
+        headerIcon.style.background = 'linear-gradient(135deg, #4f46e5, #6366f1)';
+        headerIcon.innerHTML = '<i data-lucide="layers" style="width:22px;height:22px;"></i>';
+      }
+    }
+  }
+
   campaignCurrentPage = 1;
   renderCampaignsTable();
   updateCampaignTabBadges();
@@ -3477,8 +3518,24 @@ function updateCampaignTabBadges() {
   if (!allCampaigns) return;
   const now = new Date();
   
-  // Strictly WhatsApp campaigns (GSM SMS has its own dedicated view)
-  const scopeCampaigns = allCampaigns.filter(c => c.channel_type !== 'sms' && c.campaign_type !== 'gsm_sms');
+  // Update Channel Tabs Counts
+  const totalAll = allCampaigns.length;
+  const totalWa = allCampaigns.filter(c => c.channel_type !== 'sms' && c.campaign_type !== 'gsm_sms').length;
+  const totalSms = allCampaigns.filter(c => c.channel_type === 'sms' || c.campaign_type === 'gsm_sms').length;
+
+  const badgeAll = document.getElementById('channel-badge-all');
+  const badgeWa = document.getElementById('channel-badge-whatsapp');
+  const badgeSms = document.getElementById('channel-badge-sms');
+  if (badgeAll) badgeAll.textContent = totalAll;
+  if (badgeWa) badgeWa.textContent = totalWa;
+  if (badgeSms) badgeSms.textContent = totalSms;
+
+  const scopeCampaigns = allCampaigns.filter(c => {
+    const isSms = c.channel_type === 'sms' || c.campaign_type === 'gsm_sms';
+    if (campaignChannelScope === 'whatsapp') return !isSms;
+    if (campaignChannelScope === 'sms') return isSms;
+    return true; // 'all'
+  });
 
   const counts = {
     all: scopeCampaigns.length,
@@ -3760,6 +3817,9 @@ window.handleDashboardCardClick = function(cardNumber) {
 
   if (role === 'admin') {
     if (cardNumber === 1 || cardNumber === 2) {
+      if (typeof setCampaignChannelScope === 'function') {
+        setCampaignChannelScope('all');
+      }
       switchView('view-campaigns');
     } else if (cardNumber === 3) {
       openOperatorDispatchModal();
@@ -3768,6 +3828,9 @@ window.handleDashboardCardClick = function(cardNumber) {
     }
   } else if (role === 'reseller') {
     if (cardNumber === 1) {
+      if (typeof setCampaignChannelScope === 'function') {
+        setCampaignChannelScope('all');
+      }
       switchView('view-campaigns');
     } else if (cardNumber === 2) {
       switchView('view-users');
@@ -3779,6 +3842,9 @@ window.handleDashboardCardClick = function(cardNumber) {
   } else {
     // Client / End User
     if (cardNumber === 1 || cardNumber === 2 || cardNumber === 3) {
+      if (typeof setCampaignChannelScope === 'function') {
+        setCampaignChannelScope('all');
+      }
       switchView('view-campaigns');
     } else if (cardNumber === 4) {
       switchView('view-wallet');
@@ -4675,9 +4741,9 @@ function renderCampaignsTable() {
   const toDateVal = campaignToDate ? campaignToDate.value : null;
 
   let filtered = allCampaigns.filter(c => {
-    // Strictly WhatsApp campaigns only (GSM SMS broadcasts are managed in the dedicated view-sms module)
     const isSms = c.channel_type === 'sms' || c.campaign_type === 'gsm_sms';
-    if (isSms) return false;
+    if (campaignChannelScope === 'whatsapp' && isSms) return false;
+    if (campaignChannelScope === 'sms' && !isSms) return false;
 
     // 1. Status Filter
     if (campaignFilter === 'Scheduled') {
@@ -4696,11 +4762,14 @@ function renderCampaignsTable() {
     }
 
     // 3. Route / Channel Filter
-    if (campaignRouteFilter === 'domestic') {
+    if (campaignRouteFilter === 'gsm_sms') {
+      if (!isSms) return false;
+    } else if (campaignRouteFilter === 'domestic') {
       if (c.destination !== 'domestic') return false;
     } else if (campaignRouteFilter === 'international') {
       if (c.destination !== 'international') return false;
     } else if (campaignRouteFilter !== 'all') {
+      if (isSms) return false;
       if (c.campaign_type !== campaignRouteFilter && c.channel_type !== campaignRouteFilter) return false;
     }
 
@@ -4957,6 +5026,27 @@ function renderCampaignsTable() {
       }
     }
 
+    const isSmsCamp = c.channel_type === 'sms' || c.campaign_type === 'gsm_sms';
+    const channelBadgeHtml = isSmsCamp ? `
+      <div>
+        <span style="background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:12px;font-size:0.72rem;font-weight:700;border:1px solid #bfdbfe;display:inline-flex;align-items:center;gap:3px;">
+          <i data-lucide="radio" style="width:11px;height:11px;"></i> GSM Bulk SMS
+        </span>
+      </div>
+      <div style="font-size:0.72rem;font-weight:600;color:var(--slate-500);text-transform:uppercase;margin-top:2px;">
+        CELLULAR · ${c.destination === 'international' ? 'INTL' : 'DOM'}
+      </div>
+    ` : `
+      <div>
+        <span style="background:#ecfdf5;color:#15803d;padding:2px 8px;border-radius:12px;font-size:0.72rem;font-weight:700;border:1px solid #bbf7d0;display:inline-flex;align-items:center;gap:3px;">
+          <i data-lucide="message-circle" style="width:11px;height:11px;"></i> WhatsApp
+        </span>
+      </div>
+      <div style="font-size:0.72rem;font-weight:600;color:var(--slate-500);text-transform:uppercase;margin-top:2px;">
+        ${escapeHtml(c.channel_type === 'own_number' ? 'Own SIM' : (c.campaign_type || 'normal'))} · ${c.destination === 'international' ? 'INTL' : 'DOM'}
+      </div>
+    `;
+
     return `
       <tr>
         <td>
@@ -4969,10 +5059,7 @@ function renderCampaignsTable() {
           <div style="font-weight:600;color:var(--slate-800);font-size:0.82rem;">${escapeHtml(c.owner_email || '—')}</div>
         </td>
         <td>
-          <div><span class="status-badge" style="background:#f1f5f9;color:#334155;font-size:0.72rem;font-weight:700;">${c.destination === 'international' ? 'INTL' : 'DOM'}</span></div>
-          <span style="font-size:0.75rem;font-weight:600;color:var(--slate-500);text-transform:uppercase;margin-top:2px;display:inline-block;">
-            ${escapeHtml(c.channel_type === 'own_number' ? 'Own SIM' : (c.campaign_type || 'normal'))}
-          </span>
+          ${channelBadgeHtml}
         </td>
         <td>
           <div style="max-width:340px;min-width:220px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;margin-top:2px;">

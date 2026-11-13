@@ -832,10 +832,10 @@ router.get('/', authenticate, async (req, res) => {
     if (req.user.is_team_member && !req.user.permissions?.can_view_campaigns) {
       return res.status(403).json({ error: 'Permission Denied: Your assigned team role is not authorized to view campaigns.' });
     }
-    const channelFilter = req.query.channel_type;
-    let channelClause = "AND COALESCE(c.channel_type, 'whatsapp') != 'sms' AND COALESCE(c.campaign_type, '') != 'gsm_sms'";
-    if (channelFilter === 'all') {
-      channelClause = "";
+    const channelFilter = req.query.channel_type || 'all';
+    let channelClause = "";
+    if (channelFilter === 'whatsapp') {
+      channelClause = "AND COALESCE(c.channel_type, 'whatsapp') != 'sms' AND COALESCE(c.campaign_type, '') != 'gsm_sms'";
     } else if (channelFilter === 'sms') {
       channelClause = "AND (c.channel_type = 'sms' OR c.campaign_type = 'gsm_sms')";
     }

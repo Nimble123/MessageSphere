@@ -3454,25 +3454,46 @@
         <!-- 3. ALL WHATSAPP CAMPAIGNS VIEW -->
         <section id="view-campaigns" class="app-view">
           
-          <!-- Dedicated WhatsApp Campaigns Header -->
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;background:white;padding:12px 18px;border-radius:10px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,0.03);flex-wrap:wrap;">
-            <div style="display:flex;align-items:center;gap:10px;">
-              <div style="width:36px;height:36px;border-radius:8px;background:#dcfce7;color:#16a34a;display:flex;align-items:center;justify-content:center;">
-                <i data-lucide="message-circle" style="width:20px;height:20px;"></i>
+          <!-- Dedicated Omnichannel Campaigns Header -->
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;background:white;padding:14px 18px;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,0.03);flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:12px;">
+              <div id="campaigns-channel-header-icon" style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg, #4f46e5, #6366f1);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(79,70,229,0.25);">
+                <i data-lucide="layers" style="width:22px;height:22px;"></i>
               </div>
               <div>
-                <h3 style="margin:0;font-size:1.05rem;font-weight:700;color:#0f172a;" id="campaigns-view-heading">WhatsApp Campaign History & Reports</h3>
-                <div style="font-size:0.75rem;color:#64748b;margin-top:2px;">Track delivery performance, recipient status, and dispatch reports for WhatsApp messaging</div>
+                <h3 style="margin:0;font-size:1.1rem;font-weight:800;color:#0f172a;display:flex;align-items:center;gap:8px;" id="campaigns-view-heading">
+                  <span>Campaigns &amp; Broadcasts Hub</span>
+                  <span id="campaigns-active-channel-badge" style="font-size:0.72rem;font-weight:700;padding:2px 8px;border-radius:10px;background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;">ALL CHANNELS</span>
+                </h3>
+                <div style="font-size:0.75rem;color:#64748b;margin-top:2px;">Track delivery performance, recipient status, and dispatch reports across WhatsApp &amp; GSM Bulk SMS</div>
               </div>
             </div>
 
-            <div style="display:flex;gap:8px;align-items:center;">
-              <button type="button" class="btn-action btn-action-secondary" onclick="loadCampaigns()" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;font-size:0.8rem;">
-                <i data-lucide="refresh-cw" style="width:13px;height:13px;"></i> Refresh
-              </button>
-              <button type="button" class="btn-action btn-action-primary" onclick="switchView('view-new-campaign')" style="background:#16a34a;display:inline-flex;align-items:center;gap:6px;padding:6px 14px;font-size:0.82rem;font-weight:700;">
-                <i data-lucide="plus-circle" style="width:14px;height:14px;"></i> New Campaign
-              </button>
+            <!-- Top Channel Switcher Tab Bar & Quick Actions -->
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <div class="tab-pills" id="campaign-channel-filter-tabs" style="margin:0;background:#f8fafc;padding:3px;border:1px solid #cbd5e1;border-radius:8px;">
+                <button type="button" class="tab-pill active" onclick="setCampaignChannelScope('all', this)" id="tab-channel-all" style="padding:4px 12px;font-size:0.78rem;font-weight:700;display:inline-flex;align-items:center;gap:5px;">
+                  <i data-lucide="layers" style="width:13px;height:13px;"></i> All Channels (<span id="channel-badge-all">0</span>)
+                </button>
+                <button type="button" class="tab-pill" onclick="setCampaignChannelScope('whatsapp', this)" id="tab-channel-whatsapp" style="padding:4px 12px;font-size:0.78rem;font-weight:700;display:inline-flex;align-items:center;gap:5px;color:#16a34a;">
+                  <i data-lucide="message-circle" style="width:13px;height:13px;"></i> WhatsApp (<span id="channel-badge-whatsapp">0</span>)
+                </button>
+                <button type="button" class="tab-pill" onclick="setCampaignChannelScope('sms', this)" id="tab-channel-sms" style="padding:4px 12px;font-size:0.78rem;font-weight:700;display:inline-flex;align-items:center;gap:5px;color:#2563eb;">
+                  <i data-lucide="radio" style="width:13px;height:13px;"></i> GSM Bulk SMS (<span id="channel-badge-sms">0</span>)
+                </button>
+              </div>
+
+              <div style="display:flex;gap:6px;align-items:center;">
+                <button type="button" class="btn-action btn-action-secondary" onclick="loadCampaigns()" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;font-size:0.8rem;border-radius:7px;">
+                  <i data-lucide="refresh-cw" style="width:13px;height:13px;"></i> Refresh
+                </button>
+                <button type="button" class="btn-action btn-action-primary" onclick="switchView('view-new-campaign')" style="background:#16a34a;display:inline-flex;align-items:center;gap:5px;padding:6px 12px;font-size:0.8rem;font-weight:700;border-radius:7px;" title="Create new WhatsApp Campaign">
+                  <i data-lucide="plus-circle" style="width:14px;height:14px;"></i> + WhatsApp
+                </button>
+                <button type="button" class="btn-action btn-action-primary" onclick="switchView('view-sms-new')" style="background:linear-gradient(135deg, #6366f1, #4f46e5);display:inline-flex;align-items:center;gap:5px;padding:6px 12px;font-size:0.8rem;font-weight:700;border-radius:7px;" title="Create new GSM Bulk SMS Broadcast">
+                  <i data-lucide="send" style="width:14px;height:14px;"></i> + Bulk SMS
+                </button>
+              </div>
             </div>
           </div>
 
@@ -3506,11 +3527,12 @@
                 <option value="all">All Routes (Default)</option>
                 <option value="domestic">Domestic Route (India +91)</option>
                 <option value="international">International Route</option>
-                <option value="normal">Normal Gateway</option>
-                <option value="dp">Profile Picture (DP)</option>
-                <option value="cta">CTA Interactive Buttons</option>
-                <option value="dp_cta">DP + CTA Combo</option>
-                <option value="own_number">Own SIM Gateway</option>
+                <option value="gsm_sms">GSM Cellular SMS</option>
+                <option value="normal">WhatsApp Normal Text</option>
+                <option value="dp">WhatsApp DP Media</option>
+                <option value="cta">WhatsApp Interactive CTA</option>
+                <option value="dp_cta">WhatsApp DP + CTA Combo</option>
+                <option value="own_number">WhatsApp Own SIM Gateway</option>
               </select>
 
               <!-- Date Preset Filter -->
@@ -9431,6 +9453,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=202611131155"></script>
+  <script src="app.js?v=202611131215"></script>
 </body>
 </html>
