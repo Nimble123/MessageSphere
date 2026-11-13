@@ -1924,7 +1924,7 @@ window.exportLedgerCsv = async function() {
 async function loadLedgerTransactions() {
   const tbody = document.getElementById('ledger-table-tbody');
   if (!tbody) return;
-  window.renderTableSkeleton(tbody, 9, 4);
+  window.renderTableSkeleton(tbody, 10, 4);
 
   const search = (document.getElementById('ledger-search-input')?.value || '').trim();
   const channel = document.getElementById('ledger-filter-channel')?.value || 'all';
@@ -2011,9 +2011,9 @@ async function loadLedgerTransactions() {
     const statOutEl = document.getElementById('ledger-stat-out');
     const statRefundEl = document.getElementById('ledger-stat-refund');
     if (statCountEl) statCountEl.textContent = (ledgerTotalCount || displayedTxs.length).toLocaleString();
-    if (statInEl) statInEl.textContent = `+${totalIn.toLocaleString()}`;
-    if (statOutEl) statOutEl.textContent = `-${totalOut.toLocaleString()}`;
-    if (statRefundEl) statRefundEl.textContent = `+${totalRefund.toLocaleString()}`;
+    if (statInEl) statInEl.textContent = `+${totalIn.toLocaleString()} Credits`;
+    if (statOutEl) statOutEl.textContent = `-${totalOut.toLocaleString()} Credits`;
+    if (statRefundEl) statRefundEl.textContent = `+${totalRefund.toLocaleString()} Credits`;
 
     // Update KPI count if present
     const txCountEl = document.getElementById('wallet-summary-tx-count');
@@ -2039,7 +2039,7 @@ async function loadLedgerTransactions() {
     if (displayedTxs.length === 0) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="9" style="text-align: center; padding: 48px 20px;">
+          <td colspan="10" style="text-align: center; padding: 48px 20px;">
             <div style="display: inline-flex; flex-direction: column; align-items: center; justify-content: center; max-width: 320px;">
               <div style="width: 52px; height: 52px; border-radius: 50%; background: #f1f5f9; color: #94a3b8; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;">
                 <i data-lucide="receipt-text" style="width: 24px; height: 24px;"></i>
@@ -2147,6 +2147,15 @@ async function loadLedgerTransactions() {
         return `<a href="javascript:void(0)" onclick="openCampaignDetailModal(${p1})" style="color:#4f46e5;font-weight:700;text-decoration:underline;" title="View Campaign Details">#${p1}</a>`;
       });
 
+      const creditsQty = Math.abs(parseInt(tx.credits_qty !== undefined ? tx.credits_qty : tx.amount, 10) || 0);
+      const rateNum = parseFloat(tx.rate_per_credit !== undefined ? tx.rate_per_credit : (tx.rate_inr || (tx.destination === 'international' ? 2.50 : 0.15)));
+      const hasExplicitBase = parseFloat(tx.base_amount || 0) > 0;
+      const billedInr = (tx.billed_amount_inr !== undefined && tx.billed_amount_inr !== null)
+        ? parseFloat(tx.billed_amount_inr)
+        : (hasExplicitBase 
+            ? Math.round((parseFloat(tx.base_amount) + parseFloat(tx.gst_amount || 0)) * 100) / 100 
+            : Math.round(creditsQty * rateNum * 100) / 100);
+
       // Voucher Slip Button for credits/allotments & refunds
       const voucherAction = (isRefund || !isDeduction) ? `
         <button type="button" class="btn-action btn-action-secondary" onclick="openRechargeReceiptModal(${tx.id})" title="View & Print Voucher Slip" style="padding: 3px 8px; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 4px; border-radius: 6px;">
@@ -2163,8 +2172,13 @@ async function loadLedgerTransactions() {
           </td>
           <td><strong style="font-size:0.82rem;color:#1e293b;display:inline-flex;align-items:center;gap:5px;"><i data-lucide="${channelIcon}" style="width:13px;height:13px;color:#4f46e5;"></i> ${escapeHtml(channelLabel)}</strong></td>
           <td><span style="font-size:0.78rem;color:var(--slate-600);display:inline-flex;align-items:center;gap:4px;"><i data-lucide="${destIcon}" style="width:12px;height:12px;color:#64748b;"></i> ${destLabel}</span></td>
-          <td style="text-align:right;">
-            <strong style="color:${amountColor};font-size:0.92rem;font-family:monospace;">${amountSign}${Math.abs(tx.amount).toLocaleString()}</strong>
+          <td style="text-align:right;white-space:nowrap;">
+            <strong style="color:${amountColor};font-size:0.92rem;font-family:monospace;">${amountSign}${creditsQty.toLocaleString()}</strong>
+            <div style="font-size:0.67rem;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:0.02em;">Credits</div>
+          </td>
+          <td style="text-align:right;white-space:nowrap;">
+            <strong style="color:#0f172a;font-size:0.88rem;font-family:monospace;">${amountSign}₹${billedInr.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+            <div style="font-size:0.67rem;color:#64748b;" title="Channel Billing Rate">@ ₹${rateNum.toFixed(4)}/cr</div>
           </td>
           <td>
             <div style="font-size:0.83rem;color:#334155;max-width:320px;line-height:1.4;" title="${escapedReason}">
@@ -2183,7 +2197,7 @@ async function loadLedgerTransactions() {
 
     if (window.lucide) setTimeout(() => lucide.createIcons(), 50);
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:red;padding:24px;">Failed to load statement: ${escapeHtml(err.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:red;padding:24px;">Failed to load statement: ${escapeHtml(err.message)}</td></tr>`;
   }
 }
 
@@ -13675,7 +13689,7 @@ window.renderU360LedgerTable = function(flowFilter = 'all') {
 
   if (filtered.length === 0) {
     ledgerTbody.innerHTML = `<tr>
-      <td colspan="6" style="text-align:center;padding:32px;color:#64748b;">
+      <td colspan="7" style="text-align:center;padding:32px;color:#64748b;">
         <i data-lucide="receipt" style="width:28px;height:28px;color:#94a3b8;margin-bottom:6px;"></i>
         <div style="font-weight:600;font-size:0.86rem;">No passbook transactions found under this category.</div>
         <div style="font-size:0.75rem;color:#94a3b8;margin-top:2px;">All allotments, client transfers, deductions and refunds are logged here.</div>
@@ -13708,6 +13722,9 @@ window.renderU360LedgerTable = function(flowFilter = 'all') {
       flowBadge = `<span class="status-badge" style="background:#ecfdf5;color:#15803d;border:1px solid #bbf7d0;font-size:0.72rem;font-weight:700;display:inline-flex;align-items:center;gap:3px;"><i data-lucide="arrow-down-left" style="width:11px;height:11px;"></i> Allotment (+)</span>`;
     }
 
+    const rateNum = parseFloat(t.rate_inr || (t.destination === 'international' ? 2.50 : 0.15));
+    const billedVal = amt * rateNum;
+
     let displayReason = String(t.reason || 'Credit allocation / adjustment');
     if (!currentUser || currentUser.role !== 'admin') {
       displayReason = displayReason
@@ -13737,7 +13754,14 @@ window.renderU360LedgerTable = function(flowFilter = 'all') {
         <td style="padding:10px 12px;">${flowBadge}</td>
         <td style="padding:10px 12px;"><strong style="font-size:0.76rem;color:#334155;">${escapeHtml(channelName)}</strong></td>
         <td style="padding:10px 12px;"><span style="font-size:0.75rem;color:#64748b;text-transform:capitalize;font-weight:600;">${escapeHtml(t.destination || 'domestic')}</span></td>
-        <td style="text-align:right;padding:10px 12px;">${amountBadge}</td>
+        <td style="text-align:right;padding:10px 12px;white-space:nowrap;">
+          ${amountBadge}
+          <div style="font-size:0.65rem;color:#64748b;font-weight:700;margin-top:2px;">CREDITS</div>
+        </td>
+        <td style="text-align:right;padding:10px 12px;white-space:nowrap;">
+          <strong style="color:#0f172a;font-size:0.84rem;font-family:monospace;">${isDed || isClientOut ? '-' : '+'}₹${billedVal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+          <div style="font-size:0.65rem;color:#64748b;">@ ₹${rateNum.toFixed(4)}</div>
+        </td>
         <td style="font-size:0.8rem;color:#475569;padding:10px 12px;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(displayReason)}">
           ${escapeHtml(displayReason)}
         </td>

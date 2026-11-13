@@ -310,10 +310,27 @@ router.get('/:id/360', authenticate, async (req, res) => {
       SELECT ct.id, ct.from_user_id, ct.to_user_id, ct.credit_type, ct.destination, ct.amount, ct.reason, ct.created_at,
              ct.direction, ct.refund_campaign_id, ct.refund_client_email,
              fu.email AS from_email, tu.email AS to_email,
-             fu.full_name AS from_name, tu.full_name AS to_name
+             fu.full_name AS from_name, tu.full_name AS to_name,
+             COALESCE(uc.rate_inr, 
+               CASE 
+                 WHEN ct.credit_type = 'gsm_sms' AND ct.destination = 'international' THEN 1.5000
+                 WHEN ct.credit_type = 'gsm_sms' THEN 0.1200
+                 WHEN ct.credit_type = 'dp' AND ct.destination = 'international' THEN 2.5000
+                 WHEN ct.credit_type = 'dp' THEN 0.2800
+                 WHEN ct.credit_type = 'cta' AND ct.destination = 'international' THEN 2.5000
+                 WHEN ct.credit_type = 'cta' THEN 0.2400
+                 WHEN ct.credit_type = 'dp_cta' AND ct.destination = 'international' THEN 3.0000
+                 WHEN ct.credit_type = 'dp_cta' THEN 0.3500
+                 WHEN ct.credit_type = 'own_number' AND ct.destination = 'international' THEN 1.2000
+                 WHEN ct.credit_type = 'own_number' THEN 0.0800
+                 WHEN ct.destination = 'international' THEN 2.0000
+                 ELSE 0.1500
+               END
+             ) AS rate_inr
       FROM credit_transactions ct
       LEFT JOIN users fu ON ct.from_user_id = fu.id
       LEFT JOIN users tu ON ct.to_user_id = tu.id
+      LEFT JOIN user_credits uc ON (uc.user_id = ct.to_user_id AND uc.credit_type = ct.credit_type AND uc.destination = ct.destination)
       WHERE ct.to_user_id = $1 OR ct.from_user_id = $1
       ORDER BY ct.created_at DESC
       LIMIT 50

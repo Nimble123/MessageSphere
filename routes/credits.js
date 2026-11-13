@@ -306,10 +306,27 @@ async function buildLedgerQuery(req, isExport = false) {
   const sql = `
     SELECT ct.*, 
            u_from.email as from_email,
-           u_to.email as to_email
+           u_to.email as to_email,
+           COALESCE(uc.rate_inr, 
+             CASE 
+               WHEN ct.credit_type = 'gsm_sms' AND ct.destination = 'international' THEN 1.5000
+               WHEN ct.credit_type = 'gsm_sms' THEN 0.1200
+               WHEN ct.credit_type = 'dp' AND ct.destination = 'international' THEN 2.5000
+               WHEN ct.credit_type = 'dp' THEN 0.2800
+               WHEN ct.credit_type = 'cta' AND ct.destination = 'international' THEN 2.5000
+               WHEN ct.credit_type = 'cta' THEN 0.2400
+               WHEN ct.credit_type = 'dp_cta' AND ct.destination = 'international' THEN 3.0000
+               WHEN ct.credit_type = 'dp_cta' THEN 0.3500
+               WHEN ct.credit_type = 'own_number' AND ct.destination = 'international' THEN 1.2000
+               WHEN ct.credit_type = 'own_number' THEN 0.0800
+               WHEN ct.destination = 'international' THEN 2.0000
+               ELSE 0.1500
+             END
+           ) AS rate_inr
     FROM credit_transactions ct
     LEFT JOIN users u_from ON ct.from_user_id = u_from.id
     LEFT JOIN users u_to ON ct.to_user_id = u_to.id
+    LEFT JOIN user_credits uc ON (uc.user_id = ct.to_user_id AND uc.credit_type = ct.credit_type AND uc.destination = ct.destination)
     ${whereSql}
     ORDER BY ct.created_at DESC
     LIMIT ${limitVal} OFFSET ${offsetVal}
@@ -362,6 +379,13 @@ router.get('/transactions', authenticate, async (req, res) => {
         }
       }
 
+      const rateNum = parseFloat(tx.rate_inr) || (tx.destination === 'international' ? 2.50 : 0.15);
+      const creditsQty = Math.abs(parseInt(tx.amount, 10) || 0);
+      const hasExplicitBase = parseFloat(tx.base_amount || 0) > 0;
+      const billedInr = hasExplicitBase 
+        ? Math.round((parseFloat(tx.base_amount) + parseFloat(tx.gst_amount || 0)) * 100) / 100
+        : Math.round(creditsQty * rateNum * 100) / 100;
+
       return {
         ...tx,
         reason: safeReason,
@@ -376,7 +400,10 @@ router.get('/transactions', authenticate, async (req, res) => {
         badge_border: dir.badge_border,
         signed_amount: dir.signed_amount,
         is_credit: dir.is_credit,
-        counterparty_email: counterparty
+        counterparty_email: counterparty,
+        credits_qty: creditsQty,
+        rate_per_credit: rateNum,
+        billed_amount_inr: billedInr
       };
     });
 
@@ -429,6 +456,13 @@ router.get('/transactions/export', authenticate, async (req, res) => {
         }
       }
 
+      const rateNum = parseFloat(tx.rate_inr) || (tx.destination === 'international' ? 2.50 : 0.15);
+      const creditsQty = Math.abs(parseInt(tx.amount, 10) || 0);
+      const hasExplicitBase = parseFloat(tx.base_amount || 0) > 0;
+      const billedInr = hasExplicitBase 
+        ? Math.round((parseFloat(tx.base_amount) + parseFloat(tx.gst_amount || 0)) * 100) / 100
+        : Math.round(creditsQty * rateNum * 100) / 100;
+
       return {
         ...tx,
         reason: safeReason,
@@ -440,7 +474,10 @@ router.get('/transactions/export', authenticate, async (req, res) => {
         badge_text: dir.badge_text,
         signed_amount: dir.signed_amount,
         is_credit: dir.is_credit,
-        counterparty_email: counterparty
+        counterparty_email: counterparty,
+        credits_qty: creditsQty,
+        rate_per_credit: rateNum,
+        billed_amount_inr: billedInr
       };
     });
 
@@ -448,20 +485,22 @@ router.get('/transactions/export', authenticate, async (req, res) => {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="MessageSphere_Ledger_Statement_${timestamp}.csv"`);
 
-    let csv = 'Transaction ID,Timestamp (IST),Direction,Amount,Channel,Destination,Reason / Reference,From Account,To Account\n';
+    let csv = 'Transaction ID,Timestamp (IST),Direction,Credits (Qty),Rate (INR),Amount (INR),Channel,Destination,Reason / Reference,From Account,To Account\n';
     enriched.forEach(tx => {
       const id = tx.id;
       const dateStr = sanitizeCsvCell(new Date(tx.created_at).toLocaleString('en-IN'));
       let dir = tx.badge_text ? tx.badge_text.toUpperCase() : (tx.is_credit ? 'CREDIT IN (+)' : 'DEBIT OUT (-)');
       const dirCell = sanitizeCsvCell(dir);
-      const amt = tx.signed_amount;
+      const creditsCell = tx.is_credit ? `+${tx.credits_qty}` : `-${tx.credits_qty}`;
+      const rateCell = tx.rate_per_credit ? tx.rate_per_credit.toFixed(4) : '0.1500';
+      const amountCell = tx.is_credit ? `+${tx.billed_amount_inr.toFixed(2)}` : `-${tx.billed_amount_inr.toFixed(2)}`;
       const channel = sanitizeCsvCell(tx.credit_type);
       const dest = sanitizeCsvCell(tx.destination);
       const reason = sanitizeCsvCell(tx.reason || '');
       const fromAcc = sanitizeCsvCell(tx.from_email);
       const toAcc = sanitizeCsvCell(tx.to_email);
 
-      csv += `${id},${dateStr},${dirCell},${amt},${channel},${dest},${reason},${fromAcc},${toAcc}\n`;
+      csv += `${id},${dateStr},${dirCell},${creditsCell},${rateCell},${amountCell},${channel},${dest},${reason},${fromAcc},${toAcc}\n`;
     });
 
     return res.send(csv);
