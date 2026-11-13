@@ -5,7 +5,7 @@ const { authenticate, requireRoles } = require('../middleware/auth');
 const { logAudit } = require('../services/audit');
 
 router.get('/events', authenticate, requireRoles('admin'), async (req, res) => {
-  if (req.user.is_team_member && req.user.permissions?.can_view_operations_audit === false) {
+  if (req.user.is_team_member && !req.user.permissions?.can_view_operations_audit && !req.user.permissions?.can_manage_team) {
     return res.status(403).json({ error: 'Permission Denied: Your staff account does not have permission to view operations audit logs.' });
   }
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);

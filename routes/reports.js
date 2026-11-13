@@ -6,7 +6,7 @@ const { authenticate } = require('../middleware/auth');
 // GET /api/reports/dashboard - Atomic, role-specific dashboard metrics
 router.get('/dashboard', authenticate, async (req, res) => {
   try {
-    const role = req.user.role;
+    const role = (req.user.is_team_member && req.user.parent_role) ? req.user.parent_role : req.user.role;
     const userId = req.user.effective_user_id || req.user.id;
 
     if (role === 'admin') {

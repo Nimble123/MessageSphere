@@ -133,9 +133,9 @@ async function runDataRetentionPurge() {
         const referencedFiles = new Set();
         try {
           const campRes = await query(`
-            SELECT attachments::text as att, attachment_url as url, media_url as media 
+            SELECT attachments::text as att, attachment_url as url 
             FROM campaigns 
-            WHERE attachments IS NOT NULL OR attachment_url IS NOT NULL OR media_url IS NOT NULL
+            WHERE attachments IS NOT NULL OR attachment_url IS NOT NULL
           `);
           for (const row of campRes.rows) {
             if (row.att) {
@@ -143,7 +143,6 @@ async function runDataRetentionPurge() {
               if (matches) matches.forEach(m => referencedFiles.add(path.basename(m)));
             }
             if (row.url) referencedFiles.add(path.basename(row.url));
-            if (row.media) referencedFiles.add(path.basename(row.media));
           }
 
           const tplRes = await query(`

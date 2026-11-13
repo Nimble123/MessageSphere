@@ -1651,7 +1651,7 @@ router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.sin
 
     // Compute SMS multi-part credit multiplier if applicable
     let refundMultiplier = 1;
-    if (campaign.channel_type === 'sms' && typeof calculateSmsMetrics === 'function') {
+    if ((campaign.channel_type === 'sms' || campaign.campaign_type === 'gsm_sms') && typeof calculateSmsMetrics === 'function') {
       const smsMetrics = calculateSmsMetrics(campaign.message_text);
       refundMultiplier = smsMetrics.parts_count || 1;
     }

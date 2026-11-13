@@ -360,6 +360,11 @@ const approveHandler = async (req, res) => {
     }
 
     // Role-based permission & quota checks:
+    if (req.user.is_team_member && !req.user.permissions?.can_manage_team) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Permission Denied: Top-up order verification and credit allocation is restricted to Account Administrators.' });
+    }
+
     // A user cannot approve their own credit request
     if (item.user_id === req.user.id) {
       await client.query('ROLLBACK');
@@ -458,6 +463,10 @@ router.post('/requests/:id/approve', authenticate, requireRoles('admin', 'resell
 
 // PATCH & POST /api/billing/requests/:id/reject - Admin or Reseller rejects request
 const rejectHandler = async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_team) {
+    return res.status(403).json({ error: 'Permission Denied: Only account administrators can reject payment orders.' });
+  }
+
   const reqId = parseInt(req.params.id, 10);
   const reason = String(req.body.reason || '').trim();
   if (!reason) return res.status(400).json({ error: 'A rejection reason is required' });
@@ -506,6 +515,10 @@ router.post('/requests/:id/reject', authenticate, requireRoles('admin', 'reselle
 
 // POST /api/billing/requests/:id/record-payment - Super Admin or Reseller records payment (settles full or partial Khata)
 router.post('/requests/:id/record-payment', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_team) {
+    return res.status(403).json({ error: 'Permission Denied: Recording offline payment receipts is restricted to Account Administrators.' });
+  }
+
   const reqId = parseInt(req.params.id, 10);
   const amtStr = String(req.body.amount || '');
   if (/[eE]/.test(amtStr)) {
@@ -753,6 +766,9 @@ router.get('/plans', authenticate, async (req, res) => {
 
 // POST /api/billing/plans - Create a new credit plan
 router.post('/plans', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_team) {
+    return res.status(403).json({ error: 'Permission Denied: Plan configuration is restricted to Account Administrators.' });
+  }
   const {
     plan_name,
     description,
@@ -859,6 +875,10 @@ router.post('/plans', authenticate, requireRoles('admin', 'reseller'), async (re
 
 // PUT /api/billing/plans/:id - Update existing plan
 router.put('/plans/:id', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_team) {
+    return res.status(403).json({ error: 'Permission Denied: Plan configuration is restricted to Account Administrators.' });
+  }
+
   const planId = parseInt(req.params.id, 10);
   if (isNaN(planId)) return res.status(400).json({ error: 'Invalid plan ID' });
 
@@ -936,6 +956,10 @@ router.put('/plans/:id', authenticate, requireRoles('admin', 'reseller'), async 
 
 // PATCH /api/billing/plans/:id/toggle - Toggle active status
 router.patch('/plans/:id/toggle', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_team) {
+    return res.status(403).json({ error: 'Permission Denied: Plan configuration is restricted to Account Administrators.' });
+  }
+
   const planId = parseInt(req.params.id, 10);
   if (isNaN(planId)) return res.status(400).json({ error: 'Invalid plan ID' });
 
@@ -959,6 +983,10 @@ router.patch('/plans/:id/toggle', authenticate, requireRoles('admin', 'reseller'
 
 // DELETE /api/billing/plans/:id - Delete a plan
 router.delete('/plans/:id', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_team) {
+    return res.status(403).json({ error: 'Permission Denied: Plan configuration is restricted to Account Administrators.' });
+  }
+
   const planId = parseInt(req.params.id, 10);
   if (isNaN(planId)) return res.status(400).json({ error: 'Invalid plan ID' });
 

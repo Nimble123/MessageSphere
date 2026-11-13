@@ -150,9 +150,10 @@ async function buildLedgerQuery(req, isExport = false) {
   const params = [];
   let paramIdx = 1;
 
+  const effectiveRole = (req.user.is_team_member && req.user.parent_role) ? req.user.parent_role : req.user.role;
   let viewerUserId = req.user.effective_user_id || req.user.id;
 
-  if (req.user.role === 'admin') {
+  if (effectiveRole === 'admin') {
     const targetUserId = userId ? parseInt(userId, 10) : null;
     if (targetUserId && !isNaN(targetUserId)) {
       whereClauses.push(`(ct.to_user_id = $${paramIdx} OR ct.from_user_id = $${paramIdx})`);
@@ -160,11 +161,12 @@ async function buildLedgerQuery(req, isExport = false) {
       paramIdx++;
       viewerUserId = targetUserId;
     }
-  } else if (req.user.role === 'reseller') {
+  } else if (effectiveRole === 'reseller') {
+    const resellerOwnerId = req.user.effective_user_id || req.user.id;
     const targetUserId = userId ? parseInt(userId, 10) : null;
     if (targetUserId && !isNaN(targetUserId)) {
       // Ensure target user is the reseller or one of their clients
-      const check = await query('SELECT id FROM users WHERE id = $1 AND (id = $2 OR reseller_id = $2)', [targetUserId, req.user.id]);
+      const check = await query('SELECT id FROM users WHERE id = $1 AND (id = $2 OR reseller_id = $2)', [targetUserId, resellerOwnerId]);
       if (check.rows.length === 0) {
         throw new Error('Permission denied: You can only view transactions for your managed client accounts.');
       }
@@ -179,7 +181,7 @@ async function buildLedgerQuery(req, isExport = false) {
         ct.from_user_id = $${paramIdx} OR 
         ct.to_user_id IN (SELECT id FROM users WHERE reseller_id = $${paramIdx})
       )`);
-      params.push(req.user.id);
+      params.push(resellerOwnerId);
       paramIdx++;
     }
   } else {

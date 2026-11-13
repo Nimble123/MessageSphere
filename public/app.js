@@ -3854,7 +3854,7 @@ window.handleDashboardCardClick = function(cardNumber) {
 
 async function refreshDashboardMetrics() {
   if (!currentUser) return;
-  const role = currentUser.role || 'user';
+  const role = (currentUser.is_team_member && currentUser.parent_role) ? currentUser.parent_role : (currentUser.role || 'user');
 
   // 1. Role-Adaptive Quick Action Strips
   const stripAdmin = document.getElementById('dash-quick-actions-admin');
@@ -8086,8 +8086,11 @@ window.useGroupForSmsCampaign = function(groupId) {
 };
 
 window.exportGroupCsvDirect = async function(groupId, groupName) {
+  if (currentUser && currentUser.is_team_member && !currentUser.permissions?.can_export_contacts) {
+    return showToast('error', 'Permission Denied', 'Organization security policy restricts exporting raw contact numbers.');
+  }
   try {
-    const res = await apiFetch(`/contacts/groups/${groupId}/all-numbers`);
+    const res = await apiFetch(`/contacts/groups/${groupId}/all-numbers?export=true`);
     const contacts = res.contacts || [];
     if (contacts.length === 0) return showToast('warning', 'Empty Group', 'No numbers in this group to export.');
     const csvContent = 'phone_number,name\n' + contacts.map(c => `"${c.phone_number}","${(c.name || '').replace(/"/g, '""')}"`).join('\n');

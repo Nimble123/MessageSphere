@@ -580,6 +580,10 @@ router.post('/', authenticate, requireRoles('admin', 'reseller'), async (req, re
 
 // PATCH /api/users/:id/block - Toggle block/unblock
 router.patch('/:id/block', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_users && !req.user.permissions?.can_manage_team) {
+    return res.status(403).json({ error: 'Permission Denied: Your staff account does not have permission to alter user status.' });
+  }
+
   const targetId = parseInt(req.params.id, 10);
   if (isNaN(targetId)) return res.status(400).json({ error: 'Invalid user ID' });
 
@@ -826,7 +830,7 @@ router.patch('/:id/settings', authenticate, requireRoles('admin', 'reseller'), a
 
 // POST /api/users/:id/credits - Add/allot credits
 router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
-  if (req.user.is_team_member && req.user.permissions?.can_allot_credits === false && req.user.permissions?.can_recharge_wallet === false) {
+  if (req.user.is_team_member && !req.user.permissions?.can_allot_credits && !req.user.permissions?.can_recharge_wallet && !req.user.permissions?.can_manage_team) {
     return res.status(403).json({ error: 'Permission Denied: Your staff account does not have permission to allot credits or adjust balances.' });
   }
 
@@ -1183,7 +1187,7 @@ router.patch('/:id/reset-password', authenticate, requireRoles('admin', 'reselle
 
 // DELETE /api/users/:id - Admin or Reseller deletes user
 router.delete('/:id', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
-  if (req.user.is_team_member && req.user.permissions?.can_manage_users === false) {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_users && !req.user.permissions?.can_manage_team) {
     return res.status(403).json({ error: 'Permission Denied: Your staff account does not have permission to delete user accounts.' });
   }
 
@@ -1374,6 +1378,10 @@ router.post('/:id/reassign-clients', authenticate, requireRoles('admin'), async 
 
 // POST /api/users/:id/impersonate - Super Admin or Reseller logs into client account
 router.post('/:id/impersonate', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_team) {
+    return res.status(403).json({ error: 'Permission Denied: Account impersonation is strictly restricted to Root Platform Administrators.' });
+  }
+
   const targetId = parseInt(req.params.id, 10);
   if (isNaN(targetId)) return res.status(400).json({ error: 'Invalid user ID' });
 
@@ -1464,6 +1472,10 @@ router.post('/:id/impersonate', authenticate, requireRoles('admin', 'reseller'),
 
 // PATCH /api/users/:id/rates - Update per-user custom rate card
 router.patch('/:id/rates', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
+  if (req.user.is_team_member && !req.user.permissions?.can_manage_users && !req.user.permissions?.can_manage_team) {
+    return res.status(403).json({ error: 'Permission Denied: Custom rate cards can only be modified by account administrators.' });
+  }
+
   const targetId = parseInt(req.params.id, 10);
   if (isNaN(targetId)) return res.status(400).json({ error: 'Invalid user ID' });
 

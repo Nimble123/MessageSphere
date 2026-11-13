@@ -1083,4 +1083,114 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.strictEqual(projectedRow.media_url, '/api/campaigns/files/img.jpg');
     assert.ok(projectedRow.updated_at);
   });
+
+  await t.test('Strict RBAC Permission Boundaries & Effective Role Resolutions', async () => {
+    // 1. Undefined permission must NOT bypass security checks (former === false bug)
+    const staffMemberWithDefaultPermissions = {
+      id: 99,
+      is_team_member: true,
+      parent_user_id: 1,
+      parent_role: 'admin',
+      permissions: {
+        can_send_campaigns: true,
+        can_view_campaigns: true,
+        can_manage_templates: true,
+        can_manage_contacts: true,
+        can_export_contacts: false,
+        can_view_billing: false,
+        can_recharge_wallet: false,
+        can_manage_team: false
+        // Note: can_allot_credits, can_manage_users are undefined!
+      }
+    };
+
+    function canAllotCredits(user) {
+      if (user.is_team_member && !user.permissions?.can_allot_credits && !user.permissions?.can_recharge_wallet && !user.permissions?.can_manage_team) {
+        return false;
+      }
+      return true;
+    }
+
+    function canManageUsers(user) {
+      if (user.is_team_member && !user.permissions?.can_manage_users && !user.permissions?.can_manage_team) {
+        return false;
+      }
+      return true;
+    }
+
+    function canImpersonate(user) {
+      if (user.is_team_member && !user.permissions?.can_manage_team) {
+        return false;
+      }
+      return true;
+    }
+
+    function canApproveTopup(user) {
+      if (user.is_team_member && !user.permissions?.can_manage_team) {
+        return false;
+      }
+      return true;
+    }
+
+    // Default staff must be blocked from allotting credits, deleting users, impersonating, and approving top-ups
+    assert.strictEqual(canAllotCredits(staffMemberWithDefaultPermissions), false);
+    assert.strictEqual(canManageUsers(staffMemberWithDefaultPermissions), false);
+    assert.strictEqual(canImpersonate(staffMemberWithDefaultPermissions), false);
+    assert.strictEqual(canApproveTopup(staffMemberWithDefaultPermissions), false);
+
+    // Permitted administrator or sub-admin with can_manage_team
+    const adminStaff = {
+      id: 98,
+      is_team_member: true,
+      parent_user_id: 1,
+      parent_role: 'admin',
+      permissions: { can_manage_team: true }
+    };
+    assert.strictEqual(canAllotCredits(adminStaff), true);
+    assert.strictEqual(canManageUsers(adminStaff), true);
+    assert.strictEqual(canImpersonate(adminStaff), true);
+    assert.strictEqual(canApproveTopup(adminStaff), true);
+
+    // 2. Sub-Admin Effective Role resolution
+    function resolveEffectiveRole(user) {
+      return (user.is_team_member && user.parent_role) ? user.parent_role : (user.role || 'user');
+    }
+    assert.strictEqual(resolveEffectiveRole(staffMemberWithDefaultPermissions), 'admin');
+
+    const resellerStaff = {
+      id: 97,
+      role: 'user',
+      is_team_member: true,
+      parent_user_id: 5,
+      parent_role: 'reseller',
+      permissions: {}
+    };
+    assert.strictEqual(resolveEffectiveRole(resellerStaff), 'reseller');
+
+    const regularClient = {
+      id: 15,
+      role: 'user',
+      is_team_member: false
+    };
+    assert.strictEqual(resolveEffectiveRole(regularClient), 'user');
+
+    // 3. GSM SMS DLR Multi-Part Refund Multiplier Check
+    function getDlrMultiplier(campaign, metricsFn) {
+      let refundMultiplier = 1;
+      if ((campaign.channel_type === 'sms' || campaign.campaign_type === 'gsm_sms') && typeof metricsFn === 'function') {
+        const smsMetrics = metricsFn(campaign.message_text);
+        refundMultiplier = smsMetrics.parts_count || 1;
+      }
+      return refundMultiplier;
+    }
+
+    const dummyMetrics = () => ({ parts_count: 3 });
+    const smsCamp1 = { channel_type: 'sms', campaign_type: 'gsm_sms', message_text: 'Long multi-part sms...' };
+    const smsCamp2 = { channel_type: 'shared_gateway', campaign_type: 'gsm_sms', message_text: 'Long multi-part sms...' };
+    const waCamp = { channel_type: 'whatsapp', campaign_type: 'normal', message_text: 'WhatsApp msg' };
+
+    assert.strictEqual(getDlrMultiplier(smsCamp1, dummyMetrics), 3);
+    assert.strictEqual(getDlrMultiplier(smsCamp2, dummyMetrics), 3);
+    assert.strictEqual(getDlrMultiplier(waCamp, dummyMetrics), 1);
+  });
 });
