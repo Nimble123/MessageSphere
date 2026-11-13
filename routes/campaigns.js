@@ -847,9 +847,12 @@ router.get('/', authenticate, async (req, res) => {
     const paginationClause = limit ? ` LIMIT ${limit} OFFSET ${offset}` : '';
 
     const listColumns = `
-      c.id, c.user_id, c.title, c.credit_type, c.destination, c.channel_type, c.campaign_type,
-      c.status, c.total_numbers, c.delivered_count, c.failed_count, c.credits_used, c.refunded_credits,
-      c.scheduled_at, c.created_at, c.updated_at, c.report_processed_at,
+      c.*,
+      c.campaign_type AS credit_type,
+      c.total_numbers AS credits_used,
+      CASE WHEN c.failed_refunded THEN c.failed_count ELSE 0 END AS refunded_credits,
+      COALESCE(c.report_processed_at, c.created_at) AS updated_at,
+      c.attachment_url AS media_url,
       SUBSTRING(c.message_text, 1, 150) AS message_preview,
       u.email as owner_email,
       ae.rejection_action,
@@ -1809,10 +1812,11 @@ router.get('/operator/queue', authenticate, requireRoles('admin'), async (req, r
 
     const sql = `
       SELECT 
-        c.id, c.user_id, c.title, c.credit_type, c.destination, c.channel_type, c.campaign_type,
-        c.status, c.total_numbers, c.delivered_count, c.failed_count, c.credits_used,
-        c.scheduled_at, c.created_at, c.updated_at, c.media_url, c.attachments,
-        c.message_text,
+        c.*,
+        c.campaign_type AS credit_type,
+        c.total_numbers AS credits_used,
+        COALESCE(c.report_processed_at, c.created_at) AS updated_at,
+        c.attachment_url AS media_url,
         u.email as owner_email,
         COUNT(*) OVER() AS total_queue_count
       FROM campaigns c

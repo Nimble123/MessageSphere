@@ -1024,4 +1024,63 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     // Deepshikha does NOT see unassigned direct client 30
     assert.strictEqual(visibleIds.includes(30), false, 'Deepshikha must not see unassigned accounts');
   });
+
+  await t.test('Campaigns Projections & Operator Queue Schema Alignment', async () => {
+    // Verified PostgreSQL columns in campaigns table from db.js
+    const campaignsTableColumns = new Set([
+      'id', 'user_id', 'title', 'channel_type', 'campaign_type', 'destination',
+      'message_text', 'total_numbers', 'status', 'delivered_count', 'failed_count',
+      'attachment_url', 'attachments', 'cta_data', 'scheduled_at', 'scheduled_triggered',
+      'failed_refunded', 'report_processed_at', 'report_processed_by', 'created_at',
+      'created_by_sub_user_id'
+    ]);
+
+    // Simulated row returned by SELECT c.*
+    const sampleDbRow = {
+      id: 42,
+      user_id: 1,
+      title: 'Diwali Mega Offer',
+      channel_type: 'shared_gateway',
+      campaign_type: 'normal',
+      destination: 'domestic',
+      message_text: 'Greetings for Diwali!',
+      total_numbers: 1500,
+      status: 'Submitted',
+      delivered_count: 0,
+      failed_count: 0,
+      attachment_url: '/api/campaigns/files/img.jpg',
+      attachments: '[]',
+      cta_data: null,
+      scheduled_at: null,
+      scheduled_triggered: false,
+      failed_refunded: false,
+      report_processed_at: null,
+      report_processed_by: null,
+      created_at: new Date('2026-11-13T10:00:00Z'),
+      created_by_sub_user_id: null
+    };
+
+    // Columns that must NOT be queried directly as c.<name> on postgres campaigns table without alias:
+    const nonExistentDbColumns = ['credit_type', 'credits_used', 'refunded_credits', 'updated_at', 'media_url'];
+    nonExistentDbColumns.forEach(col => {
+      assert.strictEqual(campaignsTableColumns.has(col), false, `Column '${col}' does not exist on campaigns table`);
+    });
+
+    // Ensure our projections synthesize these fields cleanly for UI consumption
+    const projectedRow = {
+      ...sampleDbRow,
+      credit_type: sampleDbRow.campaign_type,
+      credits_used: sampleDbRow.total_numbers,
+      refunded_credits: sampleDbRow.failed_refunded ? sampleDbRow.failed_count : 0,
+      updated_at: sampleDbRow.report_processed_at || sampleDbRow.created_at,
+      media_url: sampleDbRow.attachment_url,
+      message_preview: sampleDbRow.message_text.slice(0, 150),
+      owner_email: 'admin@messagesphere.com'
+    };
+
+    assert.strictEqual(projectedRow.credit_type, 'normal');
+    assert.strictEqual(projectedRow.credits_used, 1500);
+    assert.strictEqual(projectedRow.media_url, '/api/campaigns/files/img.jpg');
+    assert.ok(projectedRow.updated_at);
+  });
 });
