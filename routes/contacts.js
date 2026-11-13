@@ -37,8 +37,9 @@ async function checkGroupAccess(groupId, user, clientOrPool = null) {
 // GET /api/contacts/groups - List all groups with contact counts
 router.get('/groups', authenticate, async (req, res) => {
   try {
-    const isSuperAdmin = req.user.role === 'admin';
-    const isReseller = req.user.role === 'reseller';
+    const effectiveRole = (req.user.is_team_member && req.user.parent_role) ? req.user.parent_role : req.user.role;
+    const isSuperAdmin = effectiveRole === 'admin';
+    const isReseller = effectiveRole === 'reseller';
 
     let sql = '';
     let params = [];
@@ -560,8 +561,9 @@ router.post('/groups/:id/bulk-numbers', authenticate, async (req, res) => {
 // GET /api/contacts/blacklist - List blacklisted numbers (Role-aware, paginated & searchable)
 router.get('/blacklist', authenticate, async (req, res) => {
   try {
-    const isSuperAdmin = req.user.role === 'admin';
-    const isReseller = req.user.role === 'reseller';
+    const effectiveRole = (req.user.is_team_member && req.user.parent_role) ? req.user.parent_role : req.user.role;
+    const isSuperAdmin = effectiveRole === 'admin';
+    const isReseller = effectiveRole === 'reseller';
 
     const whereClauses = [];
     const params = [];
@@ -748,8 +750,9 @@ router.delete('/blacklist/:target', authenticate, async (req, res) => {
   try {
     const isSmallId = /^\d+$/.test(target) && target.length <= 9;
     const norm = normalizePhone(target);
-    const isSuperAdmin = req.user.role === 'admin';
-    const isReseller = req.user.role === 'reseller';
+    const effectiveRole = (req.user.is_team_member && req.user.parent_role) ? req.user.parent_role : req.user.role;
+    const isSuperAdmin = effectiveRole === 'admin';
+    const isReseller = effectiveRole === 'reseller';
 
     let authCondition = '';
     let params = [];

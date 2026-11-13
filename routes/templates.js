@@ -195,8 +195,9 @@ router.get('/starters', authenticate, async (req, res) => {
 // GET /api/templates/export/csv - Download user's templates as CSV
 router.get('/export/csv', authenticate, async (req, res) => {
   try {
-    const isSuperAdmin = req.user.role === 'admin';
-    const isReseller = req.user.role === 'reseller';
+    const effectiveRole = (req.user.is_team_member && req.user.parent_role) ? req.user.parent_role : req.user.role;
+    const isSuperAdmin = effectiveRole === 'admin';
+    const isReseller = effectiveRole === 'reseller';
 
     let sql = `
       SELECT t.id, t.title, t.channel, t.template_type, t.attachment_url, t.cta_data, t.category, t.is_unicode, t.character_count, t.parts_count, t.content, t.created_at, u.email as owner_email
@@ -267,8 +268,9 @@ router.get('/export/csv', authenticate, async (req, res) => {
 // GET /api/templates - List templates with role filtering & search
 router.get('/', authenticate, async (req, res) => {
   try {
-    const isSuperAdmin = req.user.role === 'admin';
-    const isReseller = req.user.role === 'reseller';
+    const effectiveRole = (req.user.is_team_member && req.user.parent_role) ? req.user.parent_role : req.user.role;
+    const isSuperAdmin = effectiveRole === 'admin';
+    const isReseller = effectiveRole === 'reseller';
     const channel = req.query.channel; // 'whatsapp' or 'sms'
     const category = req.query.category;
     const search = (req.query.search || '').trim().toLowerCase();

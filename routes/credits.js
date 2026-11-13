@@ -205,7 +205,7 @@ async function buildLedgerQuery(req, isExport = false) {
     paramIdx++;
   }
 
-  const isPlatformWide = (req.user.role === 'admin' && (!userId || isNaN(parseInt(userId, 10))));
+  const isPlatformWide = (effectiveRole === 'admin' && (!userId || isNaN(parseInt(userId, 10))));
 
   // Filter by direction BEFORE pagination
   if (direction && direction !== 'all') {

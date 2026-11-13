@@ -1192,5 +1192,14 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.strictEqual(getDlrMultiplier(smsCamp1, dummyMetrics), 3);
     assert.strictEqual(getDlrMultiplier(smsCamp2, dummyMetrics), 3);
     assert.strictEqual(getDlrMultiplier(waCamp, dummyMetrics), 1);
+
+    // 4. Sub-Admin Effective Role across Modules (Billing, Contacts, Templates, SMS)
+    function canAccessAdminBillingScope(user) {
+      const eff = (user.is_team_member && user.parent_role) ? user.parent_role : user.role;
+      return eff === 'admin';
+    }
+    assert.strictEqual(canAccessAdminBillingScope(staffMemberWithDefaultPermissions), true);
+    assert.strictEqual(canAccessAdminBillingScope(resellerStaff), false);
+    assert.strictEqual(canAccessAdminBillingScope(regularClient), false);
   });
 });

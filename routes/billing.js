@@ -10,7 +10,8 @@ router.get('/summary', authenticate, async (req, res) => {
     if (req.user.is_team_member && !req.user.permissions?.can_view_billing) {
       return res.status(403).json({ error: 'Permission Denied: Your assigned team role is not authorized to access billing financial data.' });
     }
-    if (req.user.role === 'admin') {
+    const effectiveRole = (req.user.is_team_member && req.user.parent_role) ? req.user.parent_role : req.user.role;
+    if (effectiveRole === 'admin') {
       const scope = req.query.scope || 'direct'; // 'direct' (default) or 'reseller_sales'
       const summarySql = `
         SELECT
@@ -175,8 +176,9 @@ router.get('/requests', authenticate, async (req, res) => {
     }
     let sql = '';
     let params = [];
+    const effectiveRole = (req.user.is_team_member && req.user.parent_role) ? req.user.parent_role : req.user.role;
 
-    if (req.user.role === 'admin') {
+    if (effectiveRole === 'admin') {
       const scope = req.query.scope || 'direct'; // 'direct' (default), 'reseller_sales', or 'all'
       let whereClause = '';
       if (scope === 'reseller_sales') {
@@ -207,7 +209,8 @@ router.get('/requests', authenticate, async (req, res) => {
         ${whereClause}
         ORDER BY cr.created_at DESC
       `;
-    } else if (req.user.role === 'reseller') {
+    } else if (effectiveRole === 'reseller') {
+      const parentResellerId = req.user.effective_user_id || req.user.id;
       sql = `
         SELECT 
           cr.*, 
@@ -226,7 +229,7 @@ router.get('/requests', authenticate, async (req, res) => {
         WHERE cr.user_id = $1 OR u.reseller_id = $1
         ORDER BY cr.created_at DESC
       `;
-      params = [req.user.id];
+      params = [parentResellerId];
     } else {
       const targetUserId = req.user.effective_user_id || req.user.id;
       sql = `

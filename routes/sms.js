@@ -570,7 +570,9 @@ router.get('/', authenticate, async (req, res) => {
     let sql = baseSelect;
     let params = [];
 
-    if (req.user.role === 'admin') {
+    const effectiveRole = (req.user.is_team_member && req.user.parent_role) ? req.user.parent_role : req.user.role;
+
+    if (effectiveRole === 'admin') {
       const filterUserId = req.query.user_id ? parseInt(req.query.user_id, 10) : null;
       const filterResellerId = req.query.reseller_id ? parseInt(req.query.reseller_id, 10) : null;
 
@@ -581,9 +583,10 @@ router.get('/', authenticate, async (req, res) => {
         params.push(filterResellerId);
         sql += ` AND (u.reseller_id = $${params.length} OR u.id = $${params.length})`;
       }
-    } else if (req.user.role === 'reseller') {
+    } else if (effectiveRole === 'reseller') {
+      const parentResellerId = req.user.effective_user_id || req.user.id;
       // Reseller sees own campaigns + their clients' campaigns
-      params.push(req.user.id);
+      params.push(parentResellerId);
       sql += ` AND (c.user_id = $${params.length} OR u.reseller_id = $${params.length})`;
 
       const filterUserId = req.query.user_id ? parseInt(req.query.user_id, 10) : null;

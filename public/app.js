@@ -3439,7 +3439,7 @@ btnSubmitCampaignSaas.addEventListener('click', async () => {
 // --- CAMPAIGNS LIST & REPORTING ---
 async function loadCampaigns() {
   if (!currentUser) return;
-  const tbody = document.getElementById('campaigns-table-tbody');
+  const tbody = document.getElementById('campaigns-full-tbody');
   if (tbody && (!allCampaigns || allCampaigns.length === 0)) {
     window.renderTableSkeleton(tbody, 8, 3);
   }
@@ -11147,7 +11147,8 @@ function renderBillingOrdersTable() {
 async function loadBillingOrders() {
   if (!billingOrdersTbody) return;
   try {
-    const isAdmin = currentUser && currentUser.role === 'admin';
+    const effectiveRole = (currentUser.is_team_member && currentUser.parent_role) ? currentUser.parent_role : currentUser.role;
+    const isAdmin = currentUser && effectiveRole === 'admin';
     const activeScope = (typeof adminBillingScope !== 'undefined' ? adminBillingScope : (window.adminBillingScope || 'direct'));
     const scopeParam = isAdmin ? `?scope=${activeScope}` : '';
 
@@ -11211,7 +11212,7 @@ async function loadBillingOrders() {
 
     const btnNewOrder = document.getElementById('btn-new-billing-order-modal');
     if (btnNewOrder && currentUser) {
-      if (currentUser.role === 'admin') {
+      if (effectiveRole === 'admin') {
         btnNewOrder.innerHTML = `<i data-lucide="arrow-right-left" style="width: 15px; height: 15px;"></i> Allot Credits / New Invoice`;
       } else {
         btnNewOrder.innerHTML = `<i data-lucide="plus-circle" style="width: 15px; height: 15px;"></i> Request Credit Top-up`;
