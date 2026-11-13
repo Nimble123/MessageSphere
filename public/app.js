@@ -13029,11 +13029,19 @@ function renderOperatorQueueRows() {
 
   const filtered = operatorQueueCampaigns.filter(c => {
     if (currentOperatorFilter === 'all') return true;
+    if (currentOperatorFilter === 'pending') return c.status === 'Submitted' || c.status === 'Approved';
+    if (currentOperatorFilter === 'Completed') return c.status === 'Completed' || c.status === 'Report Updated';
     return c.status === currentOperatorFilter;
   });
 
   if (!filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:35px;color:var(--slate-400);">No campaigns found in '${escapeHtml(currentOperatorFilter)}' queue.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:35px 20px;color:var(--slate-500);">
+      <div style="font-weight:600;font-size:0.95rem;color:var(--slate-700);margin-bottom:4px;">No campaigns found in '${escapeHtml(currentOperatorFilter)}' queue.</div>
+      <div style="font-size:0.8rem;color:var(--slate-400);margin-bottom:12px;">All campaigns on the platform are visible in the main Campaigns & Broadcasts Hub.</div>
+      <button type="button" class="btn-action btn-action-primary" onclick="closeModal('modal-operator-dispatch'); switchView('view-campaigns');" style="padding:6px 14px;font-size:0.8rem;">
+        Open Campaigns Hub
+      </button>
+    </td></tr>`;
     if (operatorCheckAll) operatorCheckAll.checked = false;
     return;
   }
@@ -13048,8 +13056,12 @@ function renderOperatorQueueRows() {
       statusBadge = `<span class="status-badge" style="background:#fef3c7;color:#b45309;border:1px solid #fde68a;font-size:0.72rem;display:inline-flex;align-items:center;gap:3px;"><i data-lucide="clock" style="width:11px;height:11px;"></i> Scheduled (${new Date(c.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})</span>`;
     } else if (c.status === 'Approved') {
       statusBadge = `<span class="status-badge status-approved">Approved</span>`;
-    } else {
+    } else if (c.status === 'Submitted') {
       statusBadge = `<span class="status-badge status-submitted">Submitted</span>`;
+    } else if (c.status === 'Completed' || c.status === 'Report Updated') {
+      statusBadge = `<span class="status-badge" style="background:#e0f2fe;color:#0284c7;border:1px solid #bae6fd;font-size:0.72rem;">Dispatched</span>`;
+    } else {
+      statusBadge = `<span class="status-badge" style="font-size:0.72rem;">${escapeHtml(c.status || 'Pending')}</span>`;
     }
     const audience = (c.total_numbers || 0).toLocaleString();
     const dateStr = c.created_at ? new Date(c.created_at).toLocaleString() : '-';
@@ -13138,17 +13150,29 @@ async function loadOperatorQueue() {
     // Update pill counters
     const subCount = operatorQueueCampaigns.filter(c => c.status === 'Submitted').length;
     const appCount = operatorQueueCampaigns.filter(c => c.status === 'Approved').length;
+    const pendCount = subCount + appCount;
+    const compCount = operatorQueueCampaigns.filter(c => c.status === 'Completed' || c.status === 'Report Updated').length;
 
     const pillAll = document.getElementById('op-filter-all-count');
+    const pillPend = document.getElementById('op-filter-pend-count');
     const pillSub = document.getElementById('op-filter-sub-count');
     const pillApp = document.getElementById('op-filter-app-count');
+    const pillComp = document.getElementById('op-filter-comp-count');
     if (pillAll) pillAll.textContent = operatorQueueCampaigns.length;
+    if (pillPend) pillPend.textContent = pendCount;
     if (pillSub) pillSub.textContent = subCount;
     if (pillApp) pillApp.textContent = appCount;
+    if (pillComp) pillComp.textContent = compCount;
 
     if (!operatorQueueCampaigns.length) {
       if (tbody) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:35px;color:var(--slate-400);">No campaigns currently pending dispatch. All queues clear!</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:35px 20px;color:var(--slate-500);">
+          <div style="font-weight:600;font-size:0.95rem;color:var(--slate-700);margin-bottom:4px;">No campaigns pending in dispatch queue.</div>
+          <div style="font-size:0.8rem;color:var(--slate-400);margin-bottom:12px;">All platform campaigns are visible in the main Campaigns & Broadcasts Hub.</div>
+          <button type="button" class="btn-action btn-action-primary" onclick="closeModal('modal-operator-dispatch'); switchView('view-campaigns');" style="padding:6px 14px;font-size:0.8rem;">
+            Open Campaigns Hub
+          </button>
+        </td></tr>`;
       }
       return;
     }

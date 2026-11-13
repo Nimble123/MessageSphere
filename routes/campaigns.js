@@ -1821,12 +1821,16 @@ router.get('/operator/queue', authenticate, requireRoles('admin'), async (req, r
         COUNT(*) OVER() AS total_queue_count
       FROM campaigns c
       JOIN users u ON c.user_id = u.id
-      WHERE c.status IN ('Submitted', 'Approved')
+      WHERE c.status IN ('Submitted', 'Approved', 'Completed', 'Report Updated')
         AND COALESCE(c.channel_type, 'whatsapp') != 'sms'
         AND COALESCE(c.campaign_type, '') != 'gsm_sms'
       ORDER BY 
-        CASE WHEN c.scheduled_at IS NOT NULL AND c.scheduled_at <= NOW() THEN 0 ELSE 1 END,
-        c.created_at ASC
+        CASE 
+          WHEN c.status IN ('Submitted', 'Approved') AND c.scheduled_at IS NOT NULL AND c.scheduled_at <= NOW() THEN 0 
+          WHEN c.status IN ('Submitted', 'Approved') THEN 1 
+          ELSE 2 
+        END,
+        c.created_at DESC
       LIMIT $1 OFFSET $2
     `;
     const result = await query(sql, [limit, offset]);
@@ -1882,7 +1886,7 @@ router.get('/operator/bulk-export', authenticate, requireRoles('admin'), async (
         SELECT c.*, u.email as owner_email
         FROM campaigns c
         JOIN users u ON c.user_id = u.id
-        WHERE c.status IN ('Submitted', 'Approved')
+        WHERE c.status IN ('Submitted', 'Approved', 'Completed', 'Report Updated')
           AND COALESCE(c.channel_type, 'whatsapp') != 'sms'
           AND COALESCE(c.campaign_type, '') != 'gsm_sms'
         ORDER BY c.id ASC
