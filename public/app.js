@@ -442,6 +442,9 @@ window.switchView = function(viewId) {
     const appMain = document.querySelector('.app-main');
     if (appMain) appMain.scrollTop = 0;
     window.scrollTo(0, 0);
+    if (typeof window.closeMobileSidebar === 'function' && window.innerWidth <= 768) {
+      window.closeMobileSidebar();
+    }
 
     const titles = {
       'view-dashboard': { title: 'Dashboard Overview', breadcrumb: 'MessageSphere / Overview' },
@@ -511,10 +514,54 @@ window.switchView = function(viewId) {
 };
 const switchView = window.switchView;
 
+// --- MOBILE DRAWER NAVIGATION ---
+window.openMobileSidebar = function() {
+  const sidebar = document.querySelector('.app-sidebar');
+  const backdrop = document.getElementById('sidebar-mobile-backdrop');
+  if (sidebar) sidebar.classList.add('mobile-open');
+  if (backdrop) backdrop.classList.add('active');
+  document.body.classList.add('sidebar-open');
+};
+
+window.closeMobileSidebar = function() {
+  const sidebar = document.querySelector('.app-sidebar');
+  const backdrop = document.getElementById('sidebar-mobile-backdrop');
+  if (sidebar) sidebar.classList.remove('mobile-open');
+  if (backdrop) backdrop.classList.remove('active');
+  document.body.classList.remove('sidebar-open');
+};
+
+window.toggleMobileSidebar = function() {
+  const sidebar = document.querySelector('.app-sidebar');
+  if (sidebar && sidebar.classList.contains('mobile-open')) {
+    window.closeMobileSidebar();
+  } else {
+    window.openMobileSidebar();
+  }
+};
+
+const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
+if (btnToggleSidebar) {
+  btnToggleSidebar.addEventListener('click', (e) => {
+    e.stopPropagation();
+    window.toggleMobileSidebar();
+  });
+}
+
+const sidebarMobileBackdrop = document.getElementById('sidebar-mobile-backdrop');
+if (sidebarMobileBackdrop) {
+  sidebarMobileBackdrop.addEventListener('click', () => {
+    window.closeMobileSidebar();
+  });
+}
+
 navItems.forEach(item => {
   item.addEventListener('click', () => {
     const viewId = item.dataset.view;
     if (viewId) switchView(viewId);
+    if (window.innerWidth <= 768) {
+      window.closeMobileSidebar();
+    }
   });
 });
 

@@ -75,6 +75,9 @@
       height: 100%;
       margin: 0;
       padding: 0;
+      overflow-x: hidden;
+      max-width: 100vw;
+      -webkit-text-size-adjust: 100%;
     }
 
     body {
@@ -91,6 +94,16 @@
       overflow: hidden !important;
       height: 100vh !important;
       max-height: 100vh !important;
+    }
+
+    /* Prevent global horizontal scroll & table text wrap safety */
+    th, td {
+      word-break: break-word;
+      overflow-wrap: break-word;
+    }
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: #cbd5e1 transparent;
     }
 
     /* Custom Smooth Scrollbars */
@@ -412,6 +425,7 @@
       height: 100vh;
       max-height: 100vh;
       width: 100vw;
+      max-width: 100vw;
       overflow: hidden;
       display: flex;
       background-color: #f8fafc;
@@ -581,6 +595,9 @@
       flex: 1;
       height: 100%;
       max-height: 100vh;
+      min-width: 0;
+      width: 100%;
+      max-width: 100%;
       display: flex;
       flex-direction: column;
       overflow-y: auto;
@@ -592,10 +609,11 @@
 
     /* TOP HEADER */
     .main-topbar {
-      height: 64px;
+      min-height: 64px;
+      height: auto;
       background: white;
       border-bottom: 1px solid var(--border-color);
-      padding: 0 28px;
+      padding: 10px 24px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -604,6 +622,13 @@
       z-index: 100;
       flex-shrink: 0;
       box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+      min-width: 0;
+    }
+    .topbar-title-area {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
     .topbar-title-area h2 {
       font-size: 1.25rem;
@@ -615,6 +640,43 @@
       font-size: 0.76rem;
       color: var(--slate-500);
       margin-top: 1px;
+    }
+
+    /* MOBILE DRAWER NAVIGATION TOGGLES & BACKDROP */
+    .btn-sidebar-toggle {
+      display: none;
+      background: #ffffff;
+      border: 1px solid var(--slate-300);
+      border-radius: 8px;
+      padding: 6px;
+      color: var(--slate-700);
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.15s ease;
+    }
+    .btn-sidebar-toggle:hover {
+      background: var(--slate-100);
+      color: var(--slate-900);
+      border-color: var(--slate-400);
+    }
+    .sidebar-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      z-index: 9990;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+      display: none;
+    }
+    .sidebar-backdrop.active {
+      opacity: 1;
+      pointer-events: auto;
+      display: block;
     }
     .topbar-actions {
       display: flex;
@@ -659,11 +721,16 @@
       max-width: 1400px;
       margin: 0 auto;
       width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
     }
     /* VIEW ENTRANCE & VIEW TRANSITIONS */
     .app-view {
       display: none;
       opacity: 0;
+      min-width: 0;
+      width: 100%;
+      box-sizing: border-box;
     }
     .app-view.active {
       display: block;
@@ -2108,18 +2175,71 @@
       .app-sidebar .brand-title, .app-sidebar .nav-text, .app-sidebar .user-meta, .app-sidebar .nav-category { display: none; }
       .sidebar-header { justify-content: center; padding: 18px 0; }
       .nav-item { justify-content: center; padding: 10px; }
-      .composer-layout { grid-template-columns: 1fr; }
-      .preview-sticky { display: none; }
+      .composer-layout { grid-template-columns: 1fr !important; gap: 20px; }
+      .preview-sticky { display: block !important; position: static !important; max-width: 480px; margin: 20px auto 0 auto; width: 100%; }
       .dashboard-charts-grid { grid-template-columns: 1fr !important; }
+      .brand-studio-layout { grid-template-columns: 1fr !important; gap: 20px; }
       .view-container { padding: 18px; }
     }
 
     @media (max-width: 768px) {
+      .btn-sidebar-toggle {
+        display: inline-flex;
+      }
+      .app-sidebar {
+        position: fixed !important;
+        top: 0;
+        bottom: 0;
+        left: -285px;
+        width: 270px !important;
+        height: 100vh !important;
+        max-height: 100vh !important;
+        transition: left 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+        z-index: 9999;
+        box-shadow: 0 0 50px rgba(0, 0, 0, 0.6);
+      }
+      .app-sidebar.mobile-open {
+        left: 0 !important;
+      }
+      .app-sidebar .brand-title,
+      .app-sidebar .nav-text,
+      .app-sidebar .user-meta,
+      .app-sidebar .nav-category {
+        display: block !important;
+      }
+      .sidebar-header {
+        justify-content: flex-start !important;
+        padding: 16px 20px !important;
+      }
+      .nav-item {
+        justify-content: flex-start !important;
+        padding: 10px 14px !important;
+      }
+      .sidebar-user {
+        padding: 12px 16px !important;
+        justify-content: space-between !important;
+      }
+      .btn-icon-logout {
+        display: flex !important;
+      }
+
+      /* iOS Safari zoom prevention */
+      input, select, textarea, .form-input, .search-input {
+        font-size: 16px !important;
+      }
+
       .main-topbar {
         flex-direction: column;
         align-items: flex-start;
-        gap: 12px;
-        padding: 12px 16px;
+        gap: 10px;
+        padding: 10px 16px;
+        min-height: 64px;
+        height: auto;
+      }
+      .topbar-title-area {
+        width: 100%;
+        display: flex;
+        align-items: center;
       }
       .topbar-actions {
         width: 100%;
@@ -2147,7 +2267,7 @@
       }
       .modal-card {
         max-width: 96vw !important;
-        margin: 10px;
+        margin: 8px auto !important;
       }
       .view-container {
         padding: 14px 10px;
@@ -2155,21 +2275,17 @@
     }
 
     @media (max-width: 640px) {
-      .app-sidebar {
-        width: 56px;
-      }
-      .sidebar-user {
-        padding: 8px 4px;
-        justify-content: center;
-      }
-      .btn-icon-logout {
-        display: none;
+      .grid-3col-responsive, .grid-2col-responsive {
+        grid-template-columns: 1fr !important;
       }
       .metrics-grid {
         grid-template-columns: 1fr;
       }
       .metric-card {
         padding: 14px;
+      }
+      .modal-body-saas {
+        padding: 16px 12px;
       }
     }
   </style>
@@ -2444,6 +2560,9 @@
   <!-- MAIN APPSHELL -->
   <div id="app-shell">
     
+    <!-- Mobile Drawer Backdrop -->
+    <div id="sidebar-mobile-backdrop" class="sidebar-backdrop"></div>
+
     <!-- SIDEBAR -->
     <aside class="app-sidebar">
       <div class="sidebar-header">
@@ -2568,8 +2687,13 @@
       <!-- STICKY TOPBAR -->
       <header class="main-topbar">
         <div class="topbar-title-area">
-          <h2 id="topbar-page-title">Dashboard Overview</h2>
-          <div class="breadcrumb" id="topbar-breadcrumb">MessageSphere / Overview</div>
+          <button type="button" id="btn-toggle-sidebar" class="btn-sidebar-toggle" title="Toggle Navigation Menu">
+            <i data-lucide="menu" style="width:20px;height:20px;"></i>
+          </button>
+          <div style="min-width:0;">
+            <h2 id="topbar-page-title" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Dashboard Overview</h2>
+            <div class="breadcrumb" id="topbar-breadcrumb" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">MessageSphere / Overview</div>
+          </div>
         </div>
         <div class="topbar-actions">
           <!-- Admin Scheduled Reminders Bell Pill & Dropdown -->
@@ -2801,7 +2925,7 @@
             </div>
 
             <!-- Channel Breakdown Table & Top Clients Grid -->
-            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(360px, 1fr));gap:16px;">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(min(100%, 280px), 1fr));gap:16px;">
               <!-- Left: Itemized Channel Rates & Margins -->
               <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
@@ -4552,7 +4676,7 @@
           </div>
 
           <!-- 2-Column Responsive Studio Layout -->
-          <div style="display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.95fr); gap: 24px; align-items: start;">
+          <div class="brand-studio-layout" style="display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.95fr); gap: 24px; align-items: start;">
             
             <!-- LEFT COLUMN: CONFIGURATION CONTROLS -->
             <div style="display:flex; flex-direction:column; gap:20px;">
@@ -5786,7 +5910,7 @@
           </div>
 
           <!-- Plans Grid Container -->
-          <div id="plans-grid-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 24px;">
+          <div id="plans-grid-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 24px;">
             <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--slate-400);">Loading available plans...</div>
           </div>
         </section>
@@ -8452,7 +8576,7 @@
         <button class="btn-modal-close" data-close="modal-starter-templates">&times;</button>
       </div>
       <div class="modal-body-saas" style="padding:16px;">
-        <div id="starter-templates-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));gap:14px;max-height:60vh;overflow-y:auto;padding-right:4px;">
+        <div id="starter-templates-grid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(min(100%, 280px), 1fr));gap:14px;max-height:60vh;overflow-y:auto;padding-right:4px;">
           <!-- Rendered dynamically -->
         </div>
       </div>
