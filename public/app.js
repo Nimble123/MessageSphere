@@ -3466,12 +3466,29 @@ window.setCampaignChannelScope = function(scope, btn) {
 
   const tabContainer = document.getElementById('campaign-channel-filter-tabs');
   if (tabContainer) {
-    tabContainer.querySelectorAll('.tab-pill').forEach(p => p.classList.remove('active'));
-    if (btn) {
-      btn.classList.add('active');
-    } else {
-      const targetBtn = document.getElementById(`tab-channel-${campaignChannelScope}`);
-      if (targetBtn) targetBtn.classList.add('active');
+    tabContainer.querySelectorAll('.tab-pill').forEach(p => {
+      p.classList.remove('active');
+      p.style.background = 'transparent';
+      p.style.color = '';
+      p.style.boxShadow = 'none';
+      p.style.borderColor = 'transparent';
+    });
+    const targetBtn = btn || document.getElementById(`tab-channel-${campaignChannelScope}`);
+    if (targetBtn) {
+      targetBtn.classList.add('active');
+      if (campaignChannelScope === 'whatsapp') {
+        targetBtn.style.background = '#dcfce7';
+        targetBtn.style.color = '#15803d';
+        targetBtn.style.boxShadow = '0 1px 3px rgba(22, 163, 74, 0.2)';
+      } else if (campaignChannelScope === 'sms') {
+        targetBtn.style.background = '#eff6ff';
+        targetBtn.style.color = '#1d4ed8';
+        targetBtn.style.boxShadow = '0 1px 3px rgba(37, 99, 235, 0.2)';
+      } else {
+        targetBtn.style.background = '#ffffff';
+        targetBtn.style.color = '#0f172a';
+        targetBtn.style.boxShadow = '0 1px 3px rgba(15, 23, 42, 0.1)';
+      }
     }
   }
 
@@ -4383,6 +4400,15 @@ if (btnResetCampaignFilters) {
   });
 }
 
+window.resetCampaignFilters = function() {
+  if (btnResetCampaignFilters) {
+    btnResetCampaignFilters.click();
+  }
+  if (typeof setCampaignChannelScope === 'function') {
+    setCampaignChannelScope('all');
+  }
+};
+
 const btnExportFilteredCampaigns = document.getElementById('btn-export-filtered-campaigns');
 if (btnExportFilteredCampaigns) {
   btnExportFilteredCampaigns.addEventListener('click', () => {
@@ -4826,27 +4852,53 @@ function renderCampaignsTable() {
 
   if (filtered.length === 0) {
     const isSuperAdmin = currentUser && currentUser.role === 'admin';
-    const emptyActionBtn = isSuperAdmin
-      ? `<button type="button" class="btn-action btn-action-primary" onclick="openOperatorDispatchModal()">
-          <i data-lucide="send" style="width:14px;height:14px;"></i> Open Operator Dispatch Queue
-        </button>`
-      : `<button type="button" class="btn-action btn-action-primary" onclick="switchView('view-new-campaign')">
-          <i data-lucide="send" style="width:14px;height:14px;"></i> Create New Campaign
-        </button>`;
+    const hasAnyCampaigns = allCampaigns && allCampaigns.length > 0;
+
+    let emptyContent = '';
+    if (!hasAnyCampaigns) {
+      emptyContent = `
+        <div class="empty-state-box">
+          <div class="empty-state-icon" style="background:#eff6ff;color:#4f46e5;"><i data-lucide="radio" style="width:26px;height:26px;"></i></div>
+          <div class="empty-state-title" style="font-weight:800;font-size:1.05rem;">No Campaigns Created Yet</div>
+          <div class="empty-state-desc">You haven't launched any broadcast campaigns yet. Create your first WhatsApp campaign or GSM Bulk SMS broadcast.</div>
+          <div style="display:flex;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap;">
+            <button type="button" class="btn-action btn-action-primary" onclick="switchView('view-new-campaign')" style="background:#16a34a;">
+              <i data-lucide="plus-circle" style="width:14px;height:14px;"></i> New WhatsApp Campaign
+            </button>
+            <button type="button" class="btn-action btn-action-primary" onclick="switchView('view-sms-new')" style="background:#4f46e5;">
+              <i data-lucide="send" style="width:14px;height:14px;"></i> New Bulk SMS Broadcast
+            </button>
+          </div>
+        </div>
+      `;
+    } else {
+      emptyContent = `
+        <div class="empty-state-box">
+          <div class="empty-state-icon" style="background:#fef3c7;color:#d97706;"><i data-lucide="filter-x" style="width:26px;height:26px;"></i></div>
+          <div class="empty-state-title" style="font-weight:800;font-size:1.05rem;">No Matching Campaigns Found</div>
+          <div class="empty-state-desc">There are <strong>${allCampaigns.length}</strong> campaigns in your system, but none match the currently active channel (${campaignChannelScope.toUpperCase()}), status (${campaignFilter}), or search criteria.</div>
+          <div style="display:flex;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap;">
+            <button type="button" class="btn-action btn-action-primary" onclick="window.resetCampaignFilters()" style="background:#4f46e5;">
+              <i data-lucide="rotate-ccw" style="width:14px;height:14px;"></i> Reset All Filters
+            </button>
+            ${isSuperAdmin ? `
+              <button type="button" class="btn-action btn-action-secondary" onclick="openOperatorDispatchModal()">
+                <i data-lucide="package-check" style="width:14px;height:14px;color:#059669;"></i> Open Operator Dispatch Queue
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }
 
     tbody.innerHTML = `
       <tr>
         <td colspan="8">
-          <div class="empty-state-box">
-            <div class="empty-state-icon"><i data-lucide="radio" style="width:24px;height:24px;"></i></div>
-            <div class="empty-state-title">No matching campaigns found</div>
-            <div class="empty-state-desc">There are no campaigns matching your selected filters, dates, or search criteria.</div>
-            ${emptyActionBtn}
-          </div>
+          ${emptyContent}
         </td>
       </tr>
     `;
-    if (pageInfoEl) pageInfoEl.textContent = 'Showing 0 campaigns';
+    if (pageInfoEl) pageInfoEl.textContent = `Showing 0 of ${allCampaigns ? allCampaigns.length : 0} campaigns`;
     if (pagesContainer) pagesContainer.innerHTML = '';
     if (window.lucide) lucide.createIcons({ root: tbody });
     return;
@@ -6730,6 +6782,10 @@ window.openActionDialog = function({
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     document.querySelectorAll('.modal-overlay').forEach(m => {
+      // Guard: do not close if modal is actively processing (e.g. delivery report reconciliation)
+      if (m.id === 'modal-upload-report' && document.getElementById('report-modal-progress-view')?.style.display === 'block' && document.getElementById('report-active-progress-card')?.style.display === 'block') {
+        return;
+      }
       if (m.style.display === 'flex' || m.style.display === 'block') {
         m.style.display = 'none';
       }
@@ -6747,11 +6803,19 @@ function setupModal(modalId) {
 
   const closeBtns = modal.querySelectorAll(`[data-close="${modalId}"], [data-close], .btn-modal-close`);
   closeBtns.forEach(b => b.addEventListener('click', () => {
+    if (modalId === 'modal-upload-report' && document.getElementById('report-modal-progress-view')?.style.display === 'block' && document.getElementById('report-active-progress-card')?.style.display === 'block') {
+      return;
+    }
     modal.style.display = 'none';
   }));
 
   modal.addEventListener('click', (e) => {
-    if (e.target === modal) modal.style.display = 'none';
+    if (e.target === modal) {
+      if (modalId === 'modal-upload-report' && document.getElementById('report-modal-progress-view')?.style.display === 'block' && document.getElementById('report-active-progress-card')?.style.display === 'block') {
+        return;
+      }
+      modal.style.display = 'none';
+    }
   });
 }
 
@@ -6761,13 +6825,24 @@ document.addEventListener('click', (e) => {
   if (closeTarget) {
     const modalId = closeTarget.getAttribute('data-close');
     if (modalId) {
+      if (modalId === 'modal-upload-report' && document.getElementById('report-modal-progress-view')?.style.display === 'block' && document.getElementById('report-active-progress-card')?.style.display === 'block') {
+        return;
+      }
       const targetModal = document.getElementById(modalId);
       if (targetModal) targetModal.style.display = 'none';
     }
     const parentModal = closeTarget.closest('.modal-overlay');
-    if (parentModal) parentModal.style.display = 'none';
+    if (parentModal) {
+      if (parentModal.id === 'modal-upload-report' && document.getElementById('report-modal-progress-view')?.style.display === 'block' && document.getElementById('report-active-progress-card')?.style.display === 'block') {
+        return;
+      }
+      parentModal.style.display = 'none';
+    }
   }
   if (e.target.classList && e.target.classList.contains('modal-overlay')) {
+    if (e.target.id === 'modal-upload-report' && document.getElementById('report-modal-progress-view')?.style.display === 'block' && document.getElementById('report-active-progress-card')?.style.display === 'block') {
+      return;
+    }
     e.target.style.display = 'none';
   }
 });
