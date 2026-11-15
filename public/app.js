@@ -540,6 +540,23 @@ window.toggleMobileSidebar = function() {
   }
 };
 
+// --- PASSWORD VISIBILITY TOGGLE ---
+window.togglePasswordVisibility = function(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const isPass = input.type === 'password';
+  input.type = isPass ? 'text' : 'password';
+  if (btn) {
+    const icon = isPass ? 'eye-off' : 'eye';
+    btn.innerHTML = `<i data-lucide="${icon}" style="width:16px;height:16px;"></i>`;
+    btn.setAttribute('aria-label', isPass ? 'Hide password' : 'Show password');
+    btn.setAttribute('title', isPass ? 'Hide password' : 'Show password');
+    if (window.lucide && typeof lucide.createIcons === 'function') {
+      try { lucide.createIcons(); } catch (_) {}
+    }
+  }
+};
+
 const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
 if (btnToggleSidebar) {
   btnToggleSidebar.addEventListener('click', (e) => {

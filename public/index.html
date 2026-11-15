@@ -396,6 +396,34 @@
       resize: vertical;
       line-height: 1.5;
     }
+    .password-wrapper {
+      position: relative;
+      width: 100%;
+      display: flex;
+      align-items: center;
+    }
+    .password-wrapper .form-input {
+      padding-right: 40px !important;
+    }
+    .password-toggle-btn {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #94a3b8;
+      padding: 5px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.15s ease;
+      z-index: 5;
+    }
+    .password-toggle-btn:hover {
+      color: var(--primary, #4f46e5);
+    }
     .btn-primary {
       width: 100%;
       padding: 11px 18px;
@@ -2345,7 +2373,12 @@
           </div>
           <div class="form-group">
             <label for="login-password">Password</label>
-            <input type="password" id="login-password" class="form-input" placeholder="••••••••" required autocomplete="current-password">
+            <div class="password-wrapper">
+              <input type="password" id="login-password" class="form-input" placeholder="••••••••" required autocomplete="current-password">
+              <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('login-password', this)" title="Show / Hide Password" aria-label="Toggle password visibility">
+                <i data-lucide="eye" style="width:16px;height:16px;"></i>
+              </button>
+            </div>
           </div>
           <div id="auth-error-box" style="display:none;margin-bottom:18px;padding:12px;border-radius:var(--radius-md);background:#fef2f2;border:1px solid #fecaca;color:#991b1b;font-size:0.88rem;"></div>
           <button type="submit" id="btn-submit-login" class="btn-primary">Sign In to Dashboard →</button>
@@ -2526,11 +2559,21 @@
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
             <div class="form-group">
               <label for="reg-password">Password <span style="color:#ef4444;">*</span></label>
-              <input type="password" id="reg-password" class="form-input" placeholder="Min 8 characters" required autocomplete="new-password">
+              <div class="password-wrapper">
+                <input type="password" id="reg-password" class="form-input" placeholder="Min 8 characters" required autocomplete="new-password">
+                <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('reg-password', this)" title="Show / Hide Password" aria-label="Toggle password visibility">
+                  <i data-lucide="eye" style="width:16px;height:16px;"></i>
+                </button>
+              </div>
             </div>
             <div class="form-group">
               <label for="reg-confirm-password">Confirm Password <span style="color:#ef4444;">*</span></label>
-              <input type="password" id="reg-confirm-password" class="form-input" placeholder="Repeat password" required autocomplete="new-password">
+              <div class="password-wrapper">
+                <input type="password" id="reg-confirm-password" class="form-input" placeholder="Repeat password" required autocomplete="new-password">
+                <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('reg-confirm-password', this)" title="Show / Hide Password" aria-label="Toggle password visibility">
+                  <i data-lucide="eye" style="width:16px;height:16px;"></i>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -5429,15 +5472,30 @@
                 <form id="change-pass-form" onsubmit="return false;">
                   <div class="form-group">
                     <label>Current Password</label>
-                    <input type="password" id="input-curr-pass" class="form-input" placeholder="Current password" required>
+                    <div class="password-wrapper">
+                      <input type="password" id="input-curr-pass" class="form-input" placeholder="Current password" required>
+                      <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('input-curr-pass', this)" title="Show / Hide Password" aria-label="Toggle password visibility">
+                        <i data-lucide="eye" style="width:16px;height:16px;"></i>
+                      </button>
+                    </div>
                   </div>
                   <div class="form-group">
                     <label>New Password (min 8 characters)</label>
-                    <input type="password" id="input-new-pass" class="form-input" placeholder="New strong password" required>
+                    <div class="password-wrapper">
+                      <input type="password" id="input-new-pass" class="form-input" placeholder="New strong password" required>
+                      <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('input-new-pass', this)" title="Show / Hide Password" aria-label="Toggle password visibility">
+                        <i data-lucide="eye" style="width:16px;height:16px;"></i>
+                      </button>
+                    </div>
                   </div>
                   <div class="form-group">
                     <label>Confirm New Password</label>
-                    <input type="password" id="input-conf-pass" class="form-input" placeholder="Repeat new password" required>
+                    <div class="password-wrapper">
+                      <input type="password" id="input-conf-pass" class="form-input" placeholder="Repeat new password" required>
+                      <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('input-conf-pass', this)" title="Show / Hide Password" aria-label="Toggle password visibility">
+                        <i data-lucide="eye" style="width:16px;height:16px;"></i>
+                      </button>
+                    </div>
                   </div>
                   <button type="submit" id="btn-save-password" class="btn-primary" style="max-width:220px;display:flex;align-items:center;justify-content:center;gap:8px;">
                     <i data-lucide="key-round" style="width:16px;height:16px;"></i> Update Password
@@ -6709,7 +6767,15 @@
           <div class="form-group"><label>Business / company</label><input id="modal-user-company-name" class="form-input" placeholder="Company name"></div>
           <div class="form-group"><label>Business email *</label><input type="email" id="modal-user-email" class="form-input" placeholder="client@company.com"></div>
           <div class="form-group"><label>Phone number *</label><input type="tel" id="modal-user-phone" class="form-input" placeholder="+91 98765 43210"></div>
-          <div class="form-group"><label>Password *</label><input type="password" id="modal-user-pass" class="form-input" placeholder="Minimum 8 characters"></div>
+          <div class="form-group">
+            <label>Password *</label>
+            <div class="password-wrapper">
+              <input type="password" id="modal-user-pass" class="form-input" placeholder="Minimum 8 characters">
+              <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('modal-user-pass', this)" title="Show / Hide Password" aria-label="Toggle password visibility">
+                <i data-lucide="eye" style="width:16px;height:16px;"></i>
+              </button>
+            </div>
+          </div>
           <div class="form-group"><label>Account role *</label><select id="modal-user-role" class="form-input"><option value="user" selected>Client user</option><option value="reseller" id="modal-role-reseller-opt">Reseller partner</option></select></div>
           <div class="form-group" id="modal-user-reseller-wrap" style="display:none;"><label>Assign to reseller</label><select id="modal-user-reseller-id" class="form-input"><option value="">Direct Super Admin account</option></select></div>
           <div class="form-group"><label>GSTIN (optional)</label><input id="modal-user-gstin" class="form-input" placeholder="GST registration number (e.g. 08AAAAA0000A1Z5)" oninput="onModalUserGstinChange(this.value)"></div>
@@ -7419,7 +7485,12 @@
         <input type="hidden" id="reset-modal-request-id">
         <div class="form-group">
           <label>New Temporary Password (min 8 characters)</label>
-          <input type="password" id="reset-modal-new-pass" class="form-input" placeholder="Enter new password">
+          <div class="password-wrapper">
+            <input type="password" id="reset-modal-new-pass" class="form-input" placeholder="Enter new password">
+            <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('reset-modal-new-pass', this)" title="Show / Hide Password" aria-label="Toggle password visibility">
+              <i data-lucide="eye" style="width:16px;height:16px;"></i>
+            </button>
+          </div>
         </div>
       </div>
       <div class="modal-footer-saas">
@@ -9672,7 +9743,12 @@
         </div>
         <div class="form-group" id="team-password-group" style="margin-bottom:14px;">
           <label style="display:block;font-size:0.85rem;font-weight:600;color:#334155;margin-bottom:6px;">Login Password (Min 6 characters) *</label>
-          <input type="password" id="team-input-password" class="form-input" placeholder="••••••••" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box;">
+          <div class="password-wrapper">
+            <input type="password" id="team-input-password" class="form-input" placeholder="••••••••" style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box;">
+            <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('team-input-password', this)" title="Show / Hide Password" aria-label="Toggle password visibility">
+              <i data-lucide="eye" style="width:16px;height:16px;"></i>
+            </button>
+          </div>
         </div>
         <div class="form-group" style="margin-bottom:16px;">
           <label style="display:block;font-size:0.85rem;font-weight:600;color:#334155;margin-bottom:6px;">Role Preset & Responsibilities</label>
@@ -9764,7 +9840,12 @@
         </div>
         <div class="form-group" style="margin-bottom:18px;">
           <label style="display:block;font-size:0.85rem;font-weight:600;color:#334155;margin-bottom:6px;">New Password (Min 6 characters) *</label>
-          <input type="password" id="reset-team-new-password" class="form-input" placeholder="••••••••" required style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box;">
+          <div class="password-wrapper">
+            <input type="password" id="reset-team-new-password" class="form-input" placeholder="••••••••" required style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box;">
+            <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('reset-team-new-password', this)" title="Show / Hide Password" aria-label="Toggle password visibility">
+              <i data-lucide="eye" style="width:16px;height:16px;"></i>
+            </button>
+          </div>
           <div style="font-size:0.78rem;color:#64748b;margin-top:4px;">Setting a new password will immediately revoke all current active sessions for this staff member.</div>
         </div>
         <div style="display:flex;justify-content:flex-end;gap:10px;">
