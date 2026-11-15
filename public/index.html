@@ -2376,7 +2376,58 @@
             <input type="hidden" id="reg-account-type" value="user">
           </div>
 
+          <!-- Instant Demo Mode Card Selector -->
+          <div id="reg-demo-card" style="margin-bottom: 16px; background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border: 1.5px solid #86efac; border-radius: 10px; padding: 12px 14px; transition: all 0.2s ease;">
+            <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; user-select: none;">
+              <input type="checkbox" id="reg-is-demo" checked style="width: 18px; height: 18px; accent-color: #16a34a; margin-top: 2px; cursor: pointer;" onchange="onRegDemoToggle()">
+              <div style="flex: 1;">
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+                  <span style="font-weight: 700; font-size: 0.88rem; color: #15803d; display: inline-flex; align-items: center; gap: 6px;">
+                    <i data-lucide="sparkles" style="width: 15px; height: 15px; color: #16a34a;"></i> Instant Free Demo Account
+                  </span>
+                  <span style="background: #16a34a; color: #ffffff; font-size: 0.68rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; letter-spacing: 0.3px;">25 CREDITS / CHANNEL</span>
+                </div>
+                <div style="font-size: 0.74rem; color: #166534; margin-top: 4px; line-height: 1.4;">
+                  Get <strong>25 free test credits</strong> in <strong>GSM Bulk SMS</strong>, <strong>WhatsApp Normal</strong>, <strong>CTA</strong>, <strong>DP (Media)</strong> &amp; <strong>DP + CTA</strong> to test live broadcasts without payment.
+                  <div style="font-size: 0.71rem; color: #047857; margin-top: 2px; opacity: 0.9;">(Own Virtual SIM excluded as physical SIM device registration is required).</div>
+                </div>
+              </div>
+            </label>
+          </div>
+
           <script>
+            window.onRegDemoToggle = function() {
+              var isDemoEl = document.getElementById('reg-is-demo');
+              var isDemo = Boolean(isDemoEl && isDemoEl.checked);
+              var hiddenType = (document.getElementById('reg-account-type') && document.getElementById('reg-account-type').value) || 'user';
+              var resellerSection = document.getElementById('reg-reseller-commitment-section');
+              var resellerDemoNotice = document.getElementById('reg-reseller-demo-notice');
+              var resellerPaidFields = document.getElementById('reg-reseller-paid-order-fields');
+              var btnSubmit = document.getElementById('btn-submit-register');
+
+              if (hiddenType === 'reseller') {
+                if (resellerSection) resellerSection.style.display = 'block';
+                if (isDemo) {
+                  if (resellerDemoNotice) resellerDemoNotice.style.display = 'block';
+                  if (resellerPaidFields) resellerPaidFields.style.display = 'none';
+                  if (btnSubmit) btnSubmit.textContent = 'Register Free Demo Partner Account →';
+                } else {
+                  if (resellerDemoNotice) resellerDemoNotice.style.display = 'none';
+                  if (resellerPaidFields) resellerPaidFields.style.display = 'block';
+                  if (btnSubmit) btnSubmit.textContent = 'Register Partner Account & Book Order →';
+                  if (typeof window.updateResellerOrderEstimate === 'function') window.updateResellerOrderEstimate();
+                }
+              } else {
+                if (resellerSection) resellerSection.style.display = 'none';
+                if (btnSubmit) {
+                  btnSubmit.textContent = isDemo ? 'Create Demo Account (Get 25 Free Credits) →' : 'Create Account & Get Started →';
+                }
+              }
+              if (window.lucide && typeof lucide.createIcons === 'function') {
+                try { lucide.createIcons(); } catch (_) {}
+              }
+            };
+
             window.setRegAccountType = function(type) {
               var hiddenInput = document.getElementById('reg-account-type');
               if (hiddenInput) hiddenInput.value = type;
@@ -2387,8 +2438,6 @@
               var checkReseller = document.getElementById('reg-reseller-check');
               var labelUser = document.getElementById('reg-user-label');
               var labelReseller = document.getElementById('reg-reseller-label');
-              var resellerSection = document.getElementById('reg-reseller-commitment-section');
-              var btnSubmit = document.getElementById('btn-submit-register');
 
               if (type === 'reseller') {
                 if (cardUser) {
@@ -2403,11 +2452,6 @@
                 if (checkReseller) checkReseller.style.display = 'inline-block';
                 if (labelUser) labelUser.style.color = '#334155';
                 if (labelReseller) labelReseller.style.color = '#4f46e5';
-                if (resellerSection) resellerSection.style.display = 'block';
-                if (btnSubmit) btnSubmit.textContent = 'Register Partner Account & Book Order →';
-                if (typeof window.updateResellerOrderEstimate === 'function') {
-                  window.updateResellerOrderEstimate();
-                }
               } else {
                 if (cardUser) {
                   cardUser.style.border = '2px solid #4f46e5';
@@ -2421,12 +2465,9 @@
                 if (checkReseller) checkReseller.style.display = 'none';
                 if (labelUser) labelUser.style.color = '#4f46e5';
                 if (labelReseller) labelReseller.style.color = '#334155';
-                if (resellerSection) resellerSection.style.display = 'none';
-                if (btnSubmit) btnSubmit.textContent = 'Create Account & Get Started →';
               }
-              if (window.lucide && typeof lucide.createIcons === 'function') {
-                try { lucide.createIcons(); } catch (_) {}
-              }
+
+              window.onRegDemoToggle();
             };
 
             window.updateResellerOrderEstimate = function() {
@@ -2460,6 +2501,7 @@
               var cardR = document.getElementById('reg-type-card-reseller');
               if (cardU) cardU.addEventListener('click', function() { window.setRegAccountType('user'); });
               if (cardR) cardR.addEventListener('click', function() { window.setRegAccountType('reseller'); });
+              if (typeof window.onRegDemoToggle === 'function') window.onRegDemoToggle();
             });
           </script>
 
@@ -2492,57 +2534,68 @@
             </div>
           </div>
 
-          <!-- Reseller Minimum Commitment Section (Visible only when Reseller is selected) -->
+          <!-- Reseller Section (Visible only when Reseller is selected) -->
           <div id="reg-reseller-commitment-section" style="display:none;margin-bottom:14px;padding:12px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-              <span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#4f46e5;color:#fff;">
-                <i data-lucide="zap" style="width:11px;height:11px;"></i>
-              </span>
-              <div>
-                <div style="font-size:0.82rem;font-weight:700;color:#1e293b;">Partner Onboarding (Min 1 Lakh Credits)</div>
-                <div style="font-size:0.71rem;color:#64748b;">Wholesale reseller accounts require an initial 1,00,000 credit commitment.</div>
+            <!-- Reseller Demo Notice Banner -->
+            <div id="reg-reseller-demo-notice" style="display:none;margin-bottom:12px;padding:10px 12px;background:#ecfdf5;border:1.5px solid #86efac;border-radius:8px;color:#065f46;font-size:0.78rem;">
+              <div style="font-weight:700;color:#15803d;display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+                <i data-lucide="sparkles" style="width:14px;height:14px;color:#16a34a;"></i> Reseller Free Trial Mode Active
               </div>
+              <div>The 1 Lakh wholesale purchase commitment is <strong>waived for trial</strong>. You receive 25 free credits per channel to configure your brand portal, test invite links, and launch test broadcasts.</div>
             </div>
 
-            <div class="form-group" style="margin-bottom:8px;">
-              <label for="reg-reseller-channel" style="font-size:0.78rem;font-weight:600;">Message Product Channel <span style="color:#ef4444;">*</span></label>
-              <select id="reg-reseller-channel" class="form-input" style="font-size:0.82rem;padding:7px 10px;" onchange="updateResellerOrderEstimate()">
-                <option value="gsm_sms_domestic" data-rate="0.1200" selected>GSM Bulk SMS (Domestic) — ₹0.1200 / msg</option>
-                <option value="normal_domestic" data-rate="0.1500">WhatsApp Normal (Domestic) — ₹0.1500 / msg</option>
-                <option value="cta_domestic" data-rate="0.2400">WhatsApp CTA Interactive (Domestic) — ₹0.2400 / msg</option>
-                <option value="dp_domestic" data-rate="0.2800">WhatsApp DP High Priority (Domestic) — ₹0.2800 / msg</option>
-                <option value="dp_cta_domestic" data-rate="0.3500">WhatsApp DP + CTA (Domestic) — ₹0.3500 / msg</option>
-                <option value="own_number_domestic" data-rate="0.0800">Own Virtual SIM (Domestic) — ₹0.0800 / msg</option>
-              </select>
+            <!-- Reseller Brand Name (Always applicable for Resellers) -->
+            <div class="form-group" style="margin-bottom:10px;">
+              <label for="reg-reseller-brand" style="font-size:0.78rem;font-weight:600;">White-Label Brand Name <span style="font-weight:400;color:var(--slate-500);">(Optional)</span></label>
+              <input type="text" id="reg-reseller-brand" class="form-input" placeholder="e.g. Nexus Media Solutions" style="font-size:0.82rem;padding:7px 10px;">
+              <div style="font-size:0.69rem;color:#64748b;margin-top:2px;">Custom brand name for your client portal &amp; invite links</div>
             </div>
 
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-              <div class="form-group" style="margin-bottom:0;">
-                <label for="reg-reseller-qty" style="font-size:0.78rem;font-weight:600;">Order Quantity <span style="color:#ef4444;">*</span></label>
-                <input type="number" id="reg-reseller-qty" class="form-input" min="100000" step="10000" value="100000" style="font-size:0.82rem;padding:7px 10px;" oninput="updateResellerOrderEstimate()">
-                <div style="font-size:0.69rem;color:#64748b;margin-top:2px;">Minimum: 1,00,000</div>
+            <!-- Reseller Paid Commitment Order Fields (Hidden in Demo Mode) -->
+            <div id="reg-reseller-paid-order-fields">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#4f46e5;color:#fff;">
+                  <i data-lucide="zap" style="width:11px;height:11px;"></i>
+                </span>
+                <div>
+                  <div style="font-size:0.82rem;font-weight:700;color:#1e293b;">Partner Onboarding (Min 1 Lakh Credits)</div>
+                  <div style="font-size:0.71rem;color:#64748b;">Production wholesale reseller accounts require an initial 1,00,000 credit commitment.</div>
+                </div>
               </div>
-              <div class="form-group" style="margin-bottom:0;">
-                <label for="reg-reseller-brand" style="font-size:0.78rem;font-weight:600;">White-Label Brand Name</label>
-                <input type="text" id="reg-reseller-brand" class="form-input" placeholder="e.g. Nexus Media" style="font-size:0.82rem;padding:7px 10px;">
-                <div style="font-size:0.69rem;color:#64748b;margin-top:2px;">For your client portal</div>
-              </div>
-            </div>
 
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-              <div class="form-group" style="margin-bottom:0;">
-                <label for="reg-reseller-gstin" style="font-size:0.78rem;font-weight:600;">GSTIN (Optional)</label>
-                <input type="text" id="reg-reseller-gstin" class="form-input" placeholder="e.g. 29ABCDE1234F1Z5" style="font-size:0.82rem;padding:7px 10px;" oninput="updateResellerOrderEstimate()">
+              <div class="form-group" style="margin-bottom:8px;">
+                <label for="reg-reseller-channel" style="font-size:0.78rem;font-weight:600;">Message Product Channel <span style="color:#ef4444;">*</span></label>
+                <select id="reg-reseller-channel" class="form-input" style="font-size:0.82rem;padding:7px 10px;" onchange="updateResellerOrderEstimate()">
+                  <option value="gsm_sms_domestic" data-rate="0.1200" selected>GSM Bulk SMS (Domestic) — ₹0.1200 / msg</option>
+                  <option value="normal_domestic" data-rate="0.1500">WhatsApp Normal (Domestic) — ₹0.1500 / msg</option>
+                  <option value="cta_domestic" data-rate="0.2400">WhatsApp CTA Interactive (Domestic) — ₹0.2400 / msg</option>
+                  <option value="dp_domestic" data-rate="0.2800">WhatsApp DP High Priority (Domestic) — ₹0.2800 / msg</option>
+                  <option value="dp_cta_domestic" data-rate="0.3500">WhatsApp DP + CTA (Domestic) — ₹0.3500 / msg</option>
+                  <option value="own_number_domestic" data-rate="0.0800">Own Virtual SIM (Domestic) — ₹0.0800 / msg</option>
+                </select>
               </div>
-              <div class="form-group" style="margin-bottom:0;">
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                <div class="form-group" style="margin-bottom:0;">
+                  <label for="reg-reseller-qty" style="font-size:0.78rem;font-weight:600;">Order Quantity <span style="color:#ef4444;">*</span></label>
+                  <input type="number" id="reg-reseller-qty" class="form-input" min="100000" step="10000" value="100000" style="font-size:0.82rem;padding:7px 10px;" oninput="updateResellerOrderEstimate()">
+                  <div style="font-size:0.69rem;color:#64748b;margin-top:2px;">Minimum: 1,00,000</div>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label for="reg-reseller-gstin" style="font-size:0.78rem;font-weight:600;">GSTIN (Optional)</label>
+                  <input type="text" id="reg-reseller-gstin" class="form-input" placeholder="e.g. 29ABCDE1234F1Z5" style="font-size:0.82rem;padding:7px 10px;" oninput="updateResellerOrderEstimate()">
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-bottom:8px;">
                 <label for="reg-reseller-address" style="font-size:0.78rem;font-weight:600;">Billing City / State</label>
                 <input type="text" id="reg-reseller-address" class="form-input" placeholder="e.g. Mumbai, MH" style="font-size:0.82rem;padding:7px 10px;">
               </div>
-            </div>
 
-            <div id="reg-reseller-order-summary" style="padding:8px 10px;background:#e0e7ff;border:1px solid #c7d2fe;border-radius:6px;font-size:0.78rem;color:#1e1b4b;display:flex;align-items:center;justify-content:space-between;">
-              <div>Initial Order: <strong id="reseller-est-qty">1,00,000</strong> Credits @ <span id="reseller-est-rate">₹0.12</span></div>
-              <div style="font-size:0.88rem;font-weight:800;color:#4338ca;" id="reseller-est-total">₹12,000</div>
+              <div id="reg-reseller-order-summary" style="padding:8px 10px;background:#e0e7ff;border:1px solid #c7d2fe;border-radius:6px;font-size:0.78rem;color:#1e1b4b;display:flex;align-items:center;justify-content:space-between;">
+                <div>Initial Order: <strong id="reseller-est-qty">1,00,000</strong> Credits @ <span id="reseller-est-rate">₹0.12</span></div>
+                <div style="font-size:0.88rem;font-weight:800;color:#4338ca;" id="reseller-est-total">₹12,000</div>
+              </div>
             </div>
           </div>
 

@@ -161,6 +161,7 @@ router.post('/login', loginLimiter, async (req, res) => {
         phone: user.phone,
         businessAddress: user.business_address,
         gstin: user.gstin,
+        is_demo: Boolean(user.is_demo),
         isTeamMember,
         teamRole,
         parentEmail,
@@ -223,7 +224,7 @@ router.get('/invite/:codeOrDomain', async (req, res) => {
 
 // POST /api/auth/register - Client self-registration via invite link or partner domain
 router.post('/register', registerLimiter, async (req, res) => {
-  const { email, password, full_name, phone, company_name, business_address, gstin, invite_code, account_type } = req.body;
+  const { email, password, full_name, phone, company_name, business_address, gstin, invite_code, account_type, is_demo } = req.body;
 
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
@@ -244,6 +245,7 @@ router.post('/register', registerLimiter, async (req, res) => {
   }
 
   const isResellerSignup = String(account_type).trim().toLowerCase() === 'reseller';
+  const isDemo = Boolean(is_demo === true || is_demo === 'true' || is_demo === 1 || is_demo === '1');
 
   const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
   let resellerId = null;
@@ -278,7 +280,7 @@ router.post('/register', registerLimiter, async (req, res) => {
   let cType = 'gsm_sms';
   let cDest = 'domestic';
 
-  if (isResellerSignup) {
+  if (isResellerSignup && !isDemo) {
     const rawQty = req.body.commitment_quantity;
     if (typeof rawQty === 'string' && /[eE]/.test(rawQty)) {
       return res.status(400).json({ error: 'Invalid commitment quantity format.' });
@@ -369,9 +371,9 @@ router.post('/register', registerLimiter, async (req, res) => {
     const taxMode = (effectiveGstin && effectiveGstin.length >= 10) ? 'with_gst' : 'non_gst';
 
     const insertResult = await client.query(`
-      INSERT INTO users (email, password_hash, role, reseller_id, full_name, company_name, phone, business_address, gstin, tax_mode, refund_destination)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'user')
-      RETURNING id, email, role, is_blocked, reseller_id, full_name, company_name, phone, business_address, gstin, tax_mode, refund_destination, created_at
+      INSERT INTO users (email, password_hash, role, reseller_id, full_name, company_name, phone, business_address, gstin, tax_mode, refund_destination, is_demo)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'user', $11)
+      RETURNING id, email, role, is_blocked, reseller_id, full_name, company_name, phone, business_address, gstin, tax_mode, refund_destination, is_demo, created_at
     `, [
       cleanEmail,
       passwordHash,
@@ -382,13 +384,33 @@ router.post('/register', registerLimiter, async (req, res) => {
       String(normalizedPhone).slice(0, 30),
       String(business_address || '').trim().slice(0, 2000) || null,
       effectiveGstin,
-      taxMode
+      taxMode,
+      isDemo
     ]);
 
     const newUser = insertResult.rows[0];
 
-    // Seed credits with reseller's default rates or standard system rates
+    // Seed credits with reseller's default rates or standard system rates (initial balance = 0)
     await initializeUserCredits(client, newUser.id, customRates);
+
+    // DEMO ACCOUNT CREDIT ALLOCATION:
+    // If registered as demo, grant 25 credits to each category in domestic, strictly EXCLUDING own_number
+    if (isDemo) {
+      const DEMO_CREDIT_AMOUNT = 25;
+      const demoChannels = ['gsm_sms', 'normal', 'cta', 'dp', 'dp_cta']; // strictly excludes 'own_number'
+      for (const channelType of demoChannels) {
+        await client.query(`
+          UPDATE user_credits 
+          SET balance = balance + $1 
+          WHERE user_id = $2 AND credit_type = $3 AND destination = 'domestic'
+        `, [DEMO_CREDIT_AMOUNT, newUser.id, channelType]);
+
+        await client.query(`
+          INSERT INTO credit_transactions (to_user_id, credit_type, destination, amount, reason, direction)
+          VALUES ($1, $2, 'domestic', $3, 'Welcome Demo Allowance: 25 Free Trial Credits', 'credit')
+        `, [newUser.id, channelType, DEMO_CREDIT_AMOUNT]);
+      }
+    }
 
     if (isResellerSignup) {
       const brandName = String(req.body.brand_name || company_name || full_name).trim().slice(0, 120) || 'Partner Portal';
@@ -411,40 +433,46 @@ router.post('/register', registerLimiter, async (req, res) => {
         ON CONFLICT (reseller_id) DO UPDATE SET brand_name = EXCLUDED.brand_name
       `, [newUser.id, brandName, finalCode]);
 
-      // Create official onboarding initial commitment order in credit_requests
-      await client.query(`
-        INSERT INTO credit_requests 
-          (user_id, user_email, package_name, credits_requested, credit_type, destination, amount_inr, rate_per_credit, paid_amount, payment_status, utr_number, receipt_url, status, invoice_number, tax_mode, base_amount, gst_amount)
-        VALUES 
-          ($1, $2, $3, $4, $5, $6, $7, $8, 0.00, 'Unpaid', 'PENDING-ONBOARDING', NULL, 'Pending', 'INV-' || TO_CHAR(CURRENT_DATE, 'YYYY') || '-' || LPAD(nextval('invoice_number_seq')::text, 6, '0'), $9, $10, $11)
-      `, [
-        newUser.id,
-        cleanEmail,
-        `Partner Onboarding Commitment (1 Lakh Min - ${commitmentChannel})`,
-        commitmentQty,
-        cType,
-        cDest,
-        totalAmount,
-        commitmentRate,
-        taxMode,
-        baseAmount,
-        gstAmount
-      ]);
+      // Only create onboarding initial commitment order in credit_requests if NOT a demo account
+      if (!isDemo) {
+        await client.query(`
+          INSERT INTO credit_requests 
+            (user_id, user_email, package_name, credits_requested, credit_type, destination, amount_inr, rate_per_credit, paid_amount, payment_status, utr_number, receipt_url, status, invoice_number, tax_mode, base_amount, gst_amount)
+          VALUES 
+            ($1, $2, $3, $4, $5, $6, $7, $8, 0.00, 'Unpaid', 'PENDING-ONBOARDING', NULL, 'Pending', 'INV-' || TO_CHAR(CURRENT_DATE, 'YYYY') || '-' || LPAD(nextval('invoice_number_seq')::text, 6, '0'), $9, $10, $11)
+        `, [
+          newUser.id,
+          cleanEmail,
+          `Partner Onboarding Commitment (1 Lakh Min - ${commitmentChannel})`,
+          commitmentQty,
+          cType,
+          cDest,
+          totalAmount,
+          commitmentRate,
+          taxMode,
+          baseAmount,
+          gstAmount
+        ]);
+      }
     }
 
     await logAudit(client, {
       actorId: newUser.id,
       entityType: 'user',
       entityId: newUser.id,
-      action: isResellerSignup ? 'reseller_partner_self_registered' : 'client_self_registered',
+      action: isResellerSignup 
+        ? (isDemo ? 'reseller_partner_demo_registered' : 'reseller_partner_self_registered')
+        : (isDemo ? 'client_demo_registered' : 'client_self_registered'),
       details: {
         role: assignedRole,
+        isDemo,
         resellerId,
         partnerBrandName,
         inviteCode: candidateSlug || null,
-        commitmentQty: isResellerSignup ? commitmentQty : 0,
-        commitmentChannel: isResellerSignup ? commitmentChannel : null,
-        totalAmount: isResellerSignup ? totalAmount : 0,
+        commitmentQty: (isResellerSignup && !isDemo) ? commitmentQty : 0,
+        commitmentChannel: (isResellerSignup && !isDemo) ? commitmentChannel : null,
+        totalAmount: (isResellerSignup && !isDemo) ? totalAmount : 0,
+        demoCreditsGranted: isDemo ? 125 : 0,
         ip: clientIp
       }
     });
@@ -459,10 +487,17 @@ router.post('/register', registerLimiter, async (req, res) => {
 
     const credits = await getUserCredits(newUser.id);
 
+    let welcomeMessage = 'Registration successful! Welcome to MessageSphere.';
+    if (isDemo) {
+      welcomeMessage = isResellerSignup
+        ? 'Demo Reseller Partner account activated! You have 25 free test credits per channel to test white-labeling and dispatches.'
+        : 'Demo Account activated! 25 Free Trial Credits added to your wallet across GSM SMS and WhatsApp channels.';
+    } else if (isResellerSignup) {
+      welcomeMessage = 'Reseller partner registration successful! Your 1 Lakh credit onboarding order is awaiting verification.';
+    }
+
     return res.status(201).json({
-      message: isResellerSignup 
-        ? 'Reseller partner registration successful! Your 1 Lakh credit onboarding order is awaiting verification.'
-        : 'Registration successful! Welcome to MessageSphere.',
+      message: welcomeMessage,
       token,
       user: {
         id: newUser.id,
@@ -476,11 +511,12 @@ router.post('/register', registerLimiter, async (req, res) => {
         businessAddress: newUser.business_address,
         gstin: newUser.gstin,
         taxMode: newUser.tax_mode,
+        is_demo: newUser.is_demo,
         createdAt: newUser.created_at,
         partnerBrandName
       },
       credits,
-      onboardingOrder: isResellerSignup ? {
+      onboardingOrder: (isResellerSignup && !isDemo) ? {
         channel: commitmentChannel,
         quantity: commitmentQty,
         rate: commitmentRate,
@@ -503,7 +539,7 @@ router.post('/register', registerLimiter, async (req, res) => {
 router.get('/me', authenticate, async (req, res) => {
   try {
     const targetUserId = req.user.effective_user_id || req.user.id;
-    const userResult = await query(`SELECT full_name, company_name, phone, business_address, gstin FROM users WHERE id = $1`, [targetUserId]);
+    const userResult = await query(`SELECT full_name, company_name, phone, business_address, gstin, is_demo FROM users WHERE id = $1`, [targetUserId]);
     if (!userResult.rows.length) return res.status(404).json({ error: 'User not found' });
     const profile = userResult.rows[0];
     const credits = await getUserCredits(targetUserId);
@@ -518,6 +554,7 @@ router.get('/me', authenticate, async (req, res) => {
       phone: profile.phone,
       businessAddress: profile.business_address,
       gstin: profile.gstin,
+      is_demo: Boolean(profile.is_demo || req.user.is_demo),
       isTeamMember: Boolean(req.user.is_team_member),
       teamRole: req.user.team_role || req.user.role,
       parentEmail: req.user.parent_email || null,

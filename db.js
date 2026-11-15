@@ -453,6 +453,8 @@ async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_team_members_backup ON team_members(backup_agent_id);`);
 
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 1;`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE;`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_users_is_demo ON users(is_demo);`);
     await client.query(`ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS direction VARCHAR(10) DEFAULT 'credit';`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_transactions_direction ON credit_transactions(direction);`);
     await client.query(`CREATE SEQUENCE IF NOT EXISTS invoice_number_seq START 1001;`);

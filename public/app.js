@@ -738,6 +738,7 @@ const btnSubmitRegister = document.getElementById('btn-submit-register');
 if (authFormRegister) {
   authFormRegister.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const isDemo = Boolean(document.getElementById('reg-is-demo')?.checked);
     const accountType = document.getElementById('reg-account-type')?.value || 'user';
     const isReseller = accountType === 'reseller';
 
@@ -772,19 +773,23 @@ if (authFormRegister) {
     let businessAddress = '';
 
     if (isReseller) {
-      commitmentQty = parseInt(document.getElementById('reg-reseller-qty')?.value, 10);
-      if (isNaN(commitmentQty) || commitmentQty < 100000) {
-        return showRegError('Reseller partner onboarding requires an initial minimum commitment order of 1,00,000 (1 Lakh) credits.');
-      }
-      commitmentChannel = document.getElementById('reg-reseller-channel')?.value || 'gsm_sms_domestic';
       brandName = document.getElementById('reg-reseller-brand')?.value.trim();
-      gstin = document.getElementById('reg-reseller-gstin')?.value.trim();
-      businessAddress = document.getElementById('reg-reseller-address')?.value.trim();
+      if (!isDemo) {
+        commitmentQty = parseInt(document.getElementById('reg-reseller-qty')?.value, 10);
+        if (isNaN(commitmentQty) || commitmentQty < 100000) {
+          return showRegError('Reseller partner onboarding requires an initial minimum commitment order of 1,00,000 (1 Lakh) credits.');
+        }
+        commitmentChannel = document.getElementById('reg-reseller-channel')?.value || 'gsm_sms_domestic';
+        gstin = document.getElementById('reg-reseller-gstin')?.value.trim();
+        businessAddress = document.getElementById('reg-reseller-address')?.value.trim();
+      }
     }
 
     if (btnSubmitRegister) {
       btnSubmitRegister.disabled = true;
-      btnSubmitRegister.textContent = isReseller ? 'Registering Partner & Generating Order...' : 'Creating Account...';
+      btnSubmitRegister.textContent = isDemo
+        ? 'Activating Demo Account & Credits...'
+        : (isReseller ? 'Registering Partner & Generating Order...' : 'Creating Account...');
     }
 
     try {
@@ -797,17 +802,20 @@ if (authFormRegister) {
           company_name: companyName,
           password,
           account_type: accountType,
-          commitment_quantity: isReseller ? commitmentQty : undefined,
-          commitment_channel: isReseller ? commitmentChannel : undefined,
+          is_demo: isDemo,
+          commitment_quantity: (isReseller && !isDemo) ? commitmentQty : undefined,
+          commitment_channel: (isReseller && !isDemo) ? commitmentChannel : undefined,
           brand_name: isReseller ? brandName : undefined,
-          gstin: isReseller ? gstin : undefined,
-          business_address: isReseller ? businessAddress : undefined,
+          gstin: (isReseller && !isDemo) ? gstin : undefined,
+          business_address: (isReseller && !isDemo) ? businessAddress : undefined,
           invite_code: !isReseller ? (inviteCode || undefined) : undefined
         })
       });
 
       setAuthToken(res.token);
-      if (isReseller) {
+      if (isDemo) {
+        showToast('success', 'Demo Account Activated!', `Welcome, ${res.user.fullName || res.user.email}! 25 Free Trial Credits added to your wallet across GSM SMS and WhatsApp.`);
+      } else if (isReseller) {
         showToast('success', 'Partner Account Created!', `Welcome to MessageSphere Reseller Network, ${res.user.fullName || res.user.email}! Your 1 Lakh credit onboarding order is awaiting verification.`);
       } else {
         showToast('success', 'Account Created!', `Welcome to MessageSphere, ${res.user.fullName || res.user.email}!`);
@@ -818,7 +826,11 @@ if (authFormRegister) {
     } finally {
       if (btnSubmitRegister) {
         btnSubmitRegister.disabled = false;
-        btnSubmitRegister.textContent = isReseller ? 'Register Partner Account & Book Order →' : 'Create Account & Get Started →';
+        if (isDemo) {
+          btnSubmitRegister.textContent = isReseller ? 'Register Free Demo Partner Account →' : 'Create Demo Account (Get 25 Free Credits) →';
+        } else {
+          btnSubmitRegister.textContent = isReseller ? 'Register Partner Account & Book Order →' : 'Create Account & Get Started →';
+        }
       }
     }
   });
@@ -914,6 +926,9 @@ function handleLoginSuccess(user) {
     sidebarUserRole.textContent = user.role.toUpperCase();
     sidebarUserRole.className = `role-badge role-${user.role}`;
     sidebarUserRole.style.cssText = '';
+    if (user.is_demo) {
+      sidebarUserRole.innerHTML = `${escapeHtml(user.role.toUpperCase())} <span style="background:#16a34a;color:#fff;font-size:0.62rem;font-weight:800;padding:1px 5px;border-radius:6px;margin-left:4px;vertical-align:1px;">DEMO</span>`;
+    }
   }
 
   // Settings profile

@@ -173,16 +173,19 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
   });
 
   await t.test('Self-registration role & minimum commitment validation', () => {
-    function validateRegistration(accountType, commitmentQty) {
+    function validateRegistration(accountType, commitmentQty, isDemo = false) {
       if (accountType === 'admin') return { allowed: false, error: 'Cannot self-register as admin' };
       if (accountType === 'reseller') {
+        if (isDemo) {
+          return { allowed: true, role: 'reseller', isDemo: true, commitmentQty: 0, demoCreditsPerChannel: 25 };
+        }
         const qty = parseInt(commitmentQty, 10);
         if (isNaN(qty) || qty < 100000) {
           return { allowed: false, error: 'Reseller partner registration requires an initial minimum purchase commitment of 1,00,000 (1 Lakh) credits.' };
         }
-        return { allowed: true, role: 'reseller', commitmentQty: qty };
+        return { allowed: true, role: 'reseller', isDemo: false, commitmentQty: qty };
       }
-      return { allowed: true, role: 'user', commitmentQty: 0 };
+      return { allowed: true, role: 'user', isDemo: Boolean(isDemo), demoCreditsPerChannel: isDemo ? 25 : 0 };
     }
 
     assert.equal(validateRegistration('admin', 0).allowed, false);
@@ -197,6 +200,25 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     const validUser = validateRegistration('user', 0);
     assert.equal(validUser.allowed, true);
     assert.equal(validUser.role, 'user');
+
+    // Demo account assertions for both user and reseller
+    const demoUser = validateRegistration('user', 0, true);
+    assert.equal(demoUser.allowed, true);
+    assert.equal(demoUser.role, 'user');
+    assert.equal(demoUser.isDemo, true);
+    assert.equal(demoUser.demoCreditsPerChannel, 25);
+
+    const demoReseller = validateRegistration('reseller', 0, true);
+    assert.equal(demoReseller.allowed, true);
+    assert.equal(demoReseller.role, 'reseller');
+    assert.equal(demoReseller.isDemo, true);
+    assert.equal(demoReseller.commitmentQty, 0, 'Reseller demo waives wholesale commitment');
+    assert.equal(demoReseller.demoCreditsPerChannel, 25);
+
+    // Channel allocation rules: GSM SMS and WhatsApp get 25 credits, own_number strictly excluded
+    const demoChannels = ['gsm_sms', 'normal', 'cta', 'dp', 'dp_cta'];
+    assert.equal(demoChannels.includes('own_number'), false, 'Own Virtual SIM must strictly be excluded from demo credits');
+    assert.equal(demoChannels.length, 5, 'Exactly 5 channels receive demo credits');
   });
 
   await t.test('Billing scope and settlement permission boundary rules', () => {
