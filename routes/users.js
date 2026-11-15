@@ -889,8 +889,8 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
   for (const [rateKey, rateVal] of Object.entries(incomingRates)) {
     if (rateVal !== undefined && rateVal !== '') {
       const r = parseFloat(rateVal);
-      if (isNaN(r) || r <= 0 || r > 1000) {
-        return res.status(400).json({ error: `Custom rate for "${rateKey}" must be a positive number greater than 0.` });
+      if (isNaN(r) || r < 0 || r > 1000) {
+        return res.status(400).json({ error: `Custom rate for "${rateKey}" cannot be negative (maximum ₹1,000).` });
       }
     }
   }
@@ -1020,7 +1020,8 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
         // Get channel rate (either incoming custom rate or user's existing rate or default)
         let chRate = 0.1500;
         if (incomingRates[key] !== undefined && incomingRates[key] !== '') {
-          chRate = parseFloat(incomingRates[key]) || 0.1500;
+          const parsedRate = parseFloat(incomingRates[key]);
+          chRate = (!isNaN(parsedRate) && parsedRate >= 0) ? parsedRate : 0.1500;
         } else {
           const chRateRes = await client.query(
             `SELECT rate_inr FROM user_credits WHERE user_id = $1 AND credit_type = $2 AND destination = $3`,
@@ -1058,8 +1059,8 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
         }
 
         if (req.body.total_bill !== undefined && req.body.total_bill !== '') {
-          const explicitBill = parseFloat(req.body.total_bill) || 0;
-          if (explicitBill > 0) {
+          const explicitBill = parseFloat(req.body.total_bill);
+          if (!isNaN(explicitBill) && explicitBill >= 0) {
             grossInvoice = explicitBill;
             if (effectiveTaxMode === 'with_gst') {
               baseSubtotal = Math.round((grossInvoice / 1.18) * 100) / 100;
@@ -1071,12 +1072,16 @@ router.post('/:id/credits', authenticate, requireRoles('admin', 'reseller'), asy
           }
         }
 
-        const avgRate = totalAllotted > 0 ? (grossInvoice / totalAllotted) : 0.1500;
+        const avgRate = totalAllotted > 0 ? (grossInvoice / totalAllotted) : 0.0000;
         
         let paymentStatus = (req.body.payment_status || 'unpaid').toLowerCase();
         let paidAmount = 0.00;
 
-        if (paymentStatus === 'paid') {
+        if (grossInvoice <= 0) {
+          // Zero rate or complimentary allotment: automatically settled with zero due
+          paymentStatus = 'Paid';
+          paidAmount = 0.00;
+        } else if (paymentStatus === 'paid') {
           paidAmount = grossInvoice;
           paymentStatus = 'Paid';
         } else if (paymentStatus === 'partial') {
@@ -1520,7 +1525,7 @@ router.patch('/:id/rates', authenticate, requireRoles('admin', 'reseller'), asyn
         }
 
         const rateNum = parseFloat(rawRate);
-        if (isNaN(rateNum) || rateNum <= 0 || rateNum > 100 || !isFinite(rateNum)) continue;
+        if (isNaN(rateNum) || rateNum < 0 || rateNum > 100 || !isFinite(rateNum)) continue;
         const validRate = Math.round(rateNum * 10000) / 10000;
 
         await client.query(`

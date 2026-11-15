@@ -1330,8 +1330,8 @@ router.put('/invite-settings', authenticate, requireRoles('reseller', 'admin'), 
     for (const key of validKeys) {
       if (default_rates[key] !== undefined && default_rates[key] !== null) {
         const parsed = parseFloat(default_rates[key]);
-        if (isNaN(parsed) || parsed < 0.0001 || parsed > 100) {
-          return res.status(400).json({ error: `Invalid rate for ${key}. Must be a positive number between ₹0.0001 and ₹100.` });
+        if (isNaN(parsed) || parsed < 0 || parsed > 100) {
+          return res.status(400).json({ error: `Invalid rate for ${key}. Must be a non-negative number between ₹0 and ₹100.` });
         }
         cleanRates[key] = parseFloat(parsed.toFixed(4));
       }

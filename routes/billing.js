@@ -297,8 +297,11 @@ router.post('/requests', authenticate, async (req, res) => {
       `SELECT rate_inr FROM user_credits WHERE user_id = $1 AND credit_type = $2 AND destination = $3`,
       [effectiveUserId, cType, cDest]
     );
-    if (rateCheck.rows.length > 0 && Number(rateCheck.rows[0].rate_inr) > 0) {
-      userRate = Number(rateCheck.rows[0].rate_inr);
+    if (rateCheck.rows.length > 0 && rateCheck.rows[0].rate_inr !== null) {
+      const parsedUserRate = Number(rateCheck.rows[0].rate_inr);
+      if (!isNaN(parsedUserRate) && parsedUserRate >= 0) {
+        userRate = parsedUserRate;
+      }
     }
   } catch (err) {
     console.error('Failed to lookup rate_inr or tax_mode, using default:', err.message);

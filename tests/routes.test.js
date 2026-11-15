@@ -31,17 +31,18 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.equal(validateChannelKey(''), false);
   });
 
-  await t.test('Custom Rates Validation rejects negative and zero rates', () => {
+  await t.test('Custom Rates Validation rejects negative rates and allows zero and positive rates', () => {
     function isValidRate(rate) {
       if (rate === undefined || rate === null || rate === '') return true; // defaults to base
       const r = parseFloat(rate);
-      return !isNaN(r) && r > 0 && r <= 1000;
+      return !isNaN(r) && r >= 0 && r <= 1000;
     }
 
     assert.equal(isValidRate('0.1500'), true);
     assert.equal(isValidRate('2.5'), true);
+    assert.equal(isValidRate('0'), true, 'Zero rate must be allowed for complimentary/demo credits');
+    assert.equal(isValidRate('0.0000'), true, 'Zero rate with decimals must be allowed');
     assert.equal(isValidRate('-0.50'), false, 'Negative rate must be rejected');
-    assert.equal(isValidRate('0'), false, 'Zero rate must be rejected');
     assert.equal(isValidRate('abc'), false, 'NaN rate must be rejected');
   });
 
