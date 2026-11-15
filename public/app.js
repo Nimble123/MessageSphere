@@ -6328,61 +6328,64 @@ function renderUsersTable() {
 
     return `
       <tr>
-        <td>
+        <td style="padding:10px 14px;max-width:230px;">
           <div style="display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="openUser360Modal(${u.id}, event)" title="Click to view 360° Profile">
-            <div class="user-avatar" style="width:36px;height:36px;border-radius:8px;font-size:0.9rem;font-weight:700;background:${avatarBg};color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <div class="user-avatar" style="width:34px;height:34px;border-radius:8px;font-size:0.86rem;font-weight:700;background:${avatarBg};color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
               ${initial}
             </div>
-            <div style="min-width:0;">
-              <div style="font-weight:700;color:var(--primary);font-size:0.87rem;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <div style="min-width:0;overflow:hidden;">
+              <div style="font-weight:700;color:var(--primary);font-size:0.86rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(u.fullName || u.email)}">
                 ${escapeHtml(u.fullName || u.email)}
-                ${u.companyName ? `<span style="font-size:0.72rem;background:#f1f5f9;color:#475569;padding:1px 6px;border-radius:4px;border:1px solid #e2e8f0;font-weight:500;">${escapeHtml(u.companyName)}</span>` : ''}
               </div>
-              <div style="font-size:0.75rem;color:var(--slate-500);margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                <span>${escapeHtml(u.email)}</span>
-                ${u.phone ? `<span>•</span><span style="color:#64748b;">${escapeHtml(u.phone)}</span>` : ''}
+              ${u.companyName ? `<div style="font-size:0.71rem;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500;margin-top:1px;" title="${escapeHtml(u.companyName)}"><i data-lucide="building" style="width:10px;height:10px;display:inline-block;vertical-align:-1px;margin-right:2px;color:#94a3b8;"></i>${escapeHtml(u.companyName)}</div>` : ''}
+              <div style="font-size:0.73rem;color:var(--slate-500);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(u.email)}${u.phone ? ' • ' + escapeHtml(u.phone) : ''}">
+                <span>${escapeHtml(u.email)}</span>${u.phone ? `<span style="color:#94a3b8;"> • ${escapeHtml(u.phone)}</span>` : ''}
               </div>
             </div>
           </div>
         </td>
-        <td>${roleHierarchyHtml}</td>
-        <td>${agentCellHtml}</td>
-        <td>${taxCellHtml}</td>
-        <td>${refundCellHtml}</td>
-        <td>
-          <div style="display:inline-flex;align-items:center;gap:6px;">
-            <div class="credit-pill credit-pill-primary" title="${domBreakdown}" style="cursor:help;">
-              <i data-lucide="map-pin" style="width:12px;height:12px;"></i>
-              <span>${domTotal.toLocaleString()}</span>
+        <td style="padding:10px 14px;">${roleHierarchyHtml}</td>
+        <td style="padding:10px 14px;">${agentCellHtml}</td>
+        <td style="padding:10px 14px;">${taxCellHtml}</td>
+        <td style="padding:10px 14px;">${refundCellHtml}</td>
+        <td style="padding:10px 14px;white-space:nowrap;">
+          <div style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex-wrap:nowrap;">
+            <div class="credit-pill credit-pill-primary" title="${domBreakdown}" style="cursor:help;white-space:nowrap !important;flex-shrink:0;">
+              <i data-lucide="map-pin" style="width:12px;height:12px;flex-shrink:0;"></i>
+              <span style="font-weight:700;white-space:nowrap !important;">${domTotal.toLocaleString()}</span>
             </div>
             ${domTotal <= 0 
-              ? '<span class="badge" style="background:rgba(239,68,68,0.12);color:#dc2626;border:1px solid rgba(239,68,68,0.3);font-size:10px;font-weight:700;padding:2px 6px;border-radius:9999px;white-space:nowrap;" title="Zero domestic credits balance">⚠️ Empty</span>' 
+              ? '<span class="badge" style="background:rgba(239,68,68,0.12);color:#dc2626;border:1px solid rgba(239,68,68,0.3);font-size:10px;font-weight:700;padding:2px 6px;border-radius:9999px;white-space:nowrap !important;flex-shrink:0;" title="Zero domestic credits balance">⚠️ Empty</span>' 
               : (domTotal < 500 
-                  ? '<span class="badge" style="background:rgba(245,158,11,0.15);color:#d97706;border:1px solid rgba(245,158,11,0.3);font-size:10px;font-weight:700;padding:2px 6px;border-radius:9999px;white-space:nowrap;" title="Domestic balance is below 500 threshold">⚠️ Low</span>' 
+                  ? '<span class="badge" style="background:rgba(245,158,11,0.15);color:#d97706;border:1px solid rgba(245,158,11,0.3);font-size:10px;font-weight:700;padding:2px 6px;border-radius:9999px;white-space:nowrap !important;flex-shrink:0;" title="Domestic balance is below 500 threshold">⚠️ Low</span>' 
                   : '')}
-            <button type="button" class="btn-quick-topup" data-action="open-allot-credits" data-user-id="${u.id}" data-email="${escapeHtml(u.email)}" title="Quick Allot Credits" style="width:22px;height:22px;border-radius:6px;border:1px solid #cbd5e1;background:#ffffff;color:#4f46e5;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;transition:all 0.15s;" onmouseover="this.style.background='#4f46e5';this.style.color='#ffffff';" onmouseout="this.style.background='#ffffff';this.style.color='#4f46e5';">
+            <button type="button" class="btn-quick-topup" data-action="open-allot-credits" data-user-id="${u.id}" data-email="${escapeHtml(u.email)}" title="Quick Allot Credits" style="width:22px;height:22px;border-radius:6px;border:1px solid #cbd5e1;background:#ffffff;color:#4f46e5;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;transition:all 0.15s;flex-shrink:0;" onmouseover="this.style.background='#4f46e5';this.style.color='#ffffff';" onmouseout="this.style.background='#ffffff';this.style.color='#4f46e5';">
               <i data-lucide="plus" style="width:12px;height:12px;"></i>
             </button>
           </div>
         </td>
-        <td>
-          <div class="credit-pill credit-pill-intl" title="${intlBreakdown}" style="cursor:help;">
-            <i data-lucide="globe" style="width:12px;height:12px;"></i>
-            <span>${intlTotal.toLocaleString()}</span>
+        <td style="padding:10px 14px;white-space:nowrap;">
+          <div class="credit-pill credit-pill-intl" title="${intlBreakdown}" style="cursor:help;white-space:nowrap !important;flex-shrink:0;">
+            <i data-lucide="globe" style="width:12px;height:12px;flex-shrink:0;"></i>
+            <span style="font-weight:700;white-space:nowrap !important;">${intlTotal.toLocaleString()}</span>
           </div>
         </td>
-        <td>
+        <td style="padding:10px 14px;white-space:nowrap;">
           ${u.isBlocked 
-            ? '<span class="status-badge badge-rejected" style="display:inline-flex;align-items:center;gap:3px;"><i data-lucide="ban" style="width:11px;height:11px;"></i> Blocked</span>' 
-            : '<span class="status-badge badge-updated" style="display:inline-flex;align-items:center;gap:3px;"><i data-lucide="check-circle" style="width:11px;height:11px;"></i> Active</span>'}
+            ? '<span class="status-badge badge-rejected" style="display:inline-flex;align-items:center;gap:3px;white-space:nowrap;"><i data-lucide="ban" style="width:11px;height:11px;"></i> Blocked</span>' 
+            : '<span class="status-badge badge-updated" style="display:inline-flex;align-items:center;gap:3px;white-space:nowrap;"><i data-lucide="check-circle" style="width:11px;height:11px;"></i> Active</span>'}
         </td>
-        <td style="text-align:right;">
+        <td style="padding:10px 14px;text-align:right;white-space:nowrap;position:sticky;right:0;background:#ffffff;z-index:2;box-shadow:-3px 0 6px -2px rgba(0,0,0,0.06);">
           <div style="display:inline-flex;align-items:center;gap:6px;justify-content:flex-end;">
-            <button type="button" class="btn-action btn-action-primary" onclick="openUser360Modal(${u.id}, event)" style="display:inline-flex;align-items:center;gap:5px;font-weight:600;padding:5px 10px;font-size:0.78rem;" title="View User 360° Profile">
-              <i data-lucide="sparkles" style="width:13px;height:13px;"></i> 360° Profile
+            <button type="button" class="btn-action btn-action-primary" onclick="openUser360Modal(${u.id}, event)" style="display:inline-flex;align-items:center;gap:4px;font-weight:600;padding:5px 9px;font-size:0.75rem;white-space:nowrap;border-radius:6px;" title="View User 360° Profile">
+              <i data-lucide="sparkles" style="width:12px;height:12px;"></i> 360°
             </button>
 
-            <div class="action-dropdown-wrap">
+            <div class="action-dropdown-wrap" style="position:relative;">
+              <button type="button" class="btn-action-more" onclick="toggleUserDropdown(event, ${u.id})" title="More Actions">
+                <i data-lucide="more-horizontal" style="width:15px;height:15px;"></i>
+              </button>
+              <div id="user-dropdown-${u.id}" class="action-dropdown-menu">
               <button type="button" class="btn-action-more" onclick="toggleUserDropdown(event, ${u.id})" title="More Actions">
                 <i data-lucide="more-horizontal" style="width:15px;height:15px;"></i>
               </button>
