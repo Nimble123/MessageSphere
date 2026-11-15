@@ -5067,8 +5067,8 @@ function renderCampaignsTable() {
     }
 
     let actionsHTML = '';
-    const exportTxtBtn = `<button type="button" onclick="downloadCampaignNumbers(${c.id}, 'txt')" class="btn-action btn-action-secondary" title="Export Numbers (.TXT)" style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;font-size:0.75rem;"><i data-lucide="download" style="width:12px;height:12px;"></i> Export</button>`;
-    const downloadReportCsvBtn = `<button type="button" class="btn-action btn-action-success" onclick="downloadApiFile('/campaigns/${c.id}/export', 'campaign_${c.id}_delivery_report.csv')" title="Download Delivery Report CSV" style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;font-size:0.75rem;background:#10b981;color:#fff;border:none;"><i data-lucide="download" style="width:12px;height:12px;"></i> Report</button>`;
+    const exportTxtBtn = `<button type="button" onclick="downloadCampaignNumbers(${c.id}, 'txt')" class="btn-action btn-action-secondary" title="Export Numbers (.TXT)" style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;font-size:0.75rem;white-space:nowrap;flex-shrink:0;"><i data-lucide="download" style="width:12px;height:12px;"></i> Export</button>`;
+    const downloadReportCsvBtn = `<button type="button" class="btn-action btn-action-success" onclick="downloadApiFile('/campaigns/${c.id}/export', 'campaign_${c.id}_delivery_report.csv')" title="Download Delivery Report CSV" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;font-size:0.75rem;background:#10b981;color:#fff;border:none;white-space:nowrap;flex-shrink:0;"><i data-lucide="download" style="width:12px;height:12px;"></i> Report</button>`;
 
     if (isAdmin) {
       if (c.status === 'Submitted') {
@@ -5180,19 +5180,19 @@ function renderCampaignsTable() {
 
     return `
       <tr>
-        <td>
-          <a href="javascript:void(0)" onclick="openCampaignDetailModal(${c.id})" style="font-weight:700;color:var(--slate-800);text-decoration:none;font-size:0.88rem;">
+        <td style="min-width:170px;">
+          <a href="javascript:void(0)" onclick="openCampaignDetailModal(${c.id})" style="font-weight:700;color:var(--slate-800);text-decoration:none;font-size:0.88rem;word-break:keep-all;line-height:1.35;display:inline-block;">
             ${escapeHtml(c.title || 'Campaign #' + c.id)}
           </a>
           <div style="font-size:0.73rem;color:var(--slate-500);margin-top:2px;">ID: #${c.id} · ${dateFormatted}</div>
         </td>
-        <td>
-          <div style="font-weight:600;color:var(--slate-800);font-size:0.82rem;">${escapeHtml(c.owner_email || '—')}</div>
+        <td style="min-width:160px;">
+          <div style="font-weight:600;color:var(--slate-800);font-size:0.82rem;word-break:break-all;line-height:1.35;">${escapeHtml(c.owner_email || '—')}</div>
         </td>
-        <td>
+        <td style="min-width:130px;white-space:nowrap;">
           ${channelBadgeHtml}
         </td>
-        <td>
+        <td style="min-width:260px;">
           <div style="max-width:340px;min-width:220px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;margin-top:2px;">
             <div id="camp-msg-preview-${c.id}" style="font-size:0.8rem;color:#334155;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;white-space:pre-wrap;">${escapeHtml(c.message_text || '—')}</div>
             <div style="display:flex;align-items:center;gap:8px;margin-top:5px;padding-top:4px;border-top:1px dashed #e2e8f0;font-size:0.72rem;">
@@ -5221,13 +5221,13 @@ function renderCampaignsTable() {
             return '';
           })()}
         </td>
-        <td><strong>${(c.total_numbers || 0).toLocaleString()}</strong></td>
-        <td>${progressHTML}</td>
-        <td>${statusBadgeHTML}</td>
-        <td>
-          <div style="display:flex;gap:6px;align-items:center;">
+        <td style="min-width:90px;white-space:nowrap;text-align:right;"><strong>${(c.total_numbers || 0).toLocaleString()}</strong></td>
+        <td style="min-width:170px;">${progressHTML}</td>
+        <td style="min-width:110px;white-space:nowrap;">${statusBadgeHTML}</td>
+        <td style="min-width:120px;white-space:nowrap;text-align:center;">
+          <div style="display:inline-flex;gap:6px;align-items:center;justify-content:center;">
             ${actionsHTML}
-            <button class="btn-action btn-action-secondary" onclick="openCampaignDetailModal(${c.id})" title="View Details" style="display:inline-flex;align-items:center;justify-content:center;padding:5px 8px;">
+            <button class="btn-action btn-action-secondary" onclick="openCampaignDetailModal(${c.id})" title="View Details" style="display:inline-flex;align-items:center;justify-content:center;padding:5px 8px;white-space:nowrap;flex-shrink:0;">
               <i data-lucide="eye" style="width:13px;height:13px;"></i>
             </button>
           </div>
