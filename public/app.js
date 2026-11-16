@@ -15983,136 +15983,137 @@ window.renderCreditPlansGrid = function() {
     const topAccent = isWholesale ? 'linear-gradient(90deg, #9333ea, #ec4899)' : theme.accent;
 
     return `
-      <div class="card premium-plan-card" style="border-radius: 18px; border: 1.5px solid #e2e8f0; background: #ffffff; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.04), 0 2px 4px -2px rgba(0, 0, 0, 0.03); position: relative; overflow: hidden;">
+      <div class="card premium-plan-card" style="border-radius: 16px; border: 1.5px solid #e2e8f0; background: #ffffff; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.2s ease; box-shadow: 0 2px 8px -1px rgba(0, 0, 0, 0.05); position: relative; overflow: hidden;">
         
         <!-- Top Gradient Accent Bar -->
-        <div style="height: 5px; width: 100%; background: ${topAccent};"></div>
+        <div style="height: 4px; width: 100%; background: ${topAccent};"></div>
 
-        <div style="padding: 24px 24px 18px 24px;">
+        <div style="padding: 16px 18px 10px 18px;">
           
-          <!-- Top Row: Icon + Channel + Badge -->
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px;">
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <div style="width: 42px; height: 42px; border-radius: 10px; background: ${theme.iconBg}; border: 1px solid ${theme.iconBorder}; color: ${theme.iconColor}; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 2px 5px rgba(0,0,0,0.03);">
-                <i data-lucide="${channelIcon}" style="width: 20px; height: 20px;"></i>
+          <!-- Top Row: Icon + Channel + Badge (Non-Wrapping, Clean Align) -->
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
+              <div style="width: 36px; height: 36px; border-radius: 8px; background: ${theme.iconBg}; border: 1px solid ${theme.iconBorder}; color: ${theme.iconColor}; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+                <i data-lucide="${channelIcon}" style="width: 17px; height: 17px;"></i>
               </div>
-              <div>
-                <span style="font-size: 0.72rem; font-weight: 800; color: ${theme.channelBadgeText}; text-transform: uppercase; letter-spacing: 0.5px; display: block;">
+              <div style="min-width: 0; flex: 1;">
+                <span style="font-size: 0.74rem; font-weight: 800; color: ${theme.channelBadgeText}; text-transform: uppercase; letter-spacing: 0.4px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(channelLabel)}">
                   ${escapeHtml(channelLabel)}
                 </span>
-                <span style="font-size: 0.7rem; font-weight: 600; color: ${isWholesale ? '#9333ea' : '#475569'}; display: inline-flex; align-items: center; gap: 3px;">
-                  <i data-lucide="${isWholesale ? 'network' : 'user'}" style="width: 11px; height: 11px;"></i>
-                  ${isWholesale ? 'Wholesale Partner Tier' : 'Direct Client Retail'}
+                <span style="font-size: 0.68rem; font-weight: 600; color: ${isWholesale ? '#7c3aed' : '#64748b'}; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;">
+                  <i data-lucide="${isWholesale ? 'award' : 'user'}" style="width: 10px; height: 10px;"></i>
+                  ${isWholesale ? 'Wholesale Tier' : 'Direct Retail'}
                 </span>
               </div>
             </div>
 
-            <!-- Single Sleek Badge / Dot -->
-            <div style="display: flex; align-items: center; gap: 6px;">
+            <!-- Badges: Custom Badge + Active Status -->
+            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0;">
+              <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 12px; white-space: nowrap; ${plan.is_active ? 'background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0;' : 'background: #fef2f2; color: #dc2626; border: 1px solid #fecaca;'}">
+                <span style="width: 5px; height: 5px; border-radius: 50%; background: ${plan.is_active ? '#10b981' : '#ef4444'};"></span>
+                ${plan.is_active ? 'Active' : 'Paused'}
+              </span>
               ${plan.badge_text ? `
-                <span style="font-size: 0.68rem; font-weight: 800; background: linear-gradient(135deg, #fef3c7, #fde68a); color: #92400e; padding: 4px 9px; border-radius: 20px; border: 1px solid #fcd34d; text-transform: uppercase; letter-spacing: 0.4px;">
+                <span style="font-size: 0.63rem; font-weight: 800; background: #fef3c7; color: #92400e; padding: 2px 6px; border-radius: 6px; border: 1px solid #fde68a; text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap;">
                   ${escapeHtml(plan.badge_text)}
                 </span>
               ` : ''}
-              
-              <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 20px; ${plan.is_active ? 'background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0;' : 'background: #fef2f2; color: #dc2626; border: 1px solid #fecaca;'}">
-                <span style="width: 6px; height: 6px; border-radius: 50%; background: ${plan.is_active ? '#10b981' : '#ef4444'};"></span>
-                ${plan.is_active ? 'Active' : 'Paused'}
-              </span>
             </div>
           </div>
 
           <!-- Plan Title & Description -->
-          <h3 style="font-size: 1.2rem; font-weight: 800; color: #0f172a; margin: 0 0 6px 0; letter-spacing: -0.3px; line-height: 1.3;">
+          <h3 style="font-size: 1.12rem; font-weight: 800; color: #0f172a; margin: 0 0 3px 0; letter-spacing: -0.3px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(plan.plan_name)}">
             ${escapeHtml(plan.plan_name)}
           </h3>
-          <p style="font-size: 0.78rem; color: #64748b; margin: 0 0 16px 0; min-height: 36px; line-height: 1.45;">
-            ${escapeHtml(plan.description || `${destLabel} with carrier telecom routing, instant DLR report reconciliation, and fast gateway priority.`)}
+          <p style="font-size: 0.75rem; color: #64748b; margin: 0 0 12px 0; line-height: 1.35; height: 32px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
+            ${escapeHtml(plan.description || `${destLabel} with carrier telecom routing and instant DLR reconciliation.`)}
           </p>
 
-          <!-- Pricing Block (Stripe/Linear-grade) -->
-          <div style="background: ${isWholesale ? 'linear-gradient(135deg, #faf5ff, #f3e8ff)' : 'linear-gradient(135deg, #f8fafc, #f1f5f9)'}; border-radius: 12px; border: 1px solid ${isWholesale ? '#e9d5ff' : '#e2e8f0'}; padding: 16px 18px; margin-bottom: 16px;">
-            <div style="display: flex; align-items: baseline; justify-content: space-between;">
-              <div style="display: flex; align-items: baseline; gap: 2px;">
-                <span style="font-size: 1.15rem; font-weight: 800; color: #64748b;">₹</span>
-                <span style="font-size: 1.85rem; font-weight: 900; color: #0f172a; letter-spacing: -0.8px;">${formattedTotal}</span>
-                <span style="font-size: 0.76rem; font-weight: 600; color: #64748b; margin-left: 3px;">/ package</span>
+          <!-- Pricing Block (Compact & Clear) -->
+          <div style="background: ${isWholesale ? 'linear-gradient(135deg, #faf5ff, #f3e8ff)' : 'linear-gradient(135deg, #f8fafc, #f1f5f9)'}; border-radius: 10px; border: 1px solid ${isWholesale ? '#e9d5ff' : '#e2e8f0'}; padding: 10px 14px; margin-bottom: 12px;">
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 6px;">
+              <div>
+                <div style="display: flex; align-items: baseline; gap: 2px;">
+                  <span style="font-size: 1rem; font-weight: 800; color: #64748b;">₹</span>
+                  <span style="font-size: 1.55rem; font-weight: 900; color: #0f172a; letter-spacing: -0.5px;">${formattedTotal}</span>
+                </div>
+                <span style="font-size: 0.68rem; font-weight: 600; color: #64748b;">/ package price</span>
               </div>
-              <div style="text-align: right;">
-                <span style="display: inline-block; font-size: 0.8rem; font-weight: 800; color: ${isWholesale ? '#7c3aed' : '#4338ca'}; background: ${isWholesale ? '#f3e8ff' : '#e0e7ff'}; padding: 3px 9px; border-radius: 6px; border: 1px solid ${isWholesale ? '#ddd6fe' : '#c7d2fe'};">
-                  ₹${Number(plan.rate_per_credit).toFixed(4)} <span style="font-size: 0.68rem; font-weight: 600; color: #64748b;">/ msg</span>
+              <div style="text-align: right; flex-shrink: 0;">
+                <span style="display: inline-block; font-size: 0.78rem; font-weight: 800; color: ${isWholesale ? '#7c3aed' : '#3730a3'}; background: ${isWholesale ? '#f3e8ff' : '#e0e7ff'}; padding: 2px 7px; border-radius: 6px; border: 1px solid ${isWholesale ? '#ddd6fe' : '#c7d2fe'}; white-space: nowrap;">
+                  ₹${Number(plan.rate_per_credit).toFixed(4)} <span style="font-size: 0.65rem; font-weight: 600; color: #64748b;">/ msg</span>
                 </span>
-                <div style="font-size: 0.68rem; color: #64748b; margin-top: 2px; font-weight: 500;">(${ratePaise} paise)</div>
+                <div style="font-size: 0.65rem; color: #64748b; margin-top: 1px; font-weight: 600;">(${ratePaise} paise)</div>
               </div>
             </div>
 
             <!-- 2-Chip Metadata Grid -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed ${isWholesale ? '#ddd6fe' : '#cbd5e1'};">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed ${isWholesale ? '#ddd6fe' : '#cbd5e1'};">
               <div>
-                <span style="font-size: 0.68rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Volume:</span>
-                <div style="font-size: 0.95rem; font-weight: 800; color: #0f172a; margin-top: 1px;">
-                  ${formattedCredits} Credits
+                <span style="font-size: 0.64rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Volume:</span>
+                <div style="font-size: 0.88rem; font-weight: 800; color: #0f172a; margin-top: 1px;">
+                  ${formattedCredits} Cr
                 </div>
               </div>
               <div style="text-align: right;">
-                <span style="font-size: 0.68rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Route:</span>
-                <div style="font-size: 0.85rem; font-weight: 700; color: #0f172a; margin-top: 1px;">
-                  ${plan.destination === 'international' ? 'International' : 'Domestic (India +91)'}
+                <span style="font-size: 0.64rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Route:</span>
+                <div style="font-size: 0.8rem; font-weight: 700; color: #0f172a; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                  ${plan.destination === 'international' ? 'International' : 'Domestic (+91)'}
                 </div>
               </div>
             </div>
           </div>
 
           <!-- Feature Bullets (World-class checkmarks) -->
-          <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; font-size: 0.78rem; color: #334155;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <i data-lucide="check-circle-2" style="width: 15px; height: 15px; color: #10b981; flex-shrink: 0;"></i>
-              <span>Direct carrier telecom routing &amp; real-time DLR</span>
+          <div style="display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; font-size: 0.74rem; color: #334155;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <i data-lucide="check-circle-2" style="width: 13px; height: 13px; color: #10b981; flex-shrink: 0;"></i>
+              <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Direct carrier telecom routing &amp; real-time DLR</span>
             </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <i data-lucide="check-circle-2" style="width: 15px; height: 15px; color: #10b981; flex-shrink: 0;"></i>
-              <span>Intelligent DND scrubbing &amp; compliance filtering</span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <i data-lucide="check-circle-2" style="width: 13px; height: 13px; color: #10b981; flex-shrink: 0;"></i>
+              <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Intelligent DND scrubbing &amp; compliance filtering</span>
             </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <i data-lucide="check-circle-2" style="width: 15px; height: 15px; color: #10b981; flex-shrink: 0;"></i>
-              <span>Instant wallet credit &amp; verified GST tax invoice</span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <i data-lucide="check-circle-2" style="width: 13px; height: 13px; color: #10b981; flex-shrink: 0;"></i>
+              <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Instant wallet credit &amp; verified GST tax invoice</span>
             </div>
           </div>
 
           ${(isAdmin && plan.creator_email) ? `
-            <div style="font-size: 0.68rem; color: #94a3b8; margin-bottom: 12px; display: flex; align-items: center; gap: 5px;">
-              <i data-lucide="shield-check" style="width: 12px; height: 12px; color: #6366f1;"></i>
-              Created by: <strong>${escapeHtml(plan.creator_email)}</strong> (${escapeHtml(plan.creator_role || 'admin')})
+            <div style="font-size: 0.66rem; color: #94a3b8; margin-bottom: 8px; display: flex; align-items: center; gap: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+              <i data-lucide="shield-check" style="width: 11px; height: 11px; color: #6366f1; flex-shrink: 0;"></i>
+              <span>By: <strong>${escapeHtml(plan.creator_email)}</strong></span>
             </div>
           ` : ''}
 
         </div>
 
         <!-- Action Footer -->
-        <div style="padding: 14px 24px 20px 24px; background: #ffffff; border-top: 1px solid #f1f5f9;">
+        <div style="padding: 10px 18px 14px 18px; background: #ffffff; border-top: 1px solid #f1f5f9;">
           ${(!isOwner && (currentUser.role === 'user' || (isReseller && isWholesale))) ? `
-            <button type="button" class="btn-action btn-action-primary" onclick="orderCreditPlan(${plan.id})" style="width: 100%; justify-content: center; font-weight: 800; font-size: 0.88rem; padding: 11px 16px; border-radius: 10px; ${isWholesale ? 'background: linear-gradient(135deg, #7c3aed, #6d28d9);' : 'background: linear-gradient(135deg, #4f46e5, #4338ca);'} color: #fff; box-shadow: 0 4px 12px ${isWholesale ? 'rgba(124, 58, 237, 0.3)' : 'rgba(79, 70, 229, 0.3)'}; transition: all 0.2s;">
-              <i data-lucide="${isWholesale ? 'coins' : 'zap'}" style="width: 16px; height: 16px;"></i>
+            <button type="button" class="btn-action btn-action-primary" onclick="orderCreditPlan(${plan.id})" style="width: 100%; justify-content: center; font-weight: 800; font-size: 0.84rem; padding: 9px 14px; border-radius: 8px; ${isWholesale ? 'background: linear-gradient(135deg, #7c3aed, #6d28d9);' : 'background: linear-gradient(135deg, #4f46e5, #4338ca);'} color: #fff; box-shadow: 0 2px 8px ${isWholesale ? 'rgba(124, 58, 237, 0.25)' : 'rgba(79, 70, 229, 0.25)'}; transition: all 0.2s;">
+              <i data-lucide="${isWholesale ? 'coins' : 'zap'}" style="width: 15px; height: 15px;"></i>
               ${isWholesale ? 'Order Wholesale Pack' : 'Order Now & Top-up'}
             </button>
           ` : ''}
 
           ${(isOwner) ? `
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <button type="button" class="btn-action btn-action-secondary" onclick="openCreatePlanModal(${plan.id})" style="flex: 1; justify-content: center; font-size: 0.8rem; padding: 8px 12px; font-weight: 700; border-radius: 8px;">
-                <i data-lucide="edit-3" style="width: 14px; height: 14px;"></i> Edit Plan
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <button type="button" class="btn-action btn-action-secondary" onclick="openCreatePlanModal(${plan.id})" style="flex: 1; justify-content: center; font-size: 0.78rem; padding: 7px 10px; font-weight: 700; border-radius: 7px;" title="Edit Plan Parameters">
+                <i data-lucide="edit-3" style="width: 13px; height: 13px;"></i> Edit
               </button>
               
-              <button type="button" class="btn-action btn-action-secondary" onclick="toggleCreditPlanStatus(${plan.id})" title="${plan.is_active ? 'Pause Plan' : 'Activate Plan'}" style="padding: 8px 12px; font-size: 0.8rem; font-weight: 700; border-radius: 8px; color: ${plan.is_active ? '#475569' : '#059669'};">
-                <i data-lucide="${plan.is_active ? 'pause' : 'play'}" style="width: 14px; height: 14px;"></i>
+              <button type="button" class="btn-action btn-action-secondary" onclick="toggleCreditPlanStatus(${plan.id})" title="${plan.is_active ? 'Pause Plan' : 'Activate Plan'}" style="padding: 7px 10px; font-size: 0.78rem; font-weight: 700; border-radius: 7px; color: ${plan.is_active ? '#475569' : '#059669'};">
+                <i data-lucide="${plan.is_active ? 'pause' : 'play'}" style="width: 13px; height: 13px;"></i>
               </button>
 
-              <button type="button" class="btn-action btn-action-danger" onclick="deleteCreditPlan(${plan.id})" title="Delete Plan" style="padding: 8px 12px; border-radius: 8px;">
-                <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+              <button type="button" class="btn-action btn-action-danger" onclick="deleteCreditPlan(${plan.id})" title="Delete Plan" style="padding: 7px 10px; border-radius: 7px;">
+                <i data-lucide="trash-2" style="width: 13px; height: 13px;"></i>
               </button>
 
-              <button type="button" class="btn-action btn-action-primary" onclick="orderCreditPlan(${plan.id})" title="Order / Test Top-up" style="padding: 8px 12px; border-radius: 8px; background: #4f46e5; color: #fff;">
-                <i data-lucide="shopping-cart" style="width: 14px; height: 14px;"></i>
+              <button type="button" class="btn-action btn-action-primary" onclick="orderCreditPlan(${plan.id})" title="Order / Test Top-up" style="padding: 7px 11px; border-radius: 7px; background: #4f46e5; color: #fff;">
+                <i data-lucide="shopping-cart" style="width: 13px; height: 13px;"></i>
               </button>
             </div>
           ` : ''}
