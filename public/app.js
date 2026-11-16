@@ -542,18 +542,31 @@ window.toggleMobileSidebar = function() {
 
 // --- PASSWORD VISIBILITY TOGGLE ---
 window.togglePasswordVisibility = function(inputId, btn) {
-  const input = document.getElementById(inputId);
-  if (!input) return;
-  const isPass = input.type === 'password';
-  input.type = isPass ? 'text' : 'password';
-  if (btn) {
-    const icon = isPass ? 'eye-off' : 'eye';
-    btn.innerHTML = `<i data-lucide="${icon}" style="width:16px;height:16px;"></i>`;
-    btn.setAttribute('aria-label', isPass ? 'Hide password' : 'Show password');
-    btn.setAttribute('title', isPass ? 'Hide password' : 'Show password');
-    if (window.lucide && typeof lucide.createIcons === 'function') {
-      try { lucide.createIcons(); } catch (_) {}
+  try {
+    const input = typeof inputId === 'string' ? document.getElementById(inputId) : inputId;
+    if (!input) return;
+    const isPass = input.type === 'password';
+    input.type = isPass ? 'text' : 'password';
+
+    try {
+      input.focus();
+      const len = input.value ? input.value.length : 0;
+      if (typeof input.setSelectionRange === 'function') {
+        input.setSelectionRange(len, len);
+      }
+    } catch (_) {}
+
+    const toggleBtn = btn || (input.parentElement ? input.parentElement.querySelector('.password-toggle-btn') : null);
+    if (toggleBtn) {
+      const isNowPass = input.type === 'password';
+      toggleBtn.setAttribute('aria-label', isNowPass ? 'Show password' : 'Hide password');
+      toggleBtn.setAttribute('title', isNowPass ? 'Show password' : 'Hide password');
+      toggleBtn.innerHTML = isNowPass
+        ? '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>'
+        : '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499A10.75 10.75 0 0 1 2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 2.87-4.434"/><line x1="2" x2="22" y1="2" y2="22"/></svg>';
     }
+  } catch (err) {
+    console.error('togglePasswordVisibility error:', err);
   }
 };
 
