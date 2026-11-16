@@ -1208,6 +1208,19 @@ function updateSettingsView() {
       partnerCard.style.display = 'none';
     }
   }
+
+  // Super Admin Real-time Campaign Notification Settings Card
+  const notifCard = document.getElementById('settings-notifications-card');
+  if (notifCard) {
+    if (currentUser.role === 'admin') {
+      notifCard.style.display = 'block';
+      if (typeof loadNotificationSettings === 'function') {
+        loadNotificationSettings(false);
+      }
+    } else {
+      notifCard.style.display = 'none';
+    }
+  }
 }
 
 const accountProfileForm = document.getElementById('account-profile-form');
@@ -3551,6 +3564,9 @@ async function loadCampaigns() {
     if (typeof loadAdminScheduledReminders === 'function') {
       loadAdminScheduledReminders();
     }
+    if (typeof loadAdminCampaignAlerts === 'function') {
+      loadAdminCampaignAlerts();
+    }
   } catch (e) {
     console.error('Error loading campaigns:', e);
   }
@@ -3912,6 +3928,508 @@ if (btnDismissAllReminders) {
     dismissAllAdminReminders();
   });
 }
+
+// ============================================================================
+// --- REAL-TIME ADMIN CAMPAIGN INTENT ALERTS & NOTIFICATIONS ---
+// ============================================================================
+let adminCampaignAlerts = [];
+let knownAlertIds = new Set();
+let isInitialAlertLoad = true;
+let lastAlertPollTime = 0;
+
+window.playCampaignNotificationChime = function() {
+  if (localStorage.getItem('msg_alert_sound_disabled') === 'true') return;
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+    const now = ctx.currentTime;
+    
+    // Pleasant dual-tone chime (E5 -> B5)
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(659.25, now);
+    gain1.gain.setValueAtTime(0.12, now);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.35);
+
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(987.77, now + 0.12);
+    gain2.gain.setValueAtTime(0.15, now + 0.12);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now + 0.12);
+    osc2.stop(now + 0.55);
+  } catch (e) {
+    // Audio Context might require prior user gesture
+  }
+};
+
+window.requestDesktopNotificationPermission = async function() {
+  if (!('Notification' in window)) {
+    if (typeof showToast === 'function') {
+      showToast('warning', 'Not Supported', 'Your browser does not support desktop push notifications.');
+    }
+    return;
+  }
+  try {
+    const perm = await Notification.requestPermission();
+    const statusEl = document.getElementById('desktop-notification-status');
+    if (statusEl) {
+      statusEl.textContent = `(Status: ${perm === 'granted' ? 'Active / Allowed' : perm === 'denied' ? 'Blocked by Browser' : 'Click to Enable'})`;
+      statusEl.style.color = perm === 'granted' ? '#10b981' : '#64748b';
+    }
+    if (perm === 'granted') {
+      if (typeof showToast === 'function') {
+        showToast('success', 'Desktop Notifications Enabled', 'You will receive instant native notifications when any campaign is launched.');
+      }
+      new Notification('MessageSphere Alerts Active', {
+        body: 'Real-time campaign intent notifications are now active on your desktop!',
+        icon: '/favicon.ico'
+      });
+    }
+  } catch (err) {
+    console.warn('Desktop notification request error:', err);
+  }
+};
+
+function triggerDesktopNotification(alert) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  try {
+    const title = `🚨 New Campaign: ${alert.creator_name || 'User'} (${alert.creator_company || 'Client'})`;
+    const body = `${alert.campaign_title || 'Untitled'} • ${Number(alert.total_numbers).toLocaleString('en-IN')} numbers via ${formatCampaignAlertChannel(alert.campaign_type, alert.channel_type)}`;
+    const n = new Notification(title, {
+      body,
+      icon: '/favicon.ico',
+      tag: `camp-alert-${alert.campaign_id}`
+    });
+    n.onclick = function() {
+      window.focus();
+      openCampaignFromAlert(alert.campaign_id, alert.id);
+    };
+  } catch (e) {}
+}
+
+function formatCampaignAlertChannel(campaignType, channelType) {
+  const normType = String(campaignType || '').toLowerCase().trim();
+  const normChan = String(channelType || '').toLowerCase().trim();
+  if (normChan === 'sms' || normType === 'gsm_sms') return 'GSM Bulk SMS';
+  if (normType === 'normal' || normType === 'normal_text') return 'WhatsApp Text';
+  if (normType === 'dp' || normType === 'dp_media') return 'WhatsApp DP';
+  if (normType === 'cta' || normType === 'cta_buttons') return 'WhatsApp CTA';
+  if (normType === 'dp_cta' || normType === 'dp_cta_combo') return 'WhatsApp DP+CTA';
+  if (normChan === 'own_sim' || normType === 'own_number' || normType === 'own_dedicated_sim') return 'WhatsApp Own SIM';
+  return campaignType ? String(campaignType).toUpperCase() : 'Campaign';
+}
+
+window.loadAdminCampaignAlerts = async function(force = false) {
+  if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'reseller')) {
+    const btn = document.getElementById('btn-admin-campaign-alerts');
+    if (btn) btn.style.display = 'none';
+    const dropdown = document.getElementById('admin-campaign-alerts-dropdown');
+    if (dropdown) dropdown.style.display = 'none';
+    return;
+  }
+
+  const now = Date.now();
+  if (!force && (now - lastAlertPollTime < 4000)) return;
+  lastAlertPollTime = now;
+
+  const btn = document.getElementById('btn-admin-campaign-alerts');
+  if (btn) btn.style.display = 'inline-flex';
+
+  try {
+    const data = await apiFetch('/notifications/alerts?limit=50');
+    adminCampaignAlerts = Array.isArray(data?.alerts) ? data.alerts : [];
+    const unreadCount = parseInt(data?.unreadCount || 0, 10);
+
+    // Update Topbar badge
+    const badge = document.getElementById('admin-campaign-alert-badge');
+    if (badge) {
+      badge.textContent = unreadCount;
+      badge.style.display = unreadCount > 0 ? 'inline-block' : 'none';
+    }
+
+    // Glow pulse animation on topbar button
+    if (btn) {
+      if (unreadCount > 0) {
+        btn.classList.add('has-unread-alerts');
+      } else {
+        btn.classList.remove('has-unread-alerts');
+      }
+    }
+
+    // Update banner badge
+    const dashCount = document.getElementById('dash-admin-alerts-count');
+    if (dashCount) dashCount.textContent = unreadCount;
+
+    // Detect brand-new alerts for audio chime & desktop notifications
+    if (adminCampaignAlerts.length > 0) {
+      let hasNewUnseen = false;
+      let newestAlert = null;
+      for (const a of adminCampaignAlerts) {
+        if (!knownAlertIds.has(a.id)) {
+          knownAlertIds.add(a.id);
+          if (!isInitialAlertLoad && !a.is_read) {
+            hasNewUnseen = true;
+            if (!newestAlert) newestAlert = a;
+          }
+        }
+      }
+
+      if (hasNewUnseen && newestAlert) {
+        playCampaignNotificationChime();
+        if (typeof showToast === 'function') {
+          showToast(
+            'info',
+            'New Campaign Launched!',
+            `${newestAlert.creator_name} (${newestAlert.creator_company}) submitted #${newestAlert.campaign_id} "${newestAlert.campaign_title}" (${Number(newestAlert.total_numbers).toLocaleString('en-IN')} numbers via ${formatCampaignAlertChannel(newestAlert.campaign_type, newestAlert.channel_type)})`
+          );
+        }
+        triggerDesktopNotification(newestAlert);
+      }
+    }
+    isInitialAlertLoad = false;
+
+    renderAdminCampaignAlertsList();
+  } catch (err) {
+    console.warn('Failed to load campaign alerts:', err);
+  }
+};
+
+window.renderAdminCampaignAlertsList = function() {
+  const container = document.getElementById('admin-campaign-alerts-list');
+  if (!container) return;
+
+  if (!adminCampaignAlerts || adminCampaignAlerts.length === 0) {
+    container.innerHTML = `
+      <div style="text-align:center;padding:30px 14px;color:var(--slate-400);font-size:0.82rem;">
+        <i data-lucide="bell-off" style="width:26px;height:26px;margin-bottom:8px;color:#94a3b8;display:inline-block;"></i>
+        <div>No campaign alerts yet.</div>
+        <div style="font-size:0.74rem;color:#cbd5e1;margin-top:2px;">Whenever users launch campaigns, they appear here live.</div>
+      </div>
+    `;
+    if (window.lucide) {
+      try { lucide.createIcons({ root: container }); } catch (e) { lucide.createIcons(); }
+    }
+    return;
+  }
+
+  const now = Date.now();
+  container.innerHTML = adminCampaignAlerts.map(a => {
+    const isRead = Boolean(a.is_read);
+    const friendlyChannel = formatCampaignAlertChannel(a.campaign_type, a.channel_type);
+    
+    // Relative time string
+    let timeAgoText = 'Just now';
+    if (a.created_at) {
+      const createdMs = new Date(a.created_at).getTime();
+      const diffSec = Math.max(0, Math.round((now - createdMs) / 1000));
+      if (diffSec < 60) timeAgoText = `${diffSec}s ago`;
+      else if (diffSec < 3600) timeAgoText = `${Math.floor(diffSec / 60)}m ago`;
+      else if (diffSec < 86400) timeAgoText = `${Math.floor(diffSec / 3600)}h ago`;
+      else timeAgoText = `${Math.floor(diffSec / 86400)}d ago`;
+    }
+
+    const isScheduled = Boolean(a.scheduled_at);
+    const scheduleBadge = isScheduled
+      ? `<span style="font-size:0.68rem;font-weight:700;color:#d97706;background:#fef3c7;padding:1px 6px;border-radius:4px;border:1px solid #fde68a;">⏰ Scheduled</span>`
+      : `<span style="font-size:0.68rem;font-weight:700;color:#2563eb;background:#eff6ff;padding:1px 6px;border-radius:4px;border:1px solid #bfdbfe;">⚡ Instant</span>`;
+
+    const bgStyle = isRead ? '#ffffff' : '#f0fdf4';
+    const borderLeftColor = isRead ? '#e2e8f0' : '#10b981';
+
+    return `
+      <div style="padding:11px 14px;border-bottom:1px solid #e2e8f0;background:${bgStyle};border-left:4px solid ${borderLeftColor};transition:background 0.15s ease;" onmouseenter="this.style.background='#f8fafc'" onmouseleave="this.style.background='${bgStyle}'">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px;">
+              <span style="font-size:0.68rem;font-weight:800;padding:1px 6px;border-radius:4px;background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;">
+                ${escapeHtml(friendlyChannel)}
+              </span>
+              <span style="font-size:0.68rem;font-weight:700;color:#059669;background:#ecfdf5;padding:1px 6px;border-radius:4px;border:1px solid #a7f3d0;">
+                ${Number(a.total_numbers).toLocaleString('en-IN')} Numbers
+              </span>
+              ${scheduleBadge}
+            </div>
+
+            <div style="font-weight:700;font-size:0.84rem;color:#0f172a;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+              #${a.campaign_id} ${escapeHtml(a.campaign_title || 'Untitled Campaign')}
+            </div>
+
+            <div style="font-size:0.75rem;color:#334155;margin-bottom:3px;line-height:1.3;">
+              <strong>${escapeHtml(a.creator_name || 'Client')}</strong>
+              <span style="color:#64748b;">(${escapeHtml(a.creator_company || 'Direct')})</span>
+              ${a.creator_phone ? `<span style="color:#0284c7;font-weight:600;"> • ${escapeHtml(a.creator_phone)}</span>` : ''}
+            </div>
+
+            ${a.reseller_name ? `<div style="font-size:0.7rem;color:#7c3aed;margin-bottom:3px;">Reseller: <strong>${escapeHtml(a.reseller_name)}</strong></div>` : ''}
+
+            <div style="font-size:0.7rem;color:#94a3b8;display:flex;align-items:center;gap:10px;">
+              <span><i data-lucide="clock" style="width:11px;height:11px;display:inline-block;vertical-align:-1px;"></i> ${timeAgoText}</span>
+              <span>• Cost: <strong>${Number(a.credit_cost).toLocaleString('en-IN')}</strong> Credits</span>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">
+            <button type="button" onclick="openCampaignFromAlert(${a.campaign_id}, ${a.id})" class="btn-action" style="padding:4px 9px;font-size:0.72rem;background:#4f46e5;color:#fff;border:none;border-radius:4px;font-weight:600;display:inline-flex;align-items:center;gap:3px;cursor:pointer;">
+              View <i data-lucide="arrow-right" style="width:11px;height:11px;"></i>
+            </button>
+            ${!isRead ? `<button type="button" onclick="markSingleCampaignAlertRead(${a.id}, event)" style="background:none;border:none;color:#64748b;font-size:0.68rem;cursor:pointer;padding:2px 4px;font-weight:600;" title="Mark as read" onmouseenter="this.style.color='#10b981'" onmouseleave="this.style.color='#64748b'">Mark read</button>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  if (window.lucide) {
+    try { lucide.createIcons({ root: container }); } catch (e) { lucide.createIcons(); }
+  }
+};
+
+window.toggleAdminCampaignAlertsDropdown = function() {
+  const dropdown = document.getElementById('admin-campaign-alerts-dropdown');
+  if (!dropdown) return;
+  const isHidden = dropdown.style.display === 'none' || !dropdown.style.display;
+  
+  // Close reminders dropdown if open
+  const remDrop = document.getElementById('admin-reminders-dropdown');
+  if (remDrop) remDrop.style.display = 'none';
+
+  dropdown.style.display = isHidden ? 'block' : 'none';
+  if (isHidden) {
+    loadAdminCampaignAlerts(true);
+  }
+};
+
+window.openCampaignFromAlert = function(campaignId, alertId) {
+  const dropdown = document.getElementById('admin-campaign-alerts-dropdown');
+  if (dropdown) dropdown.style.display = 'none';
+
+  if (alertId) {
+    apiFetch(`/notifications/alerts/${alertId}/read`, { method: 'POST' }).catch(() => {});
+  }
+
+  // Find if this is an SMS campaign or standard campaign
+  const target = (allCampaigns || []).find(c => c.id === campaignId);
+  if (target && (target.channel_type === 'sms' || target.campaign_type === 'gsm_sms')) {
+    switchView('view-sms');
+    if (typeof openSmsBroadcastModal === 'function') {
+      openSmsBroadcastModal(campaignId);
+      return;
+    }
+  }
+
+  switchView('view-campaigns');
+  if (typeof openCampaignDetailModal === 'function') {
+    openCampaignDetailModal(campaignId);
+  }
+};
+
+window.markSingleCampaignAlertRead = async function(alertId, e) {
+  if (e) e.stopPropagation();
+  try {
+    await apiFetch(`/notifications/alerts/${alertId}/read`, { method: 'POST' });
+    loadAdminCampaignAlerts(true);
+  } catch (err) {
+    console.error('Failed to mark alert as read:', err);
+  }
+};
+
+window.markAllCampaignAlertsRead = async function() {
+  try {
+    await apiFetch('/notifications/alerts/read-all', { method: 'POST' });
+    adminCampaignAlerts.forEach(a => a.is_read = true);
+    const badge = document.getElementById('admin-campaign-alert-badge');
+    if (badge) {
+      badge.textContent = 0;
+      badge.style.display = 'none';
+    }
+    const btn = document.getElementById('btn-admin-campaign-alerts');
+    if (btn) btn.classList.remove('has-unread-alerts');
+    const dashCount = document.getElementById('dash-admin-alerts-count');
+    if (dashCount) dashCount.textContent = 0;
+    renderAdminCampaignAlertsList();
+    if (typeof showToast === 'function') {
+      showToast('success', 'Cleared', 'All campaign intent alerts marked as read.');
+    }
+  } catch (err) {
+    console.error('Failed to mark all alerts read:', err);
+  }
+};
+
+window.toggleAlertSound = function() {
+  const isMuted = localStorage.getItem('msg_alert_sound_disabled') === 'true';
+  const newMuted = !isMuted;
+  localStorage.setItem('msg_alert_sound_disabled', newMuted ? 'true' : 'false');
+
+  const icon = document.getElementById('icon-alert-sound');
+  if (icon) {
+    icon.setAttribute('data-lucide', newMuted ? 'volume-x' : 'volume-2');
+    if (window.lucide) lucide.createIcons();
+  }
+  if (typeof showToast === 'function') {
+    showToast('info', 'Sound Alert', newMuted ? 'Notification chime muted' : 'Notification chime enabled');
+  }
+  if (!newMuted) playCampaignNotificationChime();
+};
+
+window.openCampaignAlertSettingsModal = function() {
+  const modal = document.getElementById('modal-campaign-alert-settings');
+  if (modal) {
+    modal.style.display = 'flex';
+    loadNotificationSettings(true);
+  }
+};
+
+window.closeCampaignAlertSettingsModal = function() {
+  const modal = document.getElementById('modal-campaign-alert-settings');
+  if (modal) modal.style.display = 'none';
+};
+
+window.loadNotificationSettings = async function(isModal = false) {
+  try {
+    const s = await apiFetch('/notifications/settings');
+    if (!s) return;
+
+    const prefix = isModal ? 'modal-setting-' : 'setting-';
+
+    const tgEnabled = document.getElementById(prefix + 'tg-enabled');
+    const tgToken = document.getElementById(prefix + 'tg-token');
+    const tgChatId = document.getElementById(prefix + 'tg-chatid');
+    const whEnabled = document.getElementById(prefix + 'webhook-enabled');
+    const whUrl = document.getElementById(prefix + 'webhook-url');
+    const audioChime = document.getElementById(prefix + 'audio-chime');
+
+    if (tgEnabled) tgEnabled.checked = Boolean(s.telegram_enabled);
+    if (tgToken) {
+      tgToken.value = s.masked_telegram_token || '';
+      tgToken.dataset.hasSavedToken = s.has_telegram_token ? 'true' : 'false';
+    }
+    if (tgChatId) tgChatId.value = s.telegram_chat_id || '';
+    if (whEnabled) whEnabled.checked = Boolean(s.webhook_enabled);
+    if (whUrl) whUrl.value = s.admin_alert_webhook || '';
+    if (audioChime) audioChime.checked = Boolean(s.audio_chime_enabled);
+
+    // Sync desktop push status text if in main settings
+    const notifStatus = document.getElementById('desktop-notification-status');
+    if (notifStatus && 'Notification' in window) {
+      notifStatus.textContent = `(Status: ${Notification.permission === 'granted' ? 'Active / Allowed' : Notification.permission === 'denied' ? 'Blocked by Browser' : 'Click to Enable'})`;
+      notifStatus.style.color = Notification.permission === 'granted' ? '#10b981' : '#64748b';
+    }
+  } catch (err) {
+    console.warn('Failed to load notification settings:', err);
+  }
+};
+
+window.saveNotificationSettings = async function(e, isModal = false) {
+  if (e) e.preventDefault();
+  const prefix = isModal ? 'modal-setting-' : 'setting-';
+
+  const tgEnabled = document.getElementById(prefix + 'tg-enabled')?.checked || false;
+  const tgTokenRaw = document.getElementById(prefix + 'tg-token')?.value || '';
+  const tgChatId = document.getElementById(prefix + 'tg-chatid')?.value || '';
+  const whEnabled = document.getElementById(prefix + 'webhook-enabled')?.checked || false;
+  const whUrl = document.getElementById(prefix + 'webhook-url')?.value || '';
+  const audioChime = document.getElementById(prefix + 'audio-chime')?.checked !== false;
+
+  const payload = {
+    telegram_enabled: tgEnabled,
+    telegram_chat_id: tgChatId,
+    webhook_enabled: whEnabled,
+    admin_alert_webhook: whUrl,
+    audio_chime_enabled: audioChime
+  };
+
+  if (tgTokenRaw && !tgTokenRaw.includes('...')) {
+    payload.telegram_bot_token = tgTokenRaw;
+  }
+
+  try {
+    await apiFetch('/notifications/settings', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    if (typeof showToast === 'function') {
+      showToast('success', 'Saved!', 'Campaign intent notification settings updated successfully.');
+    }
+    if (isModal) closeCampaignAlertSettingsModal();
+    loadNotificationSettings(false);
+  } catch (err) {
+    if (typeof showToast === 'function') {
+      showToast('error', 'Save Failed', err.message);
+    }
+  }
+};
+
+window.testTelegramAlert = async function(isModal = false) {
+  const prefix = isModal ? 'modal-setting-' : 'setting-';
+  const token = document.getElementById(prefix + 'tg-token')?.value || '';
+  const chatId = document.getElementById(prefix + 'tg-chatid')?.value || '';
+
+  try {
+    if (typeof showToast === 'function') {
+      showToast('info', 'Sending Test...', 'Dispatching test alert to your Telegram bot...');
+    }
+    const res = await apiFetch('/notifications/test-telegram', {
+      method: 'POST',
+      body: JSON.stringify({
+        telegram_bot_token: token,
+        telegram_chat_id: chatId
+      })
+    });
+    if (typeof showToast === 'function') {
+      showToast('success', 'Telegram Alert Delivered!', res.message || 'Check your phone app.');
+    }
+  } catch (err) {
+    if (typeof showToast === 'function') {
+      showToast('error', 'Telegram Test Failed', err.message);
+    }
+  }
+};
+
+window.testWebhookAlert = async function(isModal = false) {
+  const prefix = isModal ? 'modal-setting-' : 'setting-';
+  const url = document.getElementById(prefix + 'webhook-url')?.value || '';
+
+  try {
+    if (typeof showToast === 'function') {
+      showToast('info', 'Sending Test...', 'Testing external webhook endpoint...');
+    }
+    const res = await apiFetch('/notifications/test-webhook', {
+      method: 'POST',
+      body: JSON.stringify({ admin_alert_webhook: url })
+    });
+    if (typeof showToast === 'function') {
+      showToast('success', 'Webhook Delivered!', res.message || 'Endpoint responded successfully.');
+    }
+  } catch (err) {
+    if (typeof showToast === 'function') {
+      showToast('error', 'Webhook Test Failed', err.message);
+    }
+  }
+};
+
+// Global click-outside closer for Alerts Dropdown
+document.addEventListener('click', (e) => {
+  const dropdown = document.getElementById('admin-campaign-alerts-dropdown');
+  const btn = document.getElementById('btn-admin-campaign-alerts');
+  if (dropdown && dropdown.style.display === 'block') {
+    if (!dropdown.contains(e.target) && !btn?.contains(e.target)) {
+      dropdown.style.display = 'none';
+    }
+  }
+});
 
 window.openOperatorDispatchModal = function() {
   if (!currentUser || currentUser.role !== 'admin') {

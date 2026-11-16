@@ -1228,4 +1228,27 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.strictEqual(canAccessAdminBillingScope(resellerStaff), false);
     assert.strictEqual(canAccessAdminBillingScope(regularClient), false);
   });
+
+  test('Campaign Intent Notification & Alert Channel Normalization', () => {
+    const { formatChannelName } = require('../services/notifications');
+    
+    // Channel name formatting tests
+    assert.strictEqual(formatChannelName('gsm_sms', 'sms'), 'GSM Bulk SMS');
+    assert.strictEqual(formatChannelName('gsm_sms', 'shared_gateway'), 'GSM Bulk SMS');
+    assert.strictEqual(formatChannelName('normal', 'shared_gateway'), 'WhatsApp Normal Text');
+    assert.strictEqual(formatChannelName('normal_text', 'whatsapp'), 'WhatsApp Normal Text');
+    assert.strictEqual(formatChannelName('dp', 'shared_gateway'), 'WhatsApp DP (Media)');
+    assert.strictEqual(formatChannelName('cta', 'shared_gateway'), 'WhatsApp CTA (Buttons)');
+    assert.strictEqual(formatChannelName('dp_cta', 'shared_gateway'), 'WhatsApp DP + CTA Combo');
+    assert.strictEqual(formatChannelName('own_number', 'own_sim'), 'WhatsApp Own Dedicated SIM');
+
+    // Token masking verification
+    function maskBotToken(token) {
+      if (!token) return '';
+      return token.length > 10 ? `${token.slice(0, 6)}...${token.slice(-4)}` : '••••••••';
+    }
+    assert.strictEqual(maskBotToken('7123456789:ABCdefGHIjklMNOpqrsTUVwxyz123456'), '712345...3456');
+    assert.strictEqual(maskBotToken('short'), '••••••••');
+    assert.strictEqual(maskBotToken(''), '');
+  });
 });

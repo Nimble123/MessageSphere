@@ -7,6 +7,7 @@ const readline = require('readline');
 const { query, getClient } = require('../db');
 const { authenticate } = require('../middleware/auth');
 const { logAudit } = require('../services/audit');
+const { recordAndDispatchCampaignAlert } = require('../services/notifications');
 const { calculateSmsMetrics } = require('../services/telecom');
 
 const MAX_SMS_RECIPIENTS = Number(process.env.MAX_CAMPAIGN_RECIPIENTS || 50000);
@@ -513,6 +514,22 @@ router.post('/', authenticate, async (req, res) => {
     }
 
     await client.query('COMMIT');
+
+    // Trigger Admin Real-time Campaign Intent Alert (In-portal live feed, Telegram, Webhooks)
+    recordAndDispatchCampaignAlert({
+      campaignId,
+      userId: effectiveUserId,
+      actorUserId: req.user.id,
+      campaignTitle,
+      channelType: 'sms',
+      campaignType: 'gsm_sms',
+      destination: campaignDest,
+      totalNumbers: messageCount,
+      creditCost,
+      scheduledAt: scheduledDate,
+      messageText,
+      status: 'Submitted'
+    }).catch(alertErr => console.error('[SMS CAMPAIGN ALERT TRIGGER ERROR]:', alertErr.message));
 
     return res.status(201).json({
       message: 'SMS campaign created successfully!',

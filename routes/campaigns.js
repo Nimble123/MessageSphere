@@ -8,6 +8,7 @@ const archiver = require('archiver');
 const { query, getClient } = require('../db');
 const { authenticate, requireRoles } = require('../middleware/auth');
 const { logAudit } = require('../services/audit');
+const { recordAndDispatchCampaignAlert } = require('../services/notifications');
 const { calculateSmsMetrics, normalizePhoneNumber, SMPP_DELIVERED_STATUSES, sanitizeCsvCell, isValidAttachmentUrl } = require('../services/telecom');
 const MAX_CAMPAIGN_RECIPIENTS = Number(process.env.MAX_CAMPAIGN_RECIPIENTS || 50000);
 
@@ -705,6 +706,22 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
     }
 
     await client.query('COMMIT');
+
+    // Trigger Admin Real-time Campaign Intent Alert (In-portal live feed, Telegram, Webhooks)
+    recordAndDispatchCampaignAlert({
+      campaignId,
+      userId: effectiveUserId,
+      actorUserId: req.user.id,
+      campaignTitle,
+      channelType: isDedicatedSim ? 'own_sim' : 'shared_gateway',
+      campaignType,
+      destination: campaignDest,
+      totalNumbers: messageCount,
+      creditCost: messageCount,
+      scheduledAt: scheduledDate,
+      messageText: messageText || '(Media / Interactive broadcast)',
+      status: initialStatus
+    }).catch(alertErr => console.error('[CAMPAIGN ALERT TRIGGER ERROR]:', alertErr.message));
 
     return res.status(201).json({
       message: 'Campaign created successfully!',

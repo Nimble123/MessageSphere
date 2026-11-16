@@ -291,6 +291,45 @@ async function initDB() {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_reminder_dismissals_user ON reminder_dismissals(user_id);`);
 
+    // 12B. System Settings Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS system_settings (
+        key VARCHAR(100) PRIMARY KEY,
+        value TEXT,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 12C. Real-time Admin Campaign Intent Alerts
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS admin_campaign_alerts (
+        id BIGSERIAL PRIMARY KEY,
+        campaign_id INTEGER REFERENCES campaigns(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        campaign_title VARCHAR(255) NOT NULL,
+        channel_type VARCHAR(50) NOT NULL,
+        campaign_type VARCHAR(50) NOT NULL,
+        destination VARCHAR(50) NOT NULL,
+        total_numbers INTEGER NOT NULL DEFAULT 0,
+        credit_cost NUMERIC(12, 4) DEFAULT 0,
+        creator_name VARCHAR(255),
+        creator_company VARCHAR(255),
+        creator_email VARCHAR(255),
+        creator_phone VARCHAR(50),
+        creator_role VARCHAR(50),
+        reseller_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        reseller_name VARCHAR(255),
+        scheduled_at TIMESTAMP WITH TIME ZONE,
+        status VARCHAR(50) DEFAULT 'Submitted',
+        is_read BOOLEAN DEFAULT FALSE,
+        meta JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_admin_campaign_alerts_read ON admin_campaign_alerts(is_read, created_at DESC);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_admin_campaign_alerts_user ON admin_campaign_alerts(user_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_admin_campaign_alerts_reseller ON admin_campaign_alerts(reseller_id);`);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS credit_requests (
         id SERIAL PRIMARY KEY,

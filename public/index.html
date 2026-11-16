@@ -1135,6 +1135,16 @@
     .action-dropdown-menu.show {
       display: flex;
     }
+    @keyframes alertBellGlow {
+      0% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.5); }
+      70% { box-shadow: 0 0 0 8px rgba(79, 70, 229, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0); }
+    }
+    .has-unread-alerts {
+      animation: alertBellGlow 2s infinite !important;
+      border-color: #818cf8 !important;
+      background: #eef2ff !important;
+    }
     .action-dropdown-item {
       padding: 8px 12px;
       font-size: 0.8rem;
@@ -2863,6 +2873,42 @@
           </div>
         </div>
         <div class="topbar-actions">
+          <!-- Admin Real-Time Campaign Intent Alerts Bell & Dropdown -->
+          <div style="position:relative;" id="topbar-alerts-wrapper">
+            <button type="button" id="btn-admin-campaign-alerts" class="credit-pill" style="display:none;cursor:pointer;background:#ffffff;border:1px solid #c7d2fe;padding:5px 10px;gap:6px;" title="Real-time Campaign Intent Alerts" onclick="toggleAdminCampaignAlertsDropdown()">
+              <i data-lucide="bell-ring" style="width:14px;height:14px;color:#4f46e5;"></i>
+              <span style="font-weight:700;font-size:0.78rem;color:#3730a3;">Campaigns</span>
+              <span id="admin-campaign-alert-badge" style="background:#4f46e5;color:#fff;border-radius:10px;padding:1px 6px;font-size:0.7rem;font-weight:700;">0</span>
+            </button>
+
+            <!-- Campaign Alerts Dropdown Popup -->
+            <div id="admin-campaign-alerts-dropdown" style="display:none;position:absolute;top:38px;right:0;width:440px;max-width:94vw;background:#ffffff;border:1px solid #cbd5e1;border-radius:12px;box-shadow:0 14px 35px -4px rgba(15,23,42,0.25);z-index:9999;overflow:hidden;">
+              <div style="padding:12px 16px;background:linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);color:#fff;display:flex;justify-content:space-between;align-items:center;">
+                <div style="font-weight:700;font-size:0.86rem;display:flex;align-items:center;gap:8px;">
+                  <i data-lucide="radio" style="width:16px;height:16px;color:#a5b4fc;"></i>
+                  <span>Live Campaign Intent Alerts</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <button type="button" id="btn-toggle-alert-sound" onclick="toggleAlertSound()" style="background:rgba(255,255,255,0.14);border:none;color:#c7d2fe;cursor:pointer;font-size:0.75rem;display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border-radius:4px;" title="Toggle Sound Chime">
+                    <i data-lucide="volume-2" id="icon-alert-sound" style="width:13px;height:13px;"></i>
+                  </button>
+                  <button type="button" id="btn-mark-all-alerts-read" onclick="markAllCampaignAlertsRead()" style="background:rgba(255,255,255,0.18);border:none;color:#fff;font-size:0.72rem;font-weight:600;padding:3px 8px;border-radius:4px;cursor:pointer;">Clear / Read</button>
+                </div>
+              </div>
+              <div id="admin-campaign-alerts-list" style="max-height:360px;overflow-y:auto;padding:4px 0;background:#f8fafc;">
+                <div style="text-align:center;padding:24px;color:var(--slate-400);font-size:0.82rem;">Loading campaign alerts...</div>
+              </div>
+              <div style="padding:10px 14px;background:#ffffff;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
+                <button type="button" onclick="openCampaignAlertSettingsModal(); document.getElementById('admin-campaign-alerts-dropdown').style.display='none';" style="background:none;border:none;color:#4f46e5;font-size:0.78rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
+                  <i data-lucide="settings" style="width:13px;height:13px;"></i> Telegram & Alert Settings
+                </button>
+                <button type="button" onclick="switchView('view-campaigns'); document.getElementById('admin-campaign-alerts-dropdown').style.display='none';" style="background:none;border:none;color:#64748b;font-size:0.76rem;font-weight:600;cursor:pointer;">
+                  View All &rarr;
+                </button>
+              </div>
+            </div>
+          </div>
+
           <!-- Admin Scheduled Reminders Bell Pill & Dropdown -->
           <div style="position:relative;" id="topbar-reminders-wrapper">
             <button type="button" id="btn-admin-scheduled-reminders" class="credit-pill" style="display:none;cursor:pointer;background:#ffffff;border:1px solid #fde68a;padding:5px 10px;gap:6px;" title="Scheduled Campaign Reminders">
@@ -2921,6 +2967,9 @@
               </div>
             </div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <button type="button" class="btn-action" onclick="toggleAdminCampaignAlertsDropdown()" style="background:#4338ca;color:#fff;border:none;display:inline-flex;align-items:center;gap:6px;padding:7px 14px;font-weight:600;font-size:0.82rem;">
+                <i data-lucide="radio" style="width:14px;height:14px;color:#a5b4fc;"></i> Campaign Alerts (<span id="dash-admin-alerts-count">0</span>)
+              </button>
               <button type="button" class="btn-action" onclick="toggleAdminRemindersDropdown()" style="background:#d97706;color:#fff;border:none;display:inline-flex;align-items:center;gap:6px;padding:7px 14px;font-weight:600;font-size:0.82rem;">
                 <i data-lucide="bell" style="width:14px;height:14px;"></i> Scheduled Reminders (<span id="dash-admin-reminder-count">0</span>)
               </button>
@@ -5574,6 +5623,126 @@
                 </form>
               </div>
             </div>
+
+            <!-- REAL-TIME CAMPAIGN INTENT ALERTS & NOTIFICATION INTEGRATIONS CARD (SUPER ADMIN ONLY) -->
+            <div class="card super-admin-only" id="settings-notifications-card" style="display:none;margin-top:20px;border-top:4px solid #4f46e5;">
+              <div class="card-header" style="border-bottom:1px solid #f1f5f9;padding:16px 20px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
+                  <div>
+                    <div class="card-title" style="display:flex;align-items:center;gap:8px;font-size:1.02rem;font-weight:700;">
+                      <i data-lucide="bell-ring" style="width:20px;height:20px;color:#4f46e5;"></i>
+                      <span>Real-Time Campaign Intent Alerts & Integrations</span>
+                    </div>
+                    <div class="card-desc" style="font-size:0.78rem;color:#64748b;margin-top:2px;">
+                      Instant 24/7 mobile notifications (Telegram Bot), external webhooks, audio chimes, and browser push when ANY user fires a campaign.
+                    </div>
+                  </div>
+                  <span class="badge" style="background:#eef2ff;color:#4f46e5;font-size:0.72rem;font-weight:700;padding:3px 8px;border-radius:6px;border:1px solid #c7d2fe;">Super Admin Control</span>
+                </div>
+              </div>
+              <div class="card-body" style="padding:20px;">
+                <form id="form-notification-settings" onsubmit="saveNotificationSettings(event)">
+                  <!-- 1. Telegram 24/7 Bot Alert Section -->
+                  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:18px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+                      <div style="display:flex;align-items:center;gap:10px;">
+                        <div style="width:34px;height:34px;border-radius:8px;background:#0284c7;color:#fff;display:flex;align-items:center;justify-content:center;">
+                          <i data-lucide="send" style="width:18px;height:18px;"></i>
+                        </div>
+                        <div>
+                          <div style="font-weight:700;font-size:0.9rem;color:#0f172a;">Telegram 24/7 Mobile Alerts (Offline Alerting)</div>
+                          <div style="font-size:0.75rem;color:#64748b;">Receive instant alerts directly on your phone's Telegram app when users launch campaigns.</div>
+                        </div>
+                      </div>
+                      <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;font-size:0.82rem;color:#334155;">
+                        <input type="checkbox" id="setting-tg-enabled" style="width:16px;height:16px;cursor:pointer;">
+                        <span>Enable Telegram Alerts</span>
+                      </label>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:14px;margin-bottom:12px;">
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.78rem;font-weight:600;">Telegram Bot Token</label>
+                        <div class="password-wrapper">
+                          <input type="password" id="setting-tg-token" class="form-input" placeholder="e.g. 7123456789:AAHk... (from @BotFather)" autocomplete="off">
+                          <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('setting-tg-token', this)" onmousedown="event.preventDefault();" title="Show / Hide Token">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>
+                          </button>
+                        </div>
+                      </div>
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label style="font-size:0.78rem;font-weight:600;">Telegram Admin Chat ID / Channel ID</label>
+                        <input type="text" id="setting-tg-chatid" class="form-input" placeholder="e.g. 987654321 or -10012345678 (from @userinfobot)">
+                      </div>
+                    </div>
+
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+                      <div style="font-size:0.72rem;color:#64748b;line-height:1.4;">
+                        <strong>Quick Setup:</strong> 1. Open Telegram & search <code>@BotFather</code> &rarr; send <code>/newbot</code>. 2. Paste HTTP API token. 3. Search <code>@userinfobot</code> to copy your numeric Chat ID.
+                      </div>
+                      <button type="button" id="btn-test-tg-alert" onclick="testTelegramAlert()" class="btn-action btn-action-secondary" style="font-size:0.78rem;padding:6px 12px;display:inline-flex;align-items:center;gap:6px;font-weight:600;">
+                        <i data-lucide="send" style="width:13px;height:13px;color:#0284c7;"></i> Send Test Message
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- 2. Webhook & CRM Integration -->
+                  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:18px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+                      <div style="display:flex;align-items:center;gap:10px;">
+                        <div style="width:34px;height:34px;border-radius:8px;background:#6366f1;color:#fff;display:flex;align-items:center;justify-content:center;">
+                          <i data-lucide="webhook" style="width:18px;height:18px;"></i>
+                        </div>
+                        <div>
+                          <div style="font-weight:700;font-size:0.9rem;color:#0f172a;">External Webhook Integration</div>
+                          <div style="font-size:0.75rem;color:#64748b;">Post JSON payload to Slack, Discord, Zapier, Make, or custom CRM.</div>
+                        </div>
+                      </div>
+                      <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;font-size:0.82rem;color:#334155;">
+                        <input type="checkbox" id="setting-webhook-enabled" style="width:16px;height:16px;cursor:pointer;">
+                        <span>Enable Webhook</span>
+                      </label>
+                    </div>
+
+                    <div style="margin-bottom:10px;">
+                      <input type="url" id="setting-webhook-url" class="form-input" placeholder="https://hooks.slack.com/services/... or https://your-server.com/webhook">
+                    </div>
+                    <div style="display:flex;justify-content:flex-end;">
+                      <button type="button" id="btn-test-webhook-alert" onclick="testWebhookAlert()" class="btn-action btn-action-secondary" style="font-size:0.78rem;padding:6px 12px;display:inline-flex;align-items:center;gap:6px;font-weight:600;">
+                        <i data-lucide="zap" style="width:13px;height:13px;color:#6366f1;"></i> Send Test Webhook
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- 3. In-App Desktop & Audio Alert Preferences -->
+                  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:20px;">
+                    <div style="font-weight:700;font-size:0.9rem;color:#0f172a;margin-bottom:10px;display:flex;align-items:center;gap:8px;">
+                      <i data-lucide="volume-2" style="width:16px;height:16px;color:#10b981;"></i>
+                      <span>In-Browser Live Notification Preferences</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:12px;margin-bottom:12px;">
+                      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.82rem;color:#334155;">
+                        <input type="checkbox" id="setting-audio-chime" checked style="width:16px;height:16px;cursor:pointer;">
+                        <span>Play Audio Chime on New Campaign</span>
+                      </label>
+                      <button type="button" onclick="playCampaignNotificationChime()" class="btn-action btn-action-secondary" style="font-size:0.75rem;padding:4px 10px;max-width:140px;justify-content:center;">
+                        <i data-lucide="play" style="width:12px;height:12px;"></i> Test Sound
+                      </button>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                      <button type="button" onclick="requestDesktopNotificationPermission()" class="btn-action" style="background:#059669;color:#fff;border:none;font-size:0.78rem;padding:7px 14px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">
+                        <i data-lucide="monitor" style="width:14px;height:14px;"></i> Enable Desktop Push Notifications
+                      </button>
+                      <span id="desktop-notification-status" style="font-size:0.75rem;color:#64748b;">(Status: Checking...)</span>
+                    </div>
+                  </div>
+
+                  <button type="submit" id="btn-save-notif-settings" class="btn-primary" style="display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 22px;font-weight:700;">
+                    <i data-lucide="save" style="width:16px;height:16px;"></i> Save Notification Settings
+                  </button>
+                </form>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -6652,6 +6821,104 @@
       </div>
     </main>
 
+  </div>
+
+  <!-- MODAL: CAMPAIGN ALERT & TELEGRAM SETTINGS -->
+  <div id="modal-campaign-alert-settings" class="modal-overlay">
+    <div class="modal-card" style="max-width:680px;width:95%;max-height:90vh;display:flex;flex-direction:column;padding:0;overflow:hidden;border-radius:14px;box-shadow:0 25px 50px -12px rgba(15,23,42,0.25);">
+      <div class="modal-header-saas" style="padding:16px 20px;border-bottom:1px solid #e2e8f0;background:linear-gradient(to right, #ffffff, #f8fafc);display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:36px;height:36px;border-radius:8px;background:#eef2ff;color:#4f46e5;display:flex;align-items:center;justify-content:center;">
+            <i data-lucide="bell-ring" style="width:18px;height:18px;"></i>
+          </div>
+          <div>
+            <h3 style="margin:0;font-size:1.05rem;font-weight:700;color:var(--slate-800);">Real-Time Campaign Intent Alerts</h3>
+            <p style="font-size:0.75rem;color:var(--slate-500);margin:2px 0 0;">24/7 Telegram Mobile Alerts &amp; Integrations</p>
+          </div>
+        </div>
+        <button class="btn-modal-close" onclick="closeCampaignAlertSettingsModal()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:var(--slate-400);padding:2px 6px;">&times;</button>
+      </div>
+      <div class="modal-body-saas" style="padding:20px;overflow-y:auto;max-height:calc(90vh - 130px);">
+        <form id="form-modal-notification-settings" onsubmit="saveNotificationSettings(event, true)">
+          <!-- 1. Telegram Mobile Alert -->
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <i data-lucide="send" style="width:16px;height:16px;color:#0284c7;"></i>
+                <span style="font-weight:700;font-size:0.88rem;color:#0f172a;">Telegram 24/7 Mobile Push</span>
+              </div>
+              <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;font-size:0.8rem;color:#334155;">
+                <input type="checkbox" id="modal-setting-tg-enabled" style="width:16px;height:16px;cursor:pointer;">
+                <span>Enable Alerts</span>
+              </label>
+            </div>
+            <div style="margin-bottom:10px;">
+              <label style="font-size:0.76rem;font-weight:600;display:block;margin-bottom:4px;">Telegram Bot Token</label>
+              <div class="password-wrapper">
+                <input type="password" id="modal-setting-tg-token" class="form-input" placeholder="e.g. 7123456789:AAHk... (from @BotFather)" autocomplete="off">
+                <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('modal-setting-tg-token', this)" onmousedown="event.preventDefault();" title="Show / Hide Token">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+            </div>
+            <div style="margin-bottom:12px;">
+              <label style="font-size:0.76rem;font-weight:600;display:block;margin-bottom:4px;">Telegram Admin Chat ID</label>
+              <input type="text" id="modal-setting-tg-chatid" class="form-input" placeholder="e.g. 987654321 or -10012345678 (from @userinfobot)">
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+              <div style="font-size:0.72rem;color:#64748b;">
+                Setup: Search <code>@BotFather</code> on Telegram &rarr; create bot &rarr; copy token.
+              </div>
+              <button type="button" onclick="testTelegramAlert(true)" class="btn-action btn-action-secondary" style="font-size:0.76rem;padding:5px 10px;display:inline-flex;align-items:center;gap:4px;">
+                <i data-lucide="send" style="width:12px;height:12px;color:#0284c7;"></i> Test Telegram Ping
+              </button>
+            </div>
+          </div>
+
+          <!-- 2. External Webhook -->
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <i data-lucide="webhook" style="width:16px;height:16px;color:#6366f1;"></i>
+                <span style="font-weight:700;font-size:0.88rem;color:#0f172a;">External Webhook (Slack / Discord / CRM)</span>
+              </div>
+              <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;font-size:0.8rem;color:#334155;">
+                <input type="checkbox" id="modal-setting-webhook-enabled" style="width:16px;height:16px;cursor:pointer;">
+                <span>Enable Webhook</span>
+              </label>
+            </div>
+            <div style="margin-bottom:8px;">
+              <input type="url" id="modal-setting-webhook-url" class="form-input" placeholder="https://hooks.slack.com/... or https://your-domain.com/webhook">
+            </div>
+            <div style="display:flex;justify-content:flex-end;">
+              <button type="button" onclick="testWebhookAlert(true)" class="btn-action btn-action-secondary" style="font-size:0.76rem;padding:5px 10px;display:inline-flex;align-items:center;gap:4px;">
+                <i data-lucide="zap" style="width:12px;height:12px;color:#6366f1;"></i> Test Webhook
+              </button>
+            </div>
+          </div>
+
+          <!-- 3. Sound and Desktop -->
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.82rem;color:#334155;">
+                <input type="checkbox" id="modal-setting-audio-chime" checked style="width:16px;height:16px;cursor:pointer;">
+                <span>Audio Chime on Campaign Launch</span>
+              </label>
+              <button type="button" onclick="playCampaignNotificationChime()" class="btn-action btn-action-secondary" style="font-size:0.75rem;padding:4px 10px;">
+                <i data-lucide="play" style="width:12px;height:12px;"></i> Test Chime
+              </button>
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;">
+            <button type="button" class="btn-secondary" onclick="closeCampaignAlertSettingsModal()">Cancel</button>
+            <button type="submit" class="btn-primary" style="display:inline-flex;align-items:center;gap:6px;padding:8px 18px;font-weight:700;">
+              <i data-lucide="save" style="width:15px;height:15px;"></i> Save Alert Settings
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 
   <!-- MODAL: CAMPAIGN DETAILS (TIER-1 SAAS REDESIGN) -->
@@ -10092,6 +10359,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=202611161556"></script>
+  <script src="app.js?v=202611161616"></script>
 </body>
 </html>

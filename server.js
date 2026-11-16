@@ -118,6 +118,7 @@ app.use('/api/resellers', require('./routes/resellers'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/sms', require('./routes/sms'));
 app.use('/api/team', require('./routes/team'));
+app.use('/api/notifications', require('./routes/notifications'));
 
 // Client SPA Routes (e.g. /signup?ref=... or /register)
 app.get(['/signup', '/register', '/login'], (req, res) => {
