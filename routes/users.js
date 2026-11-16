@@ -333,7 +333,7 @@ router.get('/:id/360', authenticate, async (req, res) => {
       LEFT JOIN user_credits uc ON (uc.user_id = ct.to_user_id AND uc.credit_type = ct.credit_type AND uc.destination = ct.destination)
       WHERE ct.to_user_id = $1 OR ct.from_user_id = $1
       ORDER BY ct.created_at DESC
-      LIMIT 50
+      LIMIT 150
     `, [targetId]);
 
     // 6. Audience & Assets summary
@@ -365,8 +365,8 @@ router.get('/:id/360', authenticate, async (req, res) => {
       const dir = t.direction ? String(t.direction).toLowerCase() : null;
       const reasonLower = String(t.reason || '').toLowerCase();
       const isTransferredOut = Number(t.from_user_id) === Number(targetId) && Number(t.to_user_id) !== Number(targetId);
-      const isRefund = dir === 'refund' || (!dir && (Boolean(t.refund_campaign_id) || reasonLower.includes('refund') || reasonLower.includes('auto-refund')));
-      const isDeduction = dir === 'debit' || (!dir && (reasonLower.includes('deduction') || reasonLower.includes('debit') || reasonLower.includes('burn')));
+      const isDeduction = dir === 'debit' || (!dir && (reasonLower.includes('deduction') || reasonLower.includes('debit') || reasonLower.includes('burn') || reasonLower.includes('campaign #')));
+      const isRefund = !isDeduction && (dir === 'refund' || (!dir && (reasonLower.includes('refund') || reasonLower.includes('auto-refund'))));
       const amt = Math.abs(Number(t.amount) || 0);
 
       let category = 'allotment';
