@@ -105,6 +105,10 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+// Public Short Link Redirection Handler
+const { router: linksRouter, handlePublicRedirect } = require('./routes/links');
+app.get('/s/:code', handlePublicRedirect);
+
 // API Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
@@ -119,6 +123,7 @@ app.use('/api/reports', require('./routes/reports'));
 app.use('/api/sms', require('./routes/sms'));
 app.use('/api/team', require('./routes/team'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/links', linksRouter);
 
 // Client SPA Routes (e.g. /signup?ref=... or /register)
 app.get(['/signup', '/register', '/login'], (req, res) => {

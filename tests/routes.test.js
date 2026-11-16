@@ -1229,7 +1229,7 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.strictEqual(canAccessAdminBillingScope(regularClient), false);
   });
 
-  test('Campaign Intent Notification & Alert Channel Normalization', () => {
+  await t.test('Campaign Intent Notification & Alert Channel Normalization', () => {
     const { formatChannelName } = require('../services/notifications');
     
     // Channel name formatting tests
@@ -1250,5 +1250,58 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.strictEqual(maskBotToken('7123456789:ABCdefGHIjklMNOpqrsTUVwxyz123456'), '712345...3456');
     assert.strictEqual(maskBotToken('short'), '••••••••');
     assert.strictEqual(maskBotToken(''), '');
+  });
+
+  await t.test('In-House Link Shortener & Click Analytics Parser Validation', () => {
+    const { isValidDestinationUrl, generateRandomCode, parseUserAgent } = require('../services/links');
+
+    // 1. URL Safety & Format Validation
+    assert.strictEqual(isValidDestinationUrl('https://example.com/festive-promo?ref=sms'), true);
+    assert.strictEqual(isValidDestinationUrl('http://subdomain.company.in/offer'), true);
+    assert.strictEqual(isValidDestinationUrl('javascript:alert(1)'), false);
+    assert.strictEqual(isValidDestinationUrl('data:text/html,<script>'), false);
+    assert.strictEqual(isValidDestinationUrl('ftp://ftp.server.com'), false);
+    assert.strictEqual(isValidDestinationUrl('not-a-url'), false);
+    assert.strictEqual(isValidDestinationUrl(''), false);
+
+    // 2. Short Code Generation
+    const code6 = generateRandomCode(6);
+    assert.strictEqual(code6.length, 6);
+    assert.match(code6, /^[2-9a-km-zA-HJ-NP-Z]{6}$/);
+
+    const code8 = generateRandomCode(8);
+    assert.strictEqual(code8.length, 8);
+
+    // 3. User Agent Parsing (Mobile, WhatsApp In-App, Desktop)
+    const mobileWhatsAppUA = 'Mozilla/5.0 (Linux; Android 14; SM-S918B Build/UP1A.231005.007) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36 WhatsApp/2.24.4.76';
+    const parsedWa = parseUserAgent(mobileWhatsAppUA);
+    assert.strictEqual(parsedWa.deviceType, 'mobile');
+    assert.strictEqual(parsedWa.os, 'Android');
+    assert.strictEqual(parsedWa.browser, 'WhatsApp In-App');
+
+    const iosSafariUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1';
+    const parsedIos = parseUserAgent(iosSafariUA);
+    assert.strictEqual(parsedIos.deviceType, 'mobile');
+    assert.strictEqual(parsedIos.os, 'iOS');
+    assert.strictEqual(parsedIos.browser, 'Apple Safari');
+
+    const desktopChromeUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+    const parsedDesktop = parseUserAgent(desktopChromeUA);
+    assert.strictEqual(parsedDesktop.deviceType, 'desktop');
+    assert.strictEqual(parsedDesktop.os, 'Windows');
+    assert.strictEqual(parsedDesktop.browser, 'Google Chrome');
+
+    const ipadUA = 'Mozilla/5.0 (iPad; CPU OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1';
+    const parsedIpad = parseUserAgent(ipadUA);
+    assert.strictEqual(parsedIpad.deviceType, 'tablet');
+    assert.strictEqual(parsedIpad.os, 'iOS');
+
+    // 4. Custom Alias Validation Regex
+    const aliasRegex = /^[a-zA-Z0-9_-]{3,30}$/;
+    assert.strictEqual(aliasRegex.test('diwali-offer'), true);
+    assert.strictEqual(aliasRegex.test('sale_2026'), true);
+    assert.strictEqual(aliasRegex.test('ab'), false); // too short
+    assert.strictEqual(aliasRegex.test('has spaces'), false);
+    assert.strictEqual(aliasRegex.test('invalid!@#'), false);
   });
 });

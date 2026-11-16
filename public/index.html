@@ -2784,6 +2784,10 @@
           <span class="nav-icon"><i data-lucide="file-text" style="width:18px;height:18px;"></i></span>
           <span class="nav-text">Templates</span>
         </div>
+        <div class="nav-item" data-view="view-links">
+          <span class="nav-icon"><i data-lucide="link-2" style="width:18px;height:18px;color:#0891b2;"></i></span>
+          <span class="nav-text">Link Tracker & CTR</span>
+        </div>
 
         <div class="nav-category">Billing & Credits</div>
         <div class="nav-item" data-view="view-wallet">
@@ -3780,6 +3784,9 @@
                     <button type="button" class="btn-var-tag" onclick="insertEmoji('✅')" style="padding:2px 6px;font-size:0.82rem;background:#fff;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;">✅</button>
                     <button type="button" class="btn-var-tag" onclick="insertEmoji('⚠️')" style="padding:2px 6px;font-size:0.82rem;background:#fff;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;">⚠️</button>
                     <button type="button" class="btn-var-tag" onclick="insertEmoji('📞')" style="padding:2px 6px;font-size:0.82rem;background:#fff;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;">📞</button>
+                    <button type="button" class="btn-action btn-action-secondary" onclick="openInsertShortLinkModal('composer-text')" style="font-size:0.75rem;padding:2px 8px;display:inline-flex;align-items:center;gap:4px;margin-left:auto;border-radius:4px;" title="Shorten URL and track recipient clicks">
+                      <i data-lucide="link-2" style="width:13px;height:13px;color:#0891b2;"></i> <span>Track Link</span>
+                    </button>
                   </div>
                   <textarea id="composer-text" class="form-input" rows="5" placeholder="Type your marketing or informational message here..."></textarea>
                 </div>
@@ -6368,6 +6375,9 @@
                         <select id="sms-template-select" class="form-input" onchange="onSmsTemplateSelect(this.value)" style="font-size: 0.78rem; padding: 4px 10px; height: 32px; border-radius: 6px; min-width: 200px;">
                           <option value="">— Insert saved SMS Template —</option>
                         </select>
+                        <button type="button" class="btn-action btn-action-secondary" onclick="openInsertShortLinkModal('sms-message')" style="font-size: 0.78rem; padding: 4px 10px; height: 32px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px;" title="Shorten long link and track recipient clicks">
+                          <i data-lucide="link-2" style="width: 13px; height: 13px; color: #0891b2;"></i> <span>Track Link</span>
+                        </button>
                       </div>
                     </div>
 
@@ -6818,6 +6828,127 @@
         </section>
         <!-- ==================== END VIEW: BULK GSM SMS ==================== -->
 
+        <!-- ==================== 17. VIEW: LINK SHORTENER & CLICK TRACKER (CTR) ==================== -->
+        <section id="view-links" class="app-view">
+          
+          <!-- Header Banner -->
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:14px;">
+            <div>
+              <h2 style="font-size:1.45rem;font-weight:800;color:#0f172a;letter-spacing:-0.5px;margin:0 0 4px 0;display:flex;align-items:center;gap:10px;">
+                <i data-lucide="link-2" style="width:26px;height:26px;color:#0891b2;"></i>
+                <span>Link Shortener &amp; Click Analytics (CTR)</span>
+              </h2>
+              <p style="color:#64748b;font-size:0.84rem;margin:0;">
+                Shorten long URLs to save SMS character parts, brand your broadcast links, and track real-time recipient clicks, devices, and conversion rate.
+              </p>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;">
+              <button type="button" class="btn-action btn-action-secondary" onclick="loadShortLinks(true)" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;font-weight:600;font-size:0.82rem;">
+                <i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Refresh
+              </button>
+              <button type="button" class="btn-action btn-action-primary" onclick="openCreateShortLinkModal()" style="display:inline-flex;align-items:center;gap:6px;padding:8px 18px;font-weight:700;font-size:0.84rem;background:linear-gradient(135deg, #0891b2 0%, #0e7490 100%);color:#fff;border-radius:8px;box-shadow:0 4px 12px rgba(8,145,178,0.25);">
+                <i data-lucide="plus" style="width:16px;height:16px;"></i> Shorten New Link
+              </button>
+            </div>
+          </div>
+
+          <!-- KPI Metric Strip -->
+          <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-bottom: 22px;">
+            <div class="metric-card" style="padding:16px 20px;">
+              <div class="metric-header">
+                <span class="metric-title">Tracked Short Links</span>
+                <div class="metric-icon" style="background:#ecfeff;color:#0891b2;"><i data-lucide="link" style="width:18px;height:18px;"></i></div>
+              </div>
+              <div class="metric-data">
+                <div class="metric-value" id="kpi-links-count">0</div>
+                <div class="metric-sub">Active campaign short links</div>
+              </div>
+            </div>
+
+            <div class="metric-card" style="padding:16px 20px;">
+              <div class="metric-header">
+                <span class="metric-title">Total Clicks Recorded</span>
+                <div class="metric-icon" style="background:#eef2ff;color:#4f46e5;"><i data-lucide="mouse-pointer-click" style="width:18px;height:18px;"></i></div>
+              </div>
+              <div class="metric-data">
+                <div class="metric-value" id="kpi-links-total-clicks">0</div>
+                <div class="metric-sub">Total visits from recipients</div>
+              </div>
+            </div>
+
+            <div class="metric-card" style="padding:16px 20px;">
+              <div class="metric-header">
+                <span class="metric-title">Unique Visitors</span>
+                <div class="metric-icon" style="background:#ecfdf5;color:#059669;"><i data-lucide="users" style="width:18px;height:18px;"></i></div>
+              </div>
+              <div class="metric-data">
+                <div class="metric-value" id="kpi-links-unique-clicks">0</div>
+                <div class="metric-sub">Distinct verified device visits</div>
+              </div>
+            </div>
+
+            <div class="metric-card" style="padding:16px 20px;">
+              <div class="metric-header">
+                <span class="metric-title">Avg Engagement Rate</span>
+                <div class="metric-icon" style="background:#fef3c7;color:#d97706;"><i data-lucide="pie-chart" style="width:18px;height:18px;"></i></div>
+              </div>
+              <div class="metric-data">
+                <div class="metric-value" id="kpi-links-ctr">0%</div>
+                <div class="metric-sub">Unique / total click ratio</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Links Table Card -->
+          <div class="card" style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+            <!-- Filter Bar -->
+            <div style="padding:14px 18px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+              <div style="flex:1 1 260px;max-width:400px;position:relative;">
+                <input type="text" id="links-search-input" oninput="debounceLinksSearch()" class="search-input" style="width:100%;height:38px;padding:6px 12px 6px 36px;border-radius:8px;font-size:0.84rem;border:1px solid #cbd5e1;" placeholder="Search by link title, short code, or URL...">
+                <i data-lucide="search" style="position:absolute;left:12px;top:10px;width:15px;height:15px;color:#94a3b8;"></i>
+              </div>
+              <div style="font-size:0.78rem;color:#64748b;" id="links-table-counter">
+                Showing 0 tracked links
+              </div>
+            </div>
+
+            <!-- Table Container -->
+            <div class="table-container" style="width:100%;overflow-x:auto;">
+              <table style="width:100%;min-width:980px;border-collapse:collapse;">
+                <thead>
+                  <tr style="background:#ffffff;border-bottom:2px solid #f1f5f9;">
+                    <th style="padding:12px 16px;text-align:left;font-size:0.75rem;font-weight:700;color:#475569;text-transform:uppercase;">Title &amp; Campaign</th>
+                    <th style="padding:12px 16px;text-align:left;font-size:0.75rem;font-weight:700;color:#475569;text-transform:uppercase;">Short Link</th>
+                    <th style="padding:12px 16px;text-align:left;font-size:0.75rem;font-weight:700;color:#475569;text-transform:uppercase;">Destination URL</th>
+                    <th style="padding:12px 16px;text-align:center;font-size:0.75rem;font-weight:700;color:#475569;text-transform:uppercase;">Total Clicks</th>
+                    <th style="padding:12px 16px;text-align:center;font-size:0.75rem;font-weight:700;color:#475569;text-transform:uppercase;">Unique Visitors</th>
+                    <th style="padding:12px 16px;text-align:center;font-size:0.75rem;font-weight:700;color:#475569;text-transform:uppercase;">Status</th>
+                    <th style="padding:12px 16px;text-align:center;font-size:0.75rem;font-weight:700;color:#475569;text-transform:uppercase;">Created</th>
+                    <th style="padding:12px 16px;text-align:right;font-size:0.75rem;font-weight:700;color:#475569;text-transform:uppercase;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="short-links-tbody">
+                  <tr>
+                    <td colspan="8" style="text-align:center;padding:40px;color:#94a3b8;">
+                      <i data-lucide="loader-2" style="width:20px;height:20px;animation:spin 1s linear infinite;"></i>
+                      Loading tracked short links...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Pagination Bar -->
+            <div style="padding:12px 20px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;font-size:0.8rem;">
+              <div style="color:#64748b;" id="links-pagination-info">
+                Showing 0 of 0 links
+              </div>
+              <div id="links-pagination-controls" style="display:flex;align-items:center;gap:6px;"></div>
+            </div>
+          </div>
+        </section>
+        <!-- ==================== END VIEW: LINK SHORTENER ==================== -->
+
       </div>
     </main>
 
@@ -6917,6 +7048,209 @@
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 1: CREATE SHORT LINK -->
+  <div id="modal-create-short-link" class="modal-overlay">
+    <div class="modal-card" style="max-width:580px;width:95%;padding:0;overflow:hidden;border-radius:14px;box-shadow:0 25px 50px -12px rgba(15,23,42,0.25);">
+      <div class="modal-header-saas" style="padding:16px 20px;border-bottom:1px solid #e2e8f0;background:linear-gradient(to right, #ffffff, #f8fafc);display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:36px;height:36px;border-radius:8px;background:#ecfeff;color:#0891b2;display:flex;align-items:center;justify-content:center;">
+            <i data-lucide="link" style="width:18px;height:18px;"></i>
+          </div>
+          <div>
+            <h3 style="margin:0;font-size:1.05rem;font-weight:700;color:var(--slate-800);">Shorten &amp; Track URL</h3>
+            <p style="font-size:0.75rem;color:var(--slate-500);margin:2px 0 0;">Save SMS parts &amp; track recipient click analytics</p>
+          </div>
+        </div>
+        <button class="btn-modal-close" onclick="closeCreateShortLinkModal()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:var(--slate-400);padding:2px 6px;">&times;</button>
+      </div>
+
+      <form id="form-create-short-link" onsubmit="submitCreateShortLink(event)" style="padding:20px;">
+        <div class="form-group" style="margin-bottom:14px;">
+          <label style="font-size:0.8rem;font-weight:600;display:block;margin-bottom:4px;">Original Long URL <span style="color:#ef4444;">*</span></label>
+          <input type="url" id="link-input-url" class="form-input" placeholder="https://yourcompany.com/festival-sale?utm_source=sms" required oninput="calculateLinkSavingsPreview()">
+          <div style="font-size:0.72rem;color:#64748b;margin-top:4px;">Must start with <code>http://</code> or <code>https://</code>.</div>
+        </div>
+
+        <div class="form-group" style="margin-bottom:14px;">
+          <label style="font-size:0.8rem;font-weight:600;display:block;margin-bottom:4px;">Link Title / Campaign Description</label>
+          <input type="text" id="link-input-title" class="form-input" placeholder="e.g. Diwali Mega Sale Brochure" maxlength="255">
+        </div>
+
+        <div class="form-group" style="margin-bottom:16px;">
+          <label style="font-size:0.8rem;font-weight:600;display:block;margin-bottom:4px;">Custom Short Alias (Optional)</label>
+          <div style="display:flex;align-items:center;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;overflow:hidden;">
+            <span style="padding:0 10px;font-size:0.8rem;color:#64748b;background:#f1f5f9;border-right:1px solid #cbd5e1;line-height:38px;user-select:none;">/s/</span>
+            <input type="text" id="link-input-alias" class="form-input" style="border:none;background:transparent;box-shadow:none;" placeholder="festive-deal (leave blank for auto 6-char code)" maxlength="30" oninput="calculateLinkSavingsPreview()">
+          </div>
+          <div style="font-size:0.72rem;color:#64748b;margin-top:4px;">Allowed: letters, numbers, hyphens (e.g. <code>offer2026</code>).</div>
+        </div>
+
+        <!-- Real-Time Savings & Preview Card -->
+        <div id="link-savings-card" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 14px;margin-bottom:20px;display:none;">
+          <div style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:0.82rem;color:#166534;margin-bottom:4px;">
+            <i data-lucide="sparkles" style="width:14px;height:14px;color:#16a34a;"></i>
+            <span>SMS Character Savings Preview</span>
+          </div>
+          <div id="link-savings-text" style="font-size:0.76rem;color:#15803d;line-height:1.4;"></div>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:10px;">
+          <button type="button" class="btn-secondary" onclick="closeCreateShortLinkModal()">Cancel</button>
+          <button type="submit" id="btn-submit-create-link" class="btn-primary" style="background:linear-gradient(135deg, #0891b2 0%, #0e7490 100%);display:inline-flex;align-items:center;gap:6px;padding:8px 20px;font-weight:700;">
+            <i data-lucide="check" style="width:15px;height:15px;"></i> Create Tracked Link
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 2: 360° CLICK ANALYTICS & CTR REPORT -->
+  <div id="modal-link-analytics" class="modal-overlay">
+    <div class="modal-card" style="max-width:880px;width:95%;max-height:92vh;display:flex;flex-direction:column;padding:0;overflow:hidden;border-radius:14px;box-shadow:0 25px 50px -12px rgba(15,23,42,0.25);">
+      <div class="modal-header-saas" style="padding:16px 22px;border-bottom:1px solid #e2e8f0;background:linear-gradient(to right, #ffffff, #f8fafc);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:40px;height:40px;border-radius:10px;background:#ecfeff;color:#0891b2;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i data-lucide="bar-chart-3" style="width:20px;height:20px;"></i>
+          </div>
+          <div>
+            <h3 id="analytics-link-title" style="margin:0;font-size:1.15rem;font-weight:700;color:var(--slate-800);">Campaign Link Analytics</h3>
+            <p id="analytics-link-short-url" style="font-size:0.78rem;color:#0891b2;font-weight:600;margin:2px 0 0;font-family:monospace;">https://messagesphere.nmedialabs.in/s/...</p>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button type="button" id="btn-export-link-csv" class="btn-action btn-action-secondary" style="font-size:0.78rem;padding:6px 12px;display:inline-flex;align-items:center;gap:6px;font-weight:600;">
+            <i data-lucide="download" style="width:13px;height:13px;"></i> Export Clicks (CSV)
+          </button>
+          <button class="btn-modal-close" onclick="closeLinkAnalyticsModal()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:var(--slate-400);padding:2px 6px;">&times;</button>
+        </div>
+      </div>
+
+      <div class="modal-body-saas" style="padding:20px;overflow-y:auto;max-height:calc(92vh - 80px);background:#f8fafc;">
+        <!-- KPI Strip -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;margin-bottom:18px;">
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;">
+            <div style="font-size:0.72rem;color:#64748b;font-weight:600;text-transform:uppercase;">Total Clicks</div>
+            <div style="font-size:1.45rem;font-weight:800;color:#0f172a;margin-top:2px;" id="analytics-total-clicks">0</div>
+          </div>
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;">
+            <div style="font-size:0.72rem;color:#64748b;font-weight:600;text-transform:uppercase;">Unique Visitors</div>
+            <div style="font-size:1.45rem;font-weight:800;color:#059669;margin-top:2px;" id="analytics-unique-clicks">0</div>
+          </div>
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;">
+            <div style="font-size:0.72rem;color:#64748b;font-weight:600;text-transform:uppercase;">Mobile Traffic</div>
+            <div style="font-size:1.45rem;font-weight:800;color:#0891b2;margin-top:2px;" id="analytics-mobile-share">0%</div>
+          </div>
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;">
+            <div style="font-size:0.72rem;color:#64748b;font-weight:600;text-transform:uppercase;">Destination URL</div>
+            <div style="font-size:0.75rem;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:6px;" id="analytics-destination-url">-</div>
+          </div>
+        </div>
+
+        <!-- Breakdown Grid -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(250px, 1fr));gap:14px;margin-bottom:18px;">
+          <!-- Device Breakdown -->
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;">
+            <div style="font-weight:700;font-size:0.84rem;color:#0f172a;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+              <i data-lucide="smartphone" style="width:15px;height:15px;color:#0891b2;"></i> Devices
+            </div>
+            <div id="analytics-device-bars" style="display:flex;flex-direction:column;gap:8px;"></div>
+          </div>
+
+          <!-- Browser Breakdown -->
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;">
+            <div style="font-weight:700;font-size:0.84rem;color:#0f172a;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+              <i data-lucide="globe" style="width:15px;height:15px;color:#4f46e5;"></i> Browsers &amp; In-App
+            </div>
+            <div id="analytics-browser-bars" style="display:flex;flex-direction:column;gap:8px;"></div>
+          </div>
+
+          <!-- OS Breakdown -->
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;">
+            <div style="font-weight:700;font-size:0.84rem;color:#0f172a;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+              <i data-lucide="cpu" style="width:15px;height:15px;color:#059669;"></i> Operating System
+            </div>
+            <div id="analytics-os-bars" style="display:flex;flex-direction:column;gap:8px;"></div>
+          </div>
+        </div>
+
+        <!-- Live Click Audit Log Table -->
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+          <div style="padding:12px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-weight:700;font-size:0.84rem;color:#0f172a;">Live Click Audit Trail (Recent 100 Visits)</div>
+            <div style="font-size:0.74rem;color:#64748b;" id="analytics-log-count">0 recorded</div>
+          </div>
+          <div style="max-height:280px;overflow-y:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:0.78rem;">
+              <thead>
+                <tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0;color:#64748b;">
+                  <th style="padding:8px 12px;text-align:left;">Time (IST)</th>
+                  <th style="padding:8px 12px;text-align:left;">Recipient Phone</th>
+                  <th style="padding:8px 12px;text-align:left;">Device &amp; OS</th>
+                  <th style="padding:8px 12px;text-align:left;">Browser</th>
+                  <th style="padding:8px 12px;text-align:left;">IP Address</th>
+                  <th style="padding:8px 12px;text-align:left;">Referrer</th>
+                </tr>
+              </thead>
+              <tbody id="analytics-logs-tbody">
+                <tr><td colspan="6" style="text-align:center;padding:24px;color:#94a3b8;">No clicks recorded yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 3: QUICK-INSERT SHORT LINK INTO CAMPAIGN COMPOSER -->
+  <div id="modal-insert-short-link" class="modal-overlay">
+    <div class="modal-card" style="max-width:540px;width:95%;padding:0;overflow:hidden;border-radius:14px;box-shadow:0 25px 50px -12px rgba(15,23,42,0.25);">
+      <div class="modal-header-saas" style="padding:14px 18px;border-bottom:1px solid #e2e8f0;background:#f8fafc;display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <i data-lucide="link-2" style="width:18px;height:18px;color:#0891b2;"></i>
+          <h3 style="margin:0;font-size:0.98rem;font-weight:700;color:var(--slate-800);">Insert Tracked Link</h3>
+        </div>
+        <button class="btn-modal-close" onclick="closeInsertShortLinkModal()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:var(--slate-400);padding:2px 6px;">&times;</button>
+      </div>
+
+      <div style="padding:16px;">
+        <!-- Tabs: Choose Existing vs Create New -->
+        <div style="display:flex;gap:6px;background:#e2e8f0;padding:3px;border-radius:8px;margin-bottom:14px;">
+          <button type="button" id="tab-insert-existing" onclick="switchInsertLinkTab('existing')" style="flex:1;padding:6px;border:none;border-radius:6px;font-size:0.8rem;font-weight:700;cursor:pointer;background:#fff;color:#0f172a;">
+            Select Saved Link
+          </button>
+          <button type="button" id="tab-insert-new" onclick="switchInsertLinkTab('new')" style="flex:1;padding:6px;border:none;border-radius:6px;font-size:0.8rem;font-weight:700;cursor:pointer;background:transparent;color:#64748b;">
+            + Shorten New URL
+          </button>
+        </div>
+
+        <!-- Tab 1: Existing Links -->
+        <div id="panel-insert-existing">
+          <div style="margin-bottom:10px;">
+            <input type="text" id="insert-link-search" oninput="filterInsertLinks()" class="form-input" style="font-size:0.82rem;padding:6px 12px;" placeholder="Search your saved links...">
+          </div>
+          <div id="insert-links-list" style="max-height:220px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:4px;">
+            <div style="text-align:center;padding:20px;color:#94a3b8;font-size:0.8rem;">Loading links...</div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Quick Create New -->
+        <div id="panel-insert-new" style="display:none;">
+          <div class="form-group" style="margin-bottom:10px;">
+            <label style="font-size:0.78rem;font-weight:600;">Long URL to Shorten *</label>
+            <input type="url" id="quick-link-url" class="form-input" placeholder="https://example.com/promo">
+          </div>
+          <div class="form-group" style="margin-bottom:14px;">
+            <label style="font-size:0.78rem;font-weight:600;">Title (Optional)</label>
+            <input type="text" id="quick-link-title" class="form-input" placeholder="e.g. Website Link">
+          </div>
+          <button type="button" onclick="submitQuickShortenAndInsert()" class="btn-primary" style="width:100%;justify-content:center;font-size:0.84rem;padding:9px;background:linear-gradient(135deg, #0891b2 0%, #0e7490 100%);">
+            Shorten &amp; Insert into Message
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -10359,6 +10693,6 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
 
   <!-- APPLICATION JAVASCRIPT -->
-  <script src="app.js?v=202611161616"></script>
+  <script src="app.js?v=202611162222"></script>
 </body>
 </html>

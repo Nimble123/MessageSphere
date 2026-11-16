@@ -462,6 +462,7 @@ window.switchView = function(viewId) {
       'view-settings': { title: 'Account Settings', breadcrumb: 'MessageSphere / Settings / Profile' },
       'view-sms-new': { title: 'Create GSM Bulk SMS Campaign', breadcrumb: 'MessageSphere / GSM SMS / New Broadcast' },
       'view-sms': { title: 'GSM Bulk SMS Broadcasts', breadcrumb: 'MessageSphere / GSM SMS / Broadcasts' },
+      'view-links': { title: 'Link Shortener & CTR Tracker', breadcrumb: 'MessageSphere / Audience / Link Tracker' },
       'view-team': { title: 'Team Members & Staff RBAC', breadcrumb: 'MessageSphere / Organization / Team RBAC' }
     };
 
@@ -506,6 +507,7 @@ window.switchView = function(viewId) {
     if (typeof initSmsComposerView === 'function') initSmsComposerView();
   }
   if (viewId === 'view-sms') loadSmsCampaigns();
+  if (viewId === 'view-links') loadShortLinks();
   if (viewId === 'view-team') loadTeamMembers();
 
   if (window.lucide) {
@@ -18184,6 +18186,586 @@ window.savePortfolioManagerChanges = async function() {
   } finally {
     btn.disabled = false;
     btn.textContent = 'Save Portfolio';
+  }
+};
+
+// ============================================================================
+// --- 18. LINK SHORTENER & CLICK ANALYTICS (CTR TRACKER) ---
+// ============================================================================
+let userShortLinks = [];
+let currentLinksPage = 1;
+let linksSearchQuery = '';
+let linksSearchTimer = null;
+let activeLinkAnalyticsId = null;
+let activeInsertTextareaId = 'sms-message';
+
+window.loadShortLinks = async function(force = false) {
+  const tbody = document.getElementById('short-links-tbody');
+  if (tbody && (!userShortLinks || userShortLinks.length === 0)) {
+    if (typeof window.renderTableSkeleton === 'function') {
+      window.renderTableSkeleton(tbody, 8, 3);
+    }
+  }
+
+  try {
+    const queryParams = new URLSearchParams({
+      page: currentLinksPage,
+      limit: 25,
+      search: linksSearchQuery
+    });
+
+    const res = await apiFetch(`/links?${queryParams.toString()}`);
+    userShortLinks = Array.isArray(res?.links) ? res.links : [];
+
+    // Update KPI metrics
+    const m = res?.metrics || {};
+    const totalLinksEl = document.getElementById('kpi-links-count');
+    const totalClicksEl = document.getElementById('kpi-links-total-clicks');
+    const uniqueClicksEl = document.getElementById('kpi-links-unique-clicks');
+    const ctrEl = document.getElementById('kpi-links-ctr');
+
+    if (totalLinksEl) totalLinksEl.textContent = Number(m.totalLinks || 0).toLocaleString('en-IN');
+    if (totalClicksEl) totalClicksEl.textContent = Number(m.totalClicks || 0).toLocaleString('en-IN');
+    if (uniqueClicksEl) uniqueClicksEl.textContent = Number(m.totalUniqueClicks || 0).toLocaleString('en-IN');
+    if (ctrEl) {
+      const ratio = m.totalClicks > 0 ? Math.round((m.totalUniqueClicks / m.totalClicks) * 100) : 0;
+      ctrEl.textContent = `${ratio}%`;
+    }
+
+    renderShortLinksTable();
+    renderLinksPagination(res?.pagination);
+
+    const counter = document.getElementById('links-table-counter');
+    if (counter) {
+      counter.textContent = `Showing ${userShortLinks.length} of ${res?.pagination?.totalCount || 0} tracked links`;
+    }
+  } catch (err) {
+    console.error('Failed to load short links:', err);
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:30px;color:#ef4444;">Failed to load links: ${escapeHtml(err.message)}</td></tr>`;
+    }
+  }
+};
+
+window.renderShortLinksTable = function() {
+  const tbody = document.getElementById('short-links-tbody');
+  if (!tbody) return;
+
+  if (!userShortLinks || userShortLinks.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="8" style="text-align:center;padding:50px 20px;color:#94a3b8;">
+          <i data-lucide="link-2" style="width:36px;height:36px;margin-bottom:10px;color:#cbd5e1;display:inline-block;"></i>
+          <div style="font-weight:700;font-size:0.95rem;color:#475569;">No Tracked Links Found</div>
+          <div style="font-size:0.78rem;color:#94a3b8;margin-top:4px;max-width:380px;margin-left:auto;margin-right:auto;">
+            Shorten long URLs to save SMS character parts and track real-time recipient clicks, devices, and conversion.
+          </div>
+          <button type="button" onclick="openCreateShortLinkModal()" class="btn-primary" style="margin-top:14px;font-size:0.8rem;padding:6px 16px;background:linear-gradient(135deg, #0891b2 0%, #0e7490 100%);display:inline-flex;align-items:center;gap:6px;">
+            <i data-lucide="plus" style="width:14px;height:14px;"></i> Shorten Your First Link
+          </button>
+        </td>
+      </tr>
+    `;
+    if (window.lucide) {
+      try { lucide.createIcons({ root: tbody }); } catch (e) { lucide.createIcons(); }
+    }
+    return;
+  }
+
+  tbody.innerHTML = userShortLinks.map(l => {
+    const isAct = Boolean(l.is_active);
+    const statusBadge = isAct
+      ? `<span style="font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:12px;background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;">Active</span>`
+      : `<span style="font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:12px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;">Paused</span>`;
+
+    const createdFormatted = l.created_at
+      ? new Date(l.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', month: 'short', day: 'numeric', year: 'numeric' })
+      : '-';
+
+    return `
+      <tr style="border-bottom:1px solid #f1f5f9;transition:background 0.15s ease;" onmouseenter="this.style.background='#f8fafc'" onmouseleave="this.style.background='transparent'">
+        <td style="padding:12px 16px;">
+          <div style="font-weight:700;font-size:0.86rem;color:#0f172a;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            ${escapeHtml(l.title || 'Untitled Link')}
+          </div>
+          ${l.owner_email ? `<div style="font-size:0.7rem;color:#64748b;">By: ${escapeHtml(l.owner_email)}</div>` : ''}
+        </td>
+
+        <td style="padding:12px 16px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <a href="${escapeHtml(l.short_url)}" target="_blank" rel="noopener" style="font-weight:700;font-size:0.82rem;color:#0891b2;font-family:monospace;text-decoration:none;" title="Open short link">
+              ${escapeHtml(l.short_url)}
+            </a>
+            <button type="button" onclick="copyShortUrl('${escapeHtml(l.short_url)}', this)" class="btn-action" style="padding:3px 6px;border:none;background:#ecfeff;color:#0891b2;border-radius:4px;cursor:pointer;" title="Copy to clipboard">
+              <i data-lucide="copy" style="width:13px;height:13px;"></i>
+            </button>
+          </div>
+        </td>
+
+        <td style="padding:12px 16px;max-width:260px;">
+          <a href="${escapeHtml(l.original_url)}" target="_blank" rel="noopener" style="font-size:0.78rem;color:#475569;text-decoration:none;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px;" title="${escapeHtml(l.original_url)}">
+            <span style="overflow:hidden;text-overflow:ellipsis;">${escapeHtml(l.original_url)}</span>
+            <i data-lucide="external-link" style="width:11px;height:11px;color:#94a3b8;flex-shrink:0;"></i>
+          </a>
+        </td>
+
+        <td style="padding:12px 16px;text-align:center;">
+          <span style="font-size:0.85rem;font-weight:800;color:#0f172a;background:#f1f5f9;padding:2px 8px;border-radius:6px;">
+            ${Number(l.clicks_count || 0).toLocaleString('en-IN')}
+          </span>
+        </td>
+
+        <td style="padding:12px 16px;text-align:center;">
+          <span style="font-size:0.85rem;font-weight:800;color:#059669;background:#ecfdf5;padding:2px 8px;border-radius:6px;">
+            ${Number(l.unique_clicks_count || 0).toLocaleString('en-IN')}
+          </span>
+        </td>
+
+        <td style="padding:12px 16px;text-align:center;">
+          ${statusBadge}
+        </td>
+
+        <td style="padding:12px 16px;text-align:center;font-size:0.75rem;color:#64748b;">
+          ${createdFormatted}
+        </td>
+
+        <td style="padding:12px 16px;text-align:right;">
+          <div style="display:inline-flex;align-items:center;gap:4px;justify-content:flex-end;">
+            <button type="button" onclick="openLinkAnalyticsModal(${l.id})" class="btn-action" style="padding:5px 9px;font-size:0.74rem;background:#0891b2;color:#fff;border:none;border-radius:6px;font-weight:600;display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="View 360° Click Analytics">
+              <i data-lucide="bar-chart-2" style="width:13px;height:13px;"></i> CTR
+            </button>
+            <button type="button" onclick="toggleShortLinkStatus(${l.id})" class="btn-action btn-action-secondary" style="padding:5px 8px;font-size:0.74rem;cursor:pointer;" title="${isAct ? 'Pause link' : 'Activate link'}">
+              <i data-lucide="${isAct ? 'pause' : 'play'}" style="width:12px;height:12px;"></i>
+            </button>
+            <button type="button" onclick="deleteShortLink(${l.id})" class="btn-action btn-action-secondary" style="padding:5px 8px;font-size:0.74rem;color:#dc2626;cursor:pointer;" title="Delete link">
+              <i data-lucide="trash-2" style="width:12px;height:12px;"></i>
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  if (window.lucide) {
+    try { lucide.createIcons({ root: tbody }); } catch (e) { lucide.createIcons(); }
+  }
+};
+
+window.renderLinksPagination = function(p) {
+  const container = document.getElementById('links-pagination-controls');
+  const info = document.getElementById('links-pagination-info');
+  if (!container || !p) return;
+
+  if (info) {
+    const start = p.totalCount === 0 ? 0 : (p.page - 1) * p.limit + 1;
+    const end = Math.min(p.page * p.limit, p.totalCount);
+    info.textContent = `Showing ${start} to ${end} of ${p.totalCount} links`;
+  }
+
+  if (p.totalPages <= 1) {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = `
+    <button type="button" onclick="changeLinksPage(${p.page - 1})" ${p.page <= 1 ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''} class="btn-action btn-action-secondary" style="padding:4px 8px;font-size:0.75rem;">
+      &larr; Prev
+    </button>
+    <span style="font-size:0.78rem;font-weight:600;color:#475569;padding:0 6px;">Page ${p.page} of ${p.totalPages}</span>
+    <button type="button" onclick="changeLinksPage(${p.page + 1})" ${p.page >= p.totalPages ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''} class="btn-action btn-action-secondary" style="padding:4px 8px;font-size:0.75rem;">
+      Next &rarr;
+    </button>
+  `;
+};
+
+window.changeLinksPage = function(newPage) {
+  currentLinksPage = newPage;
+  loadShortLinks();
+};
+
+window.debounceLinksSearch = function() {
+  clearTimeout(linksSearchTimer);
+  linksSearchTimer = setTimeout(() => {
+    const input = document.getElementById('links-search-input');
+    linksSearchQuery = input ? input.value.trim() : '';
+    currentLinksPage = 1;
+    loadShortLinks();
+  }, 300);
+};
+
+window.openCreateShortLinkModal = function() {
+  const modal = document.getElementById('modal-create-short-link');
+  if (modal) {
+    modal.style.display = 'flex';
+    const form = document.getElementById('form-create-short-link');
+    if (form) form.reset();
+    const card = document.getElementById('link-savings-card');
+    if (card) card.style.display = 'none';
+  }
+};
+
+window.closeCreateShortLinkModal = function() {
+  const modal = document.getElementById('modal-create-short-link');
+  if (modal) modal.style.display = 'none';
+};
+
+window.calculateLinkSavingsPreview = function() {
+  const urlInput = document.getElementById('link-input-url');
+  const card = document.getElementById('link-savings-card');
+  const text = document.getElementById('link-savings-text');
+  if (!urlInput || !card || !text) return;
+
+  const rawUrl = urlInput.value.trim();
+  if (rawUrl.length < 15) {
+    card.style.display = 'none';
+    return;
+  }
+
+  const shortLen = 35; // approximate length of https://domain/s/xxxxxx
+  const diff = rawUrl.length - shortLen;
+
+  if (diff > 0) {
+    card.style.display = 'block';
+    text.innerHTML = `Original URL is <strong>${rawUrl.length}</strong> characters. The short link will be ~<strong>${shortLen}</strong> characters, saving <strong>${diff}</strong> characters per message! In SMS broadcasts, this can easily prevent multi-part billing.`;
+  } else {
+    card.style.display = 'none';
+  }
+};
+
+window.submitCreateShortLink = async function(e) {
+  if (e) e.preventDefault();
+  const url = document.getElementById('link-input-url')?.value.trim();
+  const title = document.getElementById('link-input-title')?.value.trim();
+  const alias = document.getElementById('link-input-alias')?.value.trim();
+
+  if (!url) {
+    showToast('error', 'URL Required', 'Please enter a valid destination URL.');
+    return;
+  }
+
+  const btn = document.getElementById('btn-submit-create-link');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Creating Link...';
+  }
+
+  try {
+    const res = await apiFetch('/links', {
+      method: 'POST',
+      body: JSON.stringify({ original_url: url, title, custom_alias: alias })
+    });
+
+    showToast('success', 'Short Link Created!', `Created ${res.link.short_url}`);
+    closeCreateShortLinkModal();
+    loadShortLinks(true);
+  } catch (err) {
+    showToast('error', 'Creation Failed', err.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i data-lucide="check" style="width:15px;height:15px;"></i> Create Tracked Link';
+      if (window.lucide) lucide.createIcons({ root: btn });
+    }
+  }
+};
+
+window.copyShortUrl = async function(url, btn) {
+  try {
+    await navigator.clipboard.writeText(url);
+    if (btn) {
+      const origHtml = btn.innerHTML;
+      btn.innerHTML = '<i data-lucide="check" style="width:13px;height:13px;color:#059669;"></i>';
+      if (window.lucide) lucide.createIcons({ root: btn });
+      setTimeout(() => {
+        btn.innerHTML = origHtml;
+        if (window.lucide) lucide.createIcons({ root: btn });
+      }, 1500);
+    }
+    showToast('success', 'Copied!', 'Short link copied to clipboard.');
+  } catch (err) {
+    showToast('info', 'Link URL', url);
+  }
+};
+
+window.toggleShortLinkStatus = async function(linkId) {
+  try {
+    const res = await apiFetch(`/links/${linkId}/toggle`, { method: 'PATCH' });
+    showToast('info', 'Status Updated', res.message || 'Link status changed.');
+    loadShortLinks(true);
+  } catch (err) {
+    showToast('error', 'Update Failed', err.message);
+  }
+};
+
+window.deleteShortLink = async function(linkId) {
+  if (!confirm('Are you sure you want to delete this short link? All associated click analytics and visit logs will also be permanently removed.')) {
+    return;
+  }
+
+  try {
+    await apiFetch(`/links/${linkId}`, { method: 'DELETE' });
+    showToast('success', 'Deleted', 'Short link removed successfully.');
+    loadShortLinks(true);
+  } catch (err) {
+    showToast('error', 'Delete Failed', err.message);
+  }
+};
+
+window.openLinkAnalyticsModal = async function(linkId) {
+  activeLinkAnalyticsId = linkId;
+  const modal = document.getElementById('modal-link-analytics');
+  if (modal) modal.style.display = 'flex';
+
+  try {
+    const data = await apiFetch(`/links/${linkId}/analytics`);
+    const link = data.link;
+
+    // Header info
+    const titleEl = document.getElementById('analytics-link-title');
+    const shortUrlEl = document.getElementById('analytics-link-short-url');
+    const destUrlEl = document.getElementById('analytics-destination-url');
+    if (titleEl) titleEl.textContent = `${link.title || 'Untitled Link'} • CTR Report`;
+    if (shortUrlEl) shortUrlEl.textContent = link.short_url;
+    if (destUrlEl) destUrlEl.textContent = link.original_url;
+
+    // KPI cards
+    const totalClicks = Number(link.clicks_count || 0);
+    const uniqueClicks = Number(link.unique_clicks_count || 0);
+    const totalEl = document.getElementById('analytics-total-clicks');
+    const uniqueEl = document.getElementById('analytics-unique-clicks');
+    const mobileEl = document.getElementById('analytics-mobile-share');
+    if (totalEl) totalEl.textContent = totalClicks.toLocaleString('en-IN');
+    if (uniqueEl) uniqueEl.textContent = uniqueClicks.toLocaleString('en-IN');
+
+    // Devices percentage
+    const devices = Array.isArray(data.devices) ? data.devices : [];
+    const mobileDev = devices.find(d => d.device_type === 'mobile');
+    const mobileCount = mobileDev ? parseInt(mobileDev.count, 10) : 0;
+    const mobilePct = totalClicks > 0 ? Math.round((mobileCount / totalClicks) * 100) : 0;
+    if (mobileEl) mobileEl.textContent = `${mobilePct}%`;
+
+    // Render bars helper
+    function renderBreakdownBars(containerId, items, labelKey, countKey, total, barColor) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      if (!items || items.length === 0) {
+        container.innerHTML = '<div style="color:#94a3b8;font-size:0.75rem;padding:6px 0;">No visit data recorded yet.</div>';
+        return;
+      }
+
+      container.innerHTML = items.map(it => {
+        const cnt = parseInt(it[countKey], 10) || 0;
+        const pct = total > 0 ? Math.round((cnt / total) * 100) : 0;
+        const lbl = it[labelKey] || 'Other';
+        return `
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:0.75rem;margin-bottom:3px;font-weight:600;color:#334155;">
+              <span>${escapeHtml(lbl)}</span>
+              <span>${cnt.toLocaleString()} (${pct}%)</span>
+            </div>
+            <div style="width:100%;height:6px;background:#f1f5f9;border-radius:4px;overflow:hidden;">
+              <div style="width:${pct}%;height:100%;background:${barColor};border-radius:4px;"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    renderBreakdownBars('analytics-device-bars', devices, 'device_type', 'count', totalClicks, '#0891b2');
+    renderBreakdownBars('analytics-browser-bars', data.browsers, 'browser', 'count', totalClicks, '#4f46e5');
+    renderBreakdownBars('analytics-os-bars', data.operatingSystems, 'os', 'count', totalClicks, '#059669');
+
+    // Render click logs table
+    const logsTbody = document.getElementById('analytics-logs-tbody');
+    const countBadge = document.getElementById('analytics-log-count');
+    const logs = Array.isArray(data.logs) ? data.logs : [];
+    if (countBadge) countBadge.textContent = `${logs.length} visits logged`;
+
+    if (logsTbody) {
+      if (logs.length === 0) {
+        logsTbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:#94a3b8;">No clicks recorded yet. Share your short link in a broadcast!</td></tr>`;
+      } else {
+        logsTbody.innerHTML = logs.map(l => {
+          const timeFormatted = l.clicked_at
+            ? new Date(l.clicked_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            : '-';
+
+          const phoneDisplay = l.phone_number
+            ? `<strong style="color:#0891b2;">+${escapeHtml(l.phone_number)}</strong>`
+            : '<span style="color:#94a3b8;">Anonymous</span>';
+
+          return `
+            <tr style="border-bottom:1px solid #f1f5f9;">
+              <td style="padding:8px 12px;color:#334155;white-space:nowrap;">${timeFormatted}</td>
+              <td style="padding:8px 12px;">${phoneDisplay}</td>
+              <td style="padding:8px 12px;">
+                <span style="font-weight:600;color:#0f172a;">${escapeHtml(l.device_type || 'mobile')}</span>
+                <span style="color:#64748b;font-size:0.72rem;"> (${escapeHtml(l.os || 'Other')})</span>
+              </td>
+              <td style="padding:8px 12px;color:#4f46e5;font-weight:600;">${escapeHtml(l.browser || 'Other')}</td>
+              <td style="padding:8px 12px;font-family:monospace;color:#64748b;">${escapeHtml(l.visitor_ip || 'N/A')}</td>
+              <td style="padding:8px 12px;color:#64748b;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(l.referrer || '')}">${escapeHtml(l.referrer || 'Direct')}</td>
+            </tr>
+          `;
+        }).join('');
+      }
+    }
+
+    // Configure CSV export button
+    const exportBtn = document.getElementById('btn-export-link-csv');
+    if (exportBtn) {
+      exportBtn.onclick = () => {
+        window.open(`/api/links/${linkId}/export?token=${encodeURIComponent(getAuthToken())}`, '_blank');
+      };
+    }
+  } catch (err) {
+    showToast('error', 'Analytics Error', err.message);
+  }
+};
+
+window.closeLinkAnalyticsModal = function() {
+  const modal = document.getElementById('modal-link-analytics');
+  if (modal) modal.style.display = 'none';
+};
+
+// --- MINI INSERT SHORT LINK MODAL FOR CAMPAIGN COMPOSERS ---
+window.openInsertShortLinkModal = async function(targetTextareaId) {
+  activeInsertTextareaId = targetTextareaId || 'sms-message';
+  const modal = document.getElementById('modal-insert-short-link');
+  if (modal) {
+    modal.style.display = 'flex';
+    switchInsertLinkTab('existing');
+    loadInsertLinksList();
+  }
+};
+
+window.closeInsertShortLinkModal = function() {
+  const modal = document.getElementById('modal-insert-short-link');
+  if (modal) modal.style.display = 'none';
+};
+
+window.switchInsertLinkTab = function(tab) {
+  const tabExisting = document.getElementById('tab-insert-existing');
+  const tabNew = document.getElementById('tab-insert-new');
+  const panelExisting = document.getElementById('panel-insert-existing');
+  const panelNew = document.getElementById('panel-insert-new');
+
+  if (tab === 'existing') {
+    if (tabExisting) { tabExisting.style.background = '#fff'; tabExisting.style.color = '#0f172a'; }
+    if (tabNew) { tabNew.style.background = 'transparent'; tabNew.style.color = '#64748b'; }
+    if (panelExisting) panelExisting.style.display = 'block';
+    if (panelNew) panelNew.style.display = 'none';
+  } else {
+    if (tabExisting) { tabExisting.style.background = 'transparent'; tabExisting.style.color = '#64748b'; }
+    if (tabNew) { tabNew.style.background = '#fff'; tabNew.style.color = '#0f172a'; }
+    if (panelExisting) panelExisting.style.display = 'none';
+    if (panelNew) panelNew.style.display = 'block';
+  }
+};
+
+let cachedInsertLinks = [];
+
+async function loadInsertLinksList() {
+  const container = document.getElementById('insert-links-list');
+  if (!container) return;
+  container.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8;font-size:0.8rem;">Loading your short links...</div>';
+
+  try {
+    const res = await apiFetch('/links?limit=50');
+    cachedInsertLinks = Array.isArray(res?.links) ? res.links : [];
+    renderInsertLinksList(cachedInsertLinks);
+  } catch (err) {
+    container.innerHTML = `<div style="text-align:center;padding:15px;color:#ef4444;font-size:0.8rem;">Error: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderInsertLinksList(links) {
+  const container = document.getElementById('insert-links-list');
+  if (!container) return;
+
+  if (!links || links.length === 0) {
+    container.innerHTML = `
+      <div style="text-align:center;padding:24px 14px;color:#94a3b8;font-size:0.8rem;">
+        No saved links found. Click "+ Shorten New URL" above to create one instantly!
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = links.map(l => `
+    <div style="padding:8px 10px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:700;font-size:0.82rem;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          ${escapeHtml(l.title || 'Untitled Link')}
+        </div>
+        <div style="font-family:monospace;font-size:0.75rem;color:#0891b2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          ${escapeHtml(l.short_url)}
+        </div>
+      </div>
+      <button type="button" onclick="insertShortLinkIntoComposer('${escapeHtml(l.short_url)}')" class="btn-action btn-action-primary" style="font-size:0.74rem;padding:4px 10px;background:#0891b2;flex-shrink:0;">
+        Insert Link
+      </button>
+    </div>
+  `).join('');
+}
+
+window.filterInsertLinks = function() {
+  const query = document.getElementById('insert-link-search')?.value.toLowerCase().trim() || '';
+  if (!query) {
+    renderInsertLinksList(cachedInsertLinks);
+    return;
+  }
+  const filtered = cachedInsertLinks.filter(l => 
+    (l.title && l.title.toLowerCase().includes(query)) ||
+    (l.short_code && l.short_code.toLowerCase().includes(query)) ||
+    (l.original_url && l.original_url.toLowerCase().includes(query))
+  );
+  renderInsertLinksList(filtered);
+};
+
+window.insertShortLinkIntoComposer = function(url) {
+  const target = document.getElementById(activeInsertTextareaId);
+  if (!target) return;
+
+  const currentVal = target.value;
+  const cursorPos = target.selectionStart || currentVal.length;
+  const before = currentVal.substring(0, cursorPos);
+  const after = currentVal.substring(cursorPos);
+  
+  // Add space if needed
+  const padBefore = (before.length > 0 && !before.endsWith(' ') && !before.endsWith('\n')) ? ' ' : '';
+  const padAfter = (after.length > 0 && !after.startsWith(' ') && !after.startsWith('\n')) ? ' ' : '';
+
+  target.value = `${before}${padBefore}${url}${padAfter}${after}`;
+  closeInsertShortLinkModal();
+
+  // Dispatch input event to recalculate SMS character metrics or WhatsApp preview
+  target.dispatchEvent(new Event('input', { bubbles: true }));
+  if (typeof onSmsMessageInput === 'function' && activeInsertTextareaId === 'sms-message') {
+    onSmsMessageInput();
+  }
+
+  showToast('success', 'Inserted', 'Tracked short link inserted into message.');
+};
+
+window.submitQuickShortenAndInsert = async function() {
+  const url = document.getElementById('quick-link-url')?.value.trim();
+  const title = document.getElementById('quick-link-title')?.value.trim();
+
+  if (!url) {
+    showToast('error', 'URL Required', 'Please enter a valid URL.');
+    return;
+  }
+
+  try {
+    const res = await apiFetch('/links', {
+      method: 'POST',
+      body: JSON.stringify({ original_url: url, title })
+    });
+    insertShortLinkIntoComposer(res.link.short_url);
+    showToast('success', 'Created & Inserted', `Link shortened: ${res.link.short_url}`);
+  } catch (err) {
+    showToast('error', 'Failed', err.message);
   }
 };
 

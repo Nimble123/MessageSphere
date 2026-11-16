@@ -330,6 +330,44 @@ async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_admin_campaign_alerts_user ON admin_campaign_alerts(user_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_admin_campaign_alerts_reseller ON admin_campaign_alerts(reseller_id);`);
 
+    // 12D. In-House Branded Short Links & Click Tracker
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS short_links (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title VARCHAR(255) DEFAULT 'Untitled Link',
+        original_url TEXT NOT NULL,
+        short_code VARCHAR(50) UNIQUE NOT NULL,
+        custom_alias VARCHAR(50),
+        clicks_count INTEGER DEFAULT 0,
+        unique_clicks_count INTEGER DEFAULT 0,
+        campaign_id INTEGER REFERENCES campaigns(id) ON DELETE SET NULL,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_short_links_code ON short_links(short_code);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_short_links_user ON short_links(user_id, created_at DESC);`);
+
+    // 12E. Short Link Clicks (Click Logs & Device Analytics)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS short_link_clicks (
+        id BIGSERIAL PRIMARY KEY,
+        link_id BIGINT NOT NULL REFERENCES short_links(id) ON DELETE CASCADE,
+        visitor_ip VARCHAR(64),
+        phone_number VARCHAR(30),
+        user_agent TEXT,
+        device_type VARCHAR(20) DEFAULT 'mobile',
+        os VARCHAR(50) DEFAULT 'Other',
+        browser VARCHAR(50) DEFAULT 'Other',
+        referrer TEXT,
+        clicked_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_short_link_clicks_link ON short_link_clicks(link_id, clicked_at DESC);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_short_link_clicks_phone ON short_link_clicks(phone_number);`);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS credit_requests (
         id SERIAL PRIMARY KEY,
