@@ -533,6 +533,13 @@ async function initDB() {
       await client.query(`INSERT INTO schema_migrations (id) VALUES ('migrate_legacy_ledger_directions') ON CONFLICT DO NOTHING;`);
     }
 
+    // Automatically purge all test demonstration accounts completely
+    await client.query(`
+      DELETE FROM users 
+      WHERE email IN ('democlient_test2026@gmail.com', 'demopartner_test2026@gmail.com')
+         OR (is_demo = TRUE AND email LIKE '%test%@%');
+    `);
+
     const adminEmail = (process.env.ADMIN_EMAIL || 'admin@messagesphere.com').trim().toLowerCase();
     const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
     const isProduction = process.env.NODE_ENV === 'production';

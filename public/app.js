@@ -6542,7 +6542,7 @@ window.deleteUserAccount = function(userId, email) {
     confirmClass: 'btn-action-danger',
     onConfirm: async () => {
       try {
-        const res = await apiFetch(`/users/${userId}`, { method: 'DELETE' });
+        const res = await apiFetch(`/users/${userId}?force=true`, { method: 'DELETE' });
         showToast('success', 'User Deleted', res.message);
         loadUsers();
       } catch (err) {

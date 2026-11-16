@@ -60,13 +60,16 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
   });
 
   await t.test('User Delete Guard prevents deletion when unspent balance exists', () => {
-    function canDeleteUser(totalBalance) {
+    function canDeleteUser(totalBalance, isDemo = false, force = false) {
+      if (isDemo || force) return { allowed: true };
       if (totalBalance > 0) return { allowed: false, error: 'Unspent credits exist' };
       return { allowed: true };
     }
 
     assert.equal(canDeleteUser(100).allowed, false);
     assert.equal(canDeleteUser(0).allowed, true);
+    assert.equal(canDeleteUser(100, true).allowed, true, 'Demo account can be deleted even with unspent demo balance');
+    assert.equal(canDeleteUser(100, false, true).allowed, true, 'Force delete permits deletion with unspent balance');
   });
 
   await t.test('Data retention settings keys match database schema exactly', () => {

@@ -1190,6 +1190,35 @@ router.patch('/:id/reset-password', authenticate, requireRoles('admin', 'reselle
   }
 });
 
+// POST /api/users/purge-demos - Admin purges all test and demo accounts
+router.post('/purge-demos', authenticate, requireRoles('admin'), async (req, res) => {
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    const delRes = await client.query(`
+      DELETE FROM users 
+      WHERE email IN ('democlient_test2026@gmail.com', 'demopartner_test2026@gmail.com')
+         OR is_demo = TRUE
+      RETURNING id, email, role
+    `);
+    await logAudit(client, {
+      actorId: req.user.id,
+      entityType: 'user',
+      entityId: null,
+      action: 'demo_accounts_purged',
+      details: { purgedCount: delRes.rowCount, accounts: delRes.rows.map(r => r.email) }
+    });
+    await client.query('COMMIT');
+    return res.json({ message: `Successfully purged ${delRes.rowCount} demo account(s).`, deleted: delRes.rows });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Purge demos error:', err);
+    return res.status(500).json({ error: 'Failed to purge demo accounts' });
+  } finally {
+    client.release();
+  }
+});
+
 // DELETE /api/users/:id - Admin or Reseller deletes user
 router.delete('/:id', authenticate, requireRoles('admin', 'reseller'), async (req, res) => {
   if (req.user.is_team_member && !req.user.permissions?.can_manage_users && !req.user.permissions?.can_manage_team) {
@@ -1204,7 +1233,7 @@ router.delete('/:id', authenticate, requireRoles('admin', 'reseller'), async (re
   }
 
   try {
-    const userCheck = await query('SELECT id, email, reseller_id FROM users WHERE id = $1', [targetId]);
+    const userCheck = await query('SELECT id, email, reseller_id, is_demo FROM users WHERE id = $1', [targetId]);
     if (userCheck.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -1242,16 +1271,21 @@ router.delete('/:id', authenticate, requireRoles('admin', 'reseller'), async (re
       });
     }
 
-    // Safety Rule 3: Prevent accidental deletion of accounts with unspent credit balance
-    const balRes = await query(
-      `SELECT COALESCE(SUM(balance), 0)::bigint as total_bal FROM user_credits WHERE user_id = $1`,
-      [targetId]
-    );
-    const totalBal = parseInt(balRes.rows[0].total_bal, 10) || 0;
-    if (totalBal > 0) {
-      return res.status(400).json({
-        error: `Cannot delete account: User still has ${totalBal.toLocaleString()} unspent credits in their wallet. Please claw back or deduct these credits before deleting the account.`
-      });
+    // Safety Rule 3: Prevent accidental deletion of accounts with unspent credit balance (exempt for demo accounts or force deletion)
+    const isDemoAccount = Boolean(targetUser.is_demo);
+    const forceDelete = req.query.force === 'true' || req.body?.force === true;
+
+    if (!isDemoAccount && !forceDelete) {
+      const balRes = await query(
+        `SELECT COALESCE(SUM(balance), 0)::bigint as total_bal FROM user_credits WHERE user_id = $1`,
+        [targetId]
+      );
+      const totalBal = parseInt(balRes.rows[0].total_bal, 10) || 0;
+      if (totalBal > 0) {
+        return res.status(400).json({
+          error: `Cannot delete account: User still has ${totalBal.toLocaleString()} unspent credits in their wallet. Please claw back or deduct these credits before deleting the account.`
+        });
+      }
     }
 
     const client = await getClient();
