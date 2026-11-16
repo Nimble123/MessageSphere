@@ -544,15 +544,20 @@ window.toggleMobileSidebar = function() {
 window.togglePasswordVisibility = function(inputId, btn) {
   try {
     const input = typeof inputId === 'string' ? document.getElementById(inputId) : inputId;
+    if (!input && btn) {
+      const wrap = btn.closest ? (btn.closest('.password-wrapper') || btn.parentElement) : btn.parentElement;
+      if (wrap) input = wrap.querySelector('input');
+    }
     if (!input) return;
     const isPass = input.type === 'password';
     input.type = isPass ? 'text' : 'password';
 
     try {
-      input.focus();
-      const len = input.value ? input.value.length : 0;
-      if (typeof input.setSelectionRange === 'function') {
-        input.setSelectionRange(len, len);
+      if (document.activeElement === input) {
+        const len = input.value ? input.value.length : 0;
+        if (typeof input.setSelectionRange === 'function') {
+          input.setSelectionRange(len, len);
+        }
       }
     } catch (_) {}
 
