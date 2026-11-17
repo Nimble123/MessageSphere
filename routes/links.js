@@ -145,7 +145,7 @@ router.get('/', authenticate, async (req, res) => {
     const offsetPlaceholder = `$${params.length + 2}`;
 
     const listSql = `
-      SELECT l.*, u.email as owner_email, u.name as owner_name, u.business_name as owner_company
+      SELECT l.*, u.email as owner_email, u.full_name as owner_name, u.company_name as owner_company
       FROM short_links l
       LEFT JOIN users u ON l.user_id = u.id
       ${whereClause}

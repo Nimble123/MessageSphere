@@ -156,16 +156,16 @@ async function recordAndDispatchCampaignAlert({
   try {
     // 1. Fetch User and hierarchy info
     const userRes = await query(`
-      SELECT u.id, u.name, u.business_name, u.email, u.phone, u.role, u.reseller_id,
-             r.business_name as reseller_company, r.email as reseller_email
+      SELECT u.id, u.full_name, u.company_name, u.email, u.phone, u.role, u.reseller_id,
+             r.company_name as reseller_company, r.email as reseller_email
       FROM users u
       LEFT JOIN users r ON u.reseller_id = r.id
       WHERE u.id = $1
     `, [userId]);
 
     const user = userRes.rows[0] || {};
-    const creatorName = user.name || 'Account #' + userId;
-    const creatorCompany = user.business_name || 'Direct Business';
+    const creatorName = user.full_name || 'Account #' + userId;
+    const creatorCompany = user.company_name || 'Direct Business';
     const creatorEmail = user.email || 'N/A';
     const creatorPhone = user.phone || 'N/A';
     const creatorRole = user.role || 'user';
