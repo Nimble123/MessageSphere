@@ -6403,11 +6403,13 @@ window.openCampaignDetailModal = async function(campaignId) {
 
     // Dynamic Contextual Footer Actions
     const actionsLeftEl = document.getElementById('detail-camp-actions-left');
+    const isAdmin = currentUser && currentUser.role === 'admin';
+    const isOwner = currentUser && (currentUser.id === c.user_id);
+    const isReseller = currentUser && currentUser.role === 'reseller';
+    const isOwnNumber = (c.channel_type === 'own_number' || c.campaign_type === 'own_number' || (c.replies_count && c.replies_count > 0));
+
     if (actionsLeftEl) {
       let actionButtons = '';
-      const isAdmin = currentUser && currentUser.role === 'admin';
-      const isOwner = currentUser && (currentUser.id === c.user_id);
-      const isReseller = currentUser && currentUser.role === 'reseller';
 
       if (c.status === 'Submitted') {
         if (isOwner || isReseller || isAdmin) {
@@ -6471,17 +6473,16 @@ window.openCampaignDetailModal = async function(campaignId) {
         `;
       }
 
-      actionsLeftEl.innerHTML = actionButtons;
-    }
+      // Admin Dedicated SIM Incoming Replies Action Button
+      if (isAdmin && (c.channel_type === 'own_number' || c.campaign_type === 'own_number')) {
+        actionButtons += `
+          <button type="button" class="btn-action btn-action-primary" onclick="openRepliesModal(${c.id}, '${escapeHtml(c.title || '')}');" style="background:#15803d;border-color:#15803d;display:inline-flex;align-items:center;gap:6px;" title="Upload or revise WhatsApp incoming replies report">
+            <i data-lucide="message-circle-reply" style="width:14px;height:14px;"></i> Upload Replies (2nd Report)
+          </button>
+        `;
+      }
 
-    // Admin Dedicated SIM Incoming Replies Action Button
-    const isOwnNumber = (c.channel_type === 'own_number' || c.campaign_type === 'own_number' || (c.replies_count && c.replies_count > 0));
-    if (isAdmin && (c.channel_type === 'own_number' || c.campaign_type === 'own_number') && actionsLeftEl) {
-      actionsLeftEl.innerHTML += `
-        <button type="button" class="btn-action btn-action-primary" onclick="openRepliesModal(${c.id}, '${escapeHtml(c.title || '')}');" style="background:#15803d;border-color:#15803d;display:inline-flex;align-items:center;gap:6px;" title="Upload or revise WhatsApp incoming replies report">
-          <i data-lucide="message-circle-reply" style="width:14px;height:14px;"></i> Upload Replies (2nd Report)
-        </button>
-      `;
+      actionsLeftEl.innerHTML = actionButtons;
     }
 
     const btnDuplicate = document.getElementById('btn-duplicate-campaign');
