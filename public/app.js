@@ -6146,6 +6146,11 @@ window.openCampaignDetailModal = async function(campaignId) {
   try {
     const data = await apiFetch(`/campaigns/${campaignId}`);
     const c = data.campaign;
+    const isAdmin = currentUser && currentUser.role === 'admin';
+    const isOwner = currentUser && (currentUser.id === c.user_id);
+    const isReseller = currentUser && currentUser.role === 'reseller';
+    const isOwnNumber = (c.channel_type === 'own_number' || c.campaign_type === 'own_number' || (c.replies_count && c.replies_count > 0));
+
     detailCampTitle.textContent = c.title || `Campaign #${c.id}`;
     detailCampSub.textContent = `ID: #${c.id} • Created: ${new Date(c.created_at).toLocaleString()} • Owner: ${c.owner_email}`;
     detailCampText.textContent = c.message_text;
@@ -6403,10 +6408,6 @@ window.openCampaignDetailModal = async function(campaignId) {
 
     // Dynamic Contextual Footer Actions
     const actionsLeftEl = document.getElementById('detail-camp-actions-left');
-    const isAdmin = currentUser && currentUser.role === 'admin';
-    const isOwner = currentUser && (currentUser.id === c.user_id);
-    const isReseller = currentUser && currentUser.role === 'reseller';
-    const isOwnNumber = (c.channel_type === 'own_number' || c.campaign_type === 'own_number' || (c.replies_count && c.replies_count > 0));
 
     if (actionsLeftEl) {
       let actionButtons = '';
