@@ -341,8 +341,11 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
     });
   }
 
-  // 1. DP: Strictly JPEG or PNG, Max 3 MB
-  if (files['dp_file'] && files['dp_file'][0]) {
+  const requestedCampaignType = req.body.campaign_type || 'normal';
+  const isCtaCampaignType = (requestedCampaignType === 'cta' || requestedCampaignType === 'dp_cta');
+
+  // 1. DP: Strictly JPEG or PNG, Max 3 MB (Allowed for DP, DP+CTA, and Own Number)
+  if (requestedCampaignType !== 'cta' && files['dp_file'] && files['dp_file'][0]) {
     const dp = files['dp_file'][0];
     const ext = path.extname(dp.originalname).toLowerCase();
     const validMimes = ['image/jpeg', 'image/jpg', 'image/png'];
@@ -355,56 +358,68 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
       return res.status(400).json({ error: 'DP file exceeds maximum size of 3 MB.' });
     }
     addAttachment(dp, 'dp', 'Profile Picture (DP)');
+  } else if (requestedCampaignType === 'cta' && files['dp_file']) {
+    removeUploadedFiles(files['dp_file']);
   }
 
-  // 2. Images 1-4: Strictly JPEG or PNG, Max 3 MB each
-  for (let i = 1; i <= 4; i++) {
-    const key = `image_${i}`;
-    if (files[key] && files[key][0]) {
-      const img = files[key][0];
-      const ext = path.extname(img.originalname).toLowerCase();
-      const validMimes = ['image/jpeg', 'image/jpg', 'image/png'];
-      if (!validMimes.includes(img.mimetype) && !['.jpg', '.jpeg', '.png'].includes(ext)) {
-        removeUploadedFiles(files);
-        return res.status(400).json({ error: `Image ${i} must be strictly a JPEG or PNG image.` });
+  // 2. Images 1-4, Video, and PDF: Non-CTA DP broadcast only (CTA campaigns use cta_media_file)
+  if (!isCtaCampaignType) {
+    // 2. Images 1-4: Strictly JPEG or PNG, Max 3 MB each
+    for (let i = 1; i <= 4; i++) {
+      const key = `image_${i}`;
+      if (files[key] && files[key][0]) {
+        const img = files[key][0];
+        const ext = path.extname(img.originalname).toLowerCase();
+        const validMimes = ['image/jpeg', 'image/jpg', 'image/png'];
+        if (!validMimes.includes(img.mimetype) && !['.jpg', '.jpeg', '.png'].includes(ext)) {
+          removeUploadedFiles(files);
+          return res.status(400).json({ error: `Image ${i} must be strictly a JPEG or PNG image.` });
+        }
+        if (img.size > 3 * 1024 * 1024) {
+          removeUploadedFiles(files);
+          return res.status(400).json({ error: `Image ${i} exceeds maximum size of 3 MB.` });
+        }
+        addAttachment(img, 'image', `Gallery Image ${i}`);
       }
-      if (img.size > 3 * 1024 * 1024) {
+    }
+
+    // 3. Video: Video file, Max 20 MB
+    if (files['video_file'] && files['video_file'][0]) {
+      const vid = files['video_file'][0];
+      const ext = path.extname(vid.originalname).toLowerCase();
+      const isVideo = vid.mimetype.startsWith('video/') || ['.mp4', '.mov', '.mkv', '.webm', '.avi'].includes(ext);
+      if (!isVideo) {
         removeUploadedFiles(files);
-        return res.status(400).json({ error: `Image ${i} exceeds maximum size of 3 MB.` });
+        return res.status(400).json({ error: 'Video file must be a valid video file (e.g. MP4).' });
       }
-      addAttachment(img, 'image', `Gallery Image ${i}`);
+      if (vid.size > 20 * 1024 * 1024) {
+        removeUploadedFiles(files);
+        return res.status(400).json({ error: 'Video file exceeds maximum size of 20 MB.' });
+      }
+      addAttachment(vid, 'video', 'Campaign Video');
     }
-  }
 
-  // 3. Video: Video file, Max 20 MB
-  if (files['video_file'] && files['video_file'][0]) {
-    const vid = files['video_file'][0];
-    const ext = path.extname(vid.originalname).toLowerCase();
-    const isVideo = vid.mimetype.startsWith('video/') || ['.mp4', '.mov', '.mkv', '.webm', '.avi'].includes(ext);
-    if (!isVideo) {
-      removeUploadedFiles(files);
-      return res.status(400).json({ error: 'Video file must be a valid video file (e.g. MP4).' });
+    // 4. PDF: Document, Max 10 MB
+    if (files['pdf_file'] && files['pdf_file'][0]) {
+      const pdf = files['pdf_file'][0];
+      const ext = path.extname(pdf.originalname).toLowerCase();
+      if (pdf.mimetype !== 'application/pdf' && ext !== '.pdf') {
+        removeUploadedFiles(files);
+        return res.status(400).json({ error: 'Document must be a valid PDF file.' });
+      }
+      if (pdf.size > 10 * 1024 * 1024) {
+        removeUploadedFiles(files);
+        return res.status(400).json({ error: 'PDF file exceeds maximum size of 10 MB.' });
+      }
+      addAttachment(pdf, 'pdf', 'PDF Document');
     }
-    if (vid.size > 20 * 1024 * 1024) {
-      removeUploadedFiles(files);
-      return res.status(400).json({ error: 'Video file exceeds maximum size of 20 MB.' });
+  } else {
+    // For CTA and DP+CTA, if any gallery/video/pdf files were submitted, clean them up
+    for (let i = 1; i <= 4; i++) {
+      if (files[`image_${i}`]) removeUploadedFiles(files[`image_${i}`]);
     }
-    addAttachment(vid, 'video', 'Campaign Video');
-  }
-
-  // 4. PDF: Document, Max 10 MB
-  if (files['pdf_file'] && files['pdf_file'][0]) {
-    const pdf = files['pdf_file'][0];
-    const ext = path.extname(pdf.originalname).toLowerCase();
-    if (pdf.mimetype !== 'application/pdf' && ext !== '.pdf') {
-      removeUploadedFiles(files);
-      return res.status(400).json({ error: 'Document must be a valid PDF file.' });
-    }
-    if (pdf.size > 10 * 1024 * 1024) {
-      removeUploadedFiles(files);
-      return res.status(400).json({ error: 'PDF file exceeds maximum size of 10 MB.' });
-    }
-    addAttachment(pdf, 'pdf', 'PDF Document');
+    if (files['video_file']) removeUploadedFiles(files['video_file']);
+    if (files['pdf_file']) removeUploadedFiles(files['pdf_file']);
   }
 
   // 5. CTA Media Attachment: Exactly 1 media (Image max 3MB, PDF max 10MB, Video max 20MB)

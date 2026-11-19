@@ -2400,6 +2400,12 @@ const destOptionIntl = document.getElementById('dest-label-intl');
 const composerScheduleTime = document.getElementById('composer-schedule-time');
 const composerAttachmentGroup = document.getElementById('composer-attachment-group');
 const composerCtaGroup = document.getElementById('composer-cta-group');
+const boxDpUpload = document.getElementById('box-dp-upload');
+const boxImagesUpload = document.getElementById('box-images-upload');
+const boxVideoUpload = document.getElementById('box-video-upload');
+const boxPdfUpload = document.getElementById('box-pdf-upload');
+const composerAttachmentTitle = document.getElementById('composer-attachment-title');
+const composerAttachmentSubtitle = document.getElementById('composer-attachment-subtitle');
 
 let selectedDestination = 'domestic';
 let selectedCampaignType = 'normal'; // 'normal' | 'dp' | 'cta' | 'dp_cta' | 'own_number'
@@ -2491,26 +2497,57 @@ function setCampaignType(type) {
     window.composerTemplateAttachmentUrl = null;
     previewBubbleCta.style.display = 'none';
   } else if (type === 'dp') {
+    // DP Broadcast: Profile Picture (DP Avatar) + Broadcast Media (Images 1-4, Video, or PDF)
     if (composerAttachmentGroup) composerAttachmentGroup.style.display = 'block';
+    if (boxDpUpload) boxDpUpload.style.display = 'block';
+    if (boxImagesUpload) boxImagesUpload.style.display = 'block';
+    if (boxVideoUpload) boxVideoUpload.style.display = 'block';
+    if (boxPdfUpload) boxPdfUpload.style.display = 'block';
+    if (composerAttachmentTitle) composerAttachmentTitle.textContent = 'Campaign Media Attachments (DP + Gallery / Video / PDF)';
+    if (composerAttachmentSubtitle) composerAttachmentSubtitle.textContent = 'Upload sender avatar and broadcast images, video, or PDF document.';
+
     if (composerCtaGroup) composerCtaGroup.style.display = 'none';
     if (composerCtaToggle) { composerCtaToggle.checked = false; composerCtaBox.style.display = 'none'; }
     previewBubbleCta.style.display = 'none';
+    resetCtaMedia();
     updatePreviewMedia();
   } else if (type === 'cta') {
+    // Pure CTA: Interactive Action Buttons + Exactly 1 Media (Image, PDF, or Video) in CTA builder
     if (composerAttachmentGroup) composerAttachmentGroup.style.display = 'none';
+    resetDpMedia();
+    resetGalleryVideoPdfMedia();
+
     if (composerCtaGroup) composerCtaGroup.style.display = 'block';
     if (composerCtaToggle) { composerCtaToggle.checked = true; composerCtaBox.style.display = 'block'; }
     updateCtaPreview();
     updatePreviewMedia();
   } else if (type === 'dp_cta') {
+    // DP + CTA: Profile Picture (DP Avatar) in top box ONLY;
+    // Single message media (Image, PDF, or Video) is chosen inside the CTA section below!
     if (composerAttachmentGroup) composerAttachmentGroup.style.display = 'block';
+    if (boxDpUpload) boxDpUpload.style.display = 'block';
+    if (boxImagesUpload) boxImagesUpload.style.display = 'none';
+    if (boxVideoUpload) boxVideoUpload.style.display = 'none';
+    if (boxPdfUpload) boxPdfUpload.style.display = 'none';
+    if (composerAttachmentTitle) composerAttachmentTitle.textContent = '1. Profile Picture / Display Picture (DP)';
+    if (composerAttachmentSubtitle) composerAttachmentSubtitle.textContent = 'Upload sender avatar image. Choose your 1 CTA media attachment (Image, PDF, or Video) in the section below.';
+
+    resetGalleryVideoPdfMedia();
+
     if (composerCtaGroup) composerCtaGroup.style.display = 'block';
     if (composerCtaToggle) { composerCtaToggle.checked = true; composerCtaBox.style.display = 'block'; }
     updateCtaPreview();
     updatePreviewMedia();
   } else if (type === 'own_number') {
-    // Dedicated SIM route can optionally include attachment or CTA
+    // Dedicated SIM route: can send normal text, DP media, or CTA
     if (composerAttachmentGroup) composerAttachmentGroup.style.display = 'block';
+    if (boxDpUpload) boxDpUpload.style.display = 'block';
+    if (boxImagesUpload) boxImagesUpload.style.display = 'block';
+    if (boxVideoUpload) boxVideoUpload.style.display = 'block';
+    if (boxPdfUpload) boxPdfUpload.style.display = 'block';
+    if (composerAttachmentTitle) composerAttachmentTitle.textContent = 'Campaign Media Attachments';
+    if (composerAttachmentSubtitle) composerAttachmentSubtitle.textContent = 'Upload optional media attachments for your Dedicated SIM broadcast.';
+
     if (composerCtaGroup) composerCtaGroup.style.display = 'block';
     if (composerCtaToggle) { composerCtaToggle.checked = true; composerCtaBox.style.display = 'block'; }
     updateCtaPreview();
@@ -2820,19 +2857,18 @@ function updatePreviewMedia() {
   if (window.lucide) lucide.createIcons();
 }
 
-function resetAllMediaUploads() {
+function resetDpMedia() {
   uploadedDP = null;
-  uploadedImages = [null, null, null, null];
-  uploadedVideo = null;
-  uploadedPDF = null;
-  uploadedCtaMedia = null;
-  selectedCtaMediaType = 'none';
-
-  // Reset DP UI
   if (inputDpFile) inputDpFile.value = '';
   if (dropzoneDp) dropzoneDp.classList.remove('has-file');
   if (dpPlaceholder) dpPlaceholder.style.display = 'flex';
   if (dpPreviewInfo) dpPreviewInfo.style.display = 'none';
+}
+
+function resetGalleryVideoPdfMedia() {
+  uploadedImages = [null, null, null, null];
+  uploadedVideo = null;
+  uploadedPDF = null;
 
   // Reset Gallery Images 1-4 UI
   for (let i = 1; i <= 4; i++) {
@@ -2857,8 +2893,11 @@ function resetAllMediaUploads() {
   if (dropzonePdf) dropzonePdf.classList.remove('has-file');
   if (pdfPlaceholder) pdfPlaceholder.style.display = 'flex';
   if (pdfPreviewInfo) pdfPreviewInfo.style.display = 'none';
+}
 
-  // Reset CTA Media UI
+function resetCtaMedia() {
+  uploadedCtaMedia = null;
+  selectedCtaMediaType = 'none';
   if (inputCtaMediaFile) inputCtaMediaFile.value = '';
   if (ctaMediaDropzone) {
     ctaMediaDropzone.classList.remove('has-file');
@@ -2866,12 +2905,19 @@ function resetAllMediaUploads() {
   }
   if (ctaMediaPlaceholder) ctaMediaPlaceholder.style.display = 'flex';
   if (ctaMediaPreviewInfo) ctaMediaPreviewInfo.style.display = 'none';
-  ctaMediaTypePills.forEach(p => {
-    if (p.dataset.ctaMedia === 'none') p.classList.add('active');
-    else p.classList.remove('active');
-  });
+  if (ctaMediaTypePills) {
+    ctaMediaTypePills.forEach(p => {
+      if (p.dataset.ctaMedia === 'none') p.classList.add('active');
+      else p.classList.remove('active');
+    });
+  }
   if (ctaMediaLimitBadge) ctaMediaLimitBadge.textContent = 'Optional: None Selected';
+}
 
+function resetAllMediaUploads() {
+  resetDpMedia();
+  resetGalleryVideoPdfMedia();
+  resetCtaMedia();
   updatePreviewMedia();
 }
 
@@ -3469,16 +3515,19 @@ btnSubmitCampaignSaas.addEventListener('click', async () => {
   if (uploadedDP && uploadedDP.file) {
     formData.append('dp_file', uploadedDP.file);
   }
-  for (let i = 0; i < 4; i++) {
-    if (uploadedImages[i] && uploadedImages[i].file) {
-      formData.append(`image_${i + 1}`, uploadedImages[i].file);
+  // Only append gallery images, video, or PDF for DP or Dedicated SIM routes
+  if (selectedCampaignType === 'dp' || selectedCampaignType === 'own_number') {
+    for (let i = 0; i < 4; i++) {
+      if (uploadedImages[i] && uploadedImages[i].file) {
+        formData.append(`image_${i + 1}`, uploadedImages[i].file);
+      }
     }
-  }
-  if (uploadedVideo && uploadedVideo.file) {
-    formData.append('video_file', uploadedVideo.file);
-  }
-  if (uploadedPDF && uploadedPDF.file) {
-    formData.append('pdf_file', uploadedPDF.file);
+    if (uploadedVideo && uploadedVideo.file) {
+      formData.append('video_file', uploadedVideo.file);
+    }
+    if (uploadedPDF && uploadedPDF.file) {
+      formData.append('pdf_file', uploadedPDF.file);
+    }
   }
   if (uploadedCtaMedia && uploadedCtaMedia.file) {
     formData.append('cta_media_file', uploadedCtaMedia.file);
