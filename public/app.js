@@ -5624,12 +5624,28 @@ function renderCampaignsTable() {
         const uploadReportBtn = !c.report_processed_at
           ? `<button class="btn-action btn-action-primary" onclick="openReportModal(${c.id})" title="Upload Delivery Report" style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;font-size:0.75rem;background:#059669;"><i data-lucide="file-bar-chart" style="width:12px;height:12px;"></i> Upload Report</button>`
           : '';
+        const isOwn = (c.channel_type === 'own_number' || c.campaign_type === 'own_number');
+        const uploadRepliesBtn = isOwn
+          ? `<button class="btn-action btn-action-primary" onclick="openRepliesModal(${c.id}, '${escapeHtml(c.title || '')}')" title="Upload WhatsApp Incoming Replies (2nd Report)" style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;font-size:0.75rem;background:#15803d;border-color:#15803d;"><i data-lucide="message-circle-reply" style="width:12px;height:12px;"></i> ${c.replies_count ? `Replies (${c.replies_count})` : 'Replies'}</button>`
+          : '';
         actionsHTML = `
           ${exportTxtBtn}
           ${uploadReportBtn}
+          ${uploadRepliesBtn}
         `;
       } else if (c.status === 'Report Updated') {
-        actionsHTML = downloadReportCsvBtn;
+        const isOwn = (c.channel_type === 'own_number' || c.campaign_type === 'own_number');
+        const uploadRepliesBtn = isOwn
+          ? `<button class="btn-action btn-action-primary" onclick="openRepliesModal(${c.id}, '${escapeHtml(c.title || '')}')" title="Upload WhatsApp Incoming Replies (2nd Report)" style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;font-size:0.75rem;background:#15803d;border-color:#15803d;"><i data-lucide="message-circle-reply" style="width:12px;height:12px;"></i> ${c.replies_count ? `Replies (${c.replies_count})` : 'Replies'}</button>`
+          : '';
+        const downloadRepliesBtn = (c.replies_count > 0)
+          ? `<button class="btn-action btn-action-secondary" onclick="downloadApiFile('/campaigns/${c.id}/replies/export', 'campaign_${c.id}_incoming_replies.csv')" title="Download WhatsApp Replies CSV (${c.replies_count})" style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;font-size:0.75rem;color:#166534;border-color:#bbf7d0;background:#f0fdf4;"><i data-lucide="message-circle-reply" style="width:12px;height:12px;"></i> Replies (${c.replies_count})</button>`
+          : '';
+        actionsHTML = `
+          ${downloadReportCsvBtn}
+          ${downloadRepliesBtn}
+          ${uploadRepliesBtn}
+        `;
       } else if (c.status === 'Rejected') {
         actionsHTML = `<span style="font-size:0.75rem;color:${isUserCancelled ? '#475569' : '#dc2626'};font-weight:600;">${isUserCancelled ? 'Cancelled' : 'Refunded'}</span>`;
       }
@@ -5646,12 +5662,22 @@ function renderCampaignsTable() {
           <button class="btn-action btn-action-primary" onclick="updateCampaignStatus(${c.id}, 'Completed')" style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;font-size:0.75rem;"><i data-lucide="send" style="width:12px;height:12px;"></i> Mark Sent</button>
         `;
       } else if (c.status === 'Completed') {
+        const downloadRepliesBtn = (c.replies_count > 0)
+          ? `<button class="btn-action btn-action-secondary" onclick="downloadApiFile('/campaigns/${c.id}/replies/export', 'campaign_${c.id}_incoming_replies.csv')" title="Download WhatsApp Replies CSV (${c.replies_count})" style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;font-size:0.75rem;color:#166534;border-color:#bbf7d0;background:#f0fdf4;"><i data-lucide="message-circle-reply" style="width:12px;height:12px;"></i> Replies (${c.replies_count})</button>`
+          : '';
         actionsHTML = `
           ${exportTxtBtn}
           <span style="font-size:0.75rem;color:#0284c7;font-weight:600;display:inline-flex;align-items:center;gap:3px;"><i data-lucide="send" style="width:12px;height:12px;"></i> Sent</span>
+          ${downloadRepliesBtn}
         `;
       } else if (c.status === 'Report Updated') {
-        actionsHTML = downloadReportCsvBtn;
+        const downloadRepliesBtn = (c.replies_count > 0)
+          ? `<button class="btn-action btn-action-secondary" onclick="downloadApiFile('/campaigns/${c.id}/replies/export', 'campaign_${c.id}_incoming_replies.csv')" title="Download WhatsApp Replies CSV (${c.replies_count})" style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;font-size:0.75rem;color:#166534;border-color:#bbf7d0;background:#f0fdf4;"><i data-lucide="message-circle-reply" style="width:12px;height:12px;"></i> Replies (${c.replies_count})</button>`
+          : '';
+        actionsHTML = `
+          ${downloadReportCsvBtn}
+          ${downloadRepliesBtn}
+        `;
       } else if (c.status === 'Rejected') {
         actionsHTML = `<span style="font-size:0.75rem;color:${isUserCancelled ? '#475569' : '#dc2626'};font-weight:600;">${isUserCancelled ? 'Cancelled' : 'Refunded'}</span>`;
       }
@@ -5664,16 +5690,26 @@ function renderCampaignsTable() {
           </button>
         `;
       } else if (c.status === 'Report Updated') {
-        actionsHTML = downloadReportCsvBtn;
+        const downloadRepliesBtn = (c.replies_count > 0)
+          ? `<button class="btn-action btn-action-secondary" onclick="downloadApiFile('/campaigns/${c.id}/replies/export', 'campaign_${c.id}_incoming_replies.csv')" title="Download WhatsApp Replies CSV (${c.replies_count})" style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;font-size:0.75rem;color:#166534;border-color:#bbf7d0;background:#f0fdf4;"><i data-lucide="message-circle-reply" style="width:12px;height:12px;"></i> Replies (${c.replies_count})</button>`
+          : '';
+        actionsHTML = `
+          ${downloadReportCsvBtn}
+          ${downloadRepliesBtn}
+        `;
       } else if (c.status === 'Approved') {
         actionsHTML = `
           ${exportTxtBtn}
           <span style="font-size:0.78rem;color:#0284c7;font-weight:600;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="clock" style="width:12px;height:12px;"></i> Queued</span>
         `;
       } else if (c.status === 'Completed') {
+        const downloadRepliesBtn = (c.replies_count > 0)
+          ? `<button class="btn-action btn-action-secondary" onclick="downloadApiFile('/campaigns/${c.id}/replies/export', 'campaign_${c.id}_incoming_replies.csv')" title="Download WhatsApp Replies CSV (${c.replies_count})" style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;font-size:0.75rem;color:#166534;border-color:#bbf7d0;background:#f0fdf4;"><i data-lucide="message-circle-reply" style="width:12px;height:12px;"></i> Replies (${c.replies_count})</button>`
+          : '';
         actionsHTML = `
           ${exportTxtBtn}
           <span style="font-size:0.78rem;color:#0284c7;font-weight:600;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="send" style="width:12px;height:12px;"></i> Sent</span>
+          ${downloadRepliesBtn}
         `;
       } else if (c.status === 'Rejected') {
         actionsHTML = `<span style="font-size:0.78rem;color:${isUserCancelled ? '#475569' : '#dc2626'};font-weight:600;display:inline-flex;align-items:center;gap:4px;"><i data-lucide="x-circle" style="width:12px;height:12px;"></i> ${isUserCancelled ? 'Cancelled' : 'Refunded'}</span>`;
@@ -6389,6 +6425,16 @@ window.openCampaignDetailModal = async function(campaignId) {
       actionsLeftEl.innerHTML = actionButtons;
     }
 
+    // Admin Dedicated SIM Incoming Replies Action Button
+    const isOwnNumber = (c.channel_type === 'own_number' || c.campaign_type === 'own_number' || (c.replies_count && c.replies_count > 0));
+    if (isAdmin && (c.channel_type === 'own_number' || c.campaign_type === 'own_number') && actionsLeftEl) {
+      actionsLeftEl.innerHTML += `
+        <button type="button" class="btn-action btn-action-primary" onclick="openRepliesModal(${c.id}, '${escapeHtml(c.title || '')}');" style="background:#15803d;border-color:#15803d;display:inline-flex;align-items:center;gap:6px;" title="Upload or revise WhatsApp incoming replies report">
+          <i data-lucide="message-circle-reply" style="width:14px;height:14px;"></i> Upload Replies (2nd Report)
+        </button>
+      `;
+    }
+
     const btnDuplicate = document.getElementById('btn-duplicate-campaign');
     if (btnDuplicate) {
       btnDuplicate.onclick = () => duplicateCampaign(c);
@@ -6443,6 +6489,97 @@ window.openCampaignDetailModal = async function(campaignId) {
           </tr>
         `;
       }).join('');
+    }
+
+    // Render Dedicated SIM WhatsApp Incoming Replies (2nd Report)
+    const repliesSection = document.getElementById('detail-camp-replies-section');
+    const repliesCountKpi = document.getElementById('detail-replies-kpi-count');
+    const repliesRateKpi = document.getElementById('detail-replies-kpi-rate');
+    const repliesUpdatedKpi = document.getElementById('detail-replies-kpi-updated');
+    const repliesTbody = document.getElementById('detail-replies-tbody');
+    const btnAdminUploadReplies = document.getElementById('btn-admin-upload-replies');
+    const btnExportRepliesCsv = document.getElementById('btn-export-replies-csv');
+    const repliesSearchInput = document.getElementById('detail-replies-search');
+
+    if (repliesSection) {
+      if (isOwnNumber) {
+        repliesSection.style.display = 'block';
+
+        const repliesCount = Number(c.replies_count || 0);
+        if (repliesCountKpi) repliesCountKpi.textContent = repliesCount.toLocaleString();
+        if (repliesRateKpi) {
+          const rate = c.total_numbers ? ((repliesCount / c.total_numbers) * 100).toFixed(1) : '0.0';
+          repliesRateKpi.textContent = `${rate}%`;
+        }
+        if (repliesUpdatedKpi) {
+          repliesUpdatedKpi.textContent = c.replies_updated_at ? new Date(c.replies_updated_at).toLocaleString() : 'Not uploaded yet';
+        }
+
+        // Admin upload button
+        if (btnAdminUploadReplies) {
+          if (currentUser && currentUser.role === 'admin') {
+            btnAdminUploadReplies.style.display = 'inline-flex';
+            btnAdminUploadReplies.onclick = () => {
+              openRepliesModal(c.id, c.title);
+            };
+          } else {
+            btnAdminUploadReplies.style.display = 'none';
+          }
+        }
+
+        // Export CSV button
+        if (btnExportRepliesCsv) {
+          btnExportRepliesCsv.onclick = (e) => {
+            e.preventDefault();
+            downloadApiFile(`/campaigns/${c.id}/replies/export`, `campaign_${c.id}_incoming_replies.csv`);
+          };
+        }
+
+        // Render replies table
+        let allReplies = data.sampleReplies || [];
+        function renderRepliesTable(filterText = '') {
+          if (!repliesTbody) return;
+          const searchNorm = filterText.toLowerCase().trim();
+          const filtered = searchNorm ? allReplies.filter(r => 
+            String(r.phone_number || '').toLowerCase().includes(searchNorm) ||
+            String(r.message_text || '').toLowerCase().includes(searchNorm)
+          ) : allReplies;
+
+          if (filtered.length === 0) {
+            repliesTbody.innerHTML = `<tr><td colspan="3" style="text-align:center;padding:16px;color:#94a3b8;">${allReplies.length === 0 ? 'No incoming replies uploaded yet for this campaign.' : 'No replies matching search query.'}</td></tr>`;
+          } else {
+            repliesTbody.innerHTML = filtered.map(r => `
+              <tr>
+                <td>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <code style="font-weight:700;font-size:0.84rem;color:#0f172a;">${escapeHtml(r.phone_number)}</code>
+                    <a href="https://wa.me/${escapeHtml(r.phone_number.replace(/[^0-9]/g, ''))}" target="_blank" title="Chat on WhatsApp" style="color:#16a34a;display:inline-flex;align-items:center;">
+                      <i data-lucide="external-link" style="width:12px;height:12px;"></i>
+                    </a>
+                  </div>
+                </td>
+                <td>
+                  <div style="font-size:0.83rem;color:#1e293b;background:#f8fafc;padding:6px 10px;border-radius:6px;border:1px solid #e2e8f0;white-space:pre-wrap;line-height:1.4;">${escapeHtml(r.message_text)}</div>
+                </td>
+                <td>
+                  <span style="font-size:0.75rem;color:#64748b;">${new Date(r.replied_at || r.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+                </td>
+              </tr>
+            `).join('');
+            if (window.lucide) {
+              try { lucide.createIcons({ root: repliesTbody }); } catch(e) {}
+            }
+          }
+        }
+
+        if (repliesSearchInput) {
+          repliesSearchInput.value = '';
+          repliesSearchInput.oninput = (e) => renderRepliesTable(e.target.value);
+        }
+        renderRepliesTable();
+      } else {
+        repliesSection.style.display = 'none';
+      }
     }
 
     if (window.lucide) {
@@ -7468,7 +7605,7 @@ document.addEventListener('click', (e) => {
 });
 
 [
-  'modal-create-user', 'modal-forgot-password', 'modal-allot-credits', 'modal-upload-report', 
+  'modal-create-user', 'modal-forgot-password', 'modal-allot-credits', 'modal-upload-report', 'modal-upload-replies-report',
   'modal-campaign-detail', 'modal-reset-password', 'modal-operator-dispatch', 'modal-bulk-confirm', 
   'modal-user-360', 'modal-action-dialog', 'modal-create-group', 'modal-edit-group', 
   'modal-merge-groups', 'modal-add-blacklist', 'modal-create-template', 'modal-edit-template',
@@ -8573,6 +8710,191 @@ if (btnModalProcessReport) {
       if (reportProgressSimInterval) clearInterval(reportProgressSimInterval);
       if (reportProgressTimerInterval) clearInterval(reportProgressTimerInterval);
       showToast('error', 'Request Error', err.message);
+    }
+  });
+}
+
+// ==========================================
+// WHATSAPP INCOMING REPLIES MODAL (2nd Report - Admin only)
+// ==========================================
+const modalUploadRepliesReport = document.getElementById('modal-upload-replies-report');
+const modalRepliesCampaignId = document.getElementById('modal-replies-campaign-id');
+const modalRepliesCampName = document.getElementById('modal-replies-camp-name');
+const modalRepliesFile = document.getElementById('modal-replies-file');
+const repliesDropzone = document.getElementById('replies-dropzone');
+const repliesFileLabel = document.getElementById('replies-file-label');
+const repliesPreviewBox = document.getElementById('replies-preview-box');
+const btnModalProcessReplies = document.getElementById('btn-modal-process-replies');
+let currentRepliesFile = null;
+
+window.openRepliesModal = function(campaignId, campaignTitle) {
+  if (modalUploadRepliesReport) {
+    if (modalRepliesCampaignId) modalRepliesCampaignId.value = campaignId;
+    if (modalRepliesCampName) modalRepliesCampName.textContent = `#${campaignId} (${campaignTitle || 'Dedicated SIM'})`;
+    if (modalRepliesFile) modalRepliesFile.value = '';
+    currentRepliesFile = null;
+    if (repliesFileLabel) repliesFileLabel.textContent = 'Select or Drag Excel / CSV File (.xlsx / .csv)';
+    if (repliesPreviewBox) {
+      repliesPreviewBox.style.display = 'none';
+      repliesPreviewBox.innerHTML = '';
+    }
+    if (btnModalProcessReplies) {
+      btnModalProcessReplies.disabled = true;
+      btnModalProcessReplies.innerHTML = 'Save & Update Replies Report';
+    }
+    const replaceRadio = document.querySelector('input[name="replies-upload-mode"][value="replace"]');
+    if (replaceRadio) replaceRadio.checked = true;
+
+    modalUploadRepliesReport.style.display = 'flex';
+    if (window.lucide) {
+      try { lucide.createIcons({ root: modalUploadRepliesReport }); } catch(e) {}
+    }
+  }
+};
+
+async function handleRepliesFileSelection(file) {
+  currentRepliesFile = file;
+  if (repliesFileLabel) {
+    repliesFileLabel.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+  }
+
+  const campaignId = modalRepliesCampaignId ? modalRepliesCampaignId.value : null;
+  if (!campaignId) return;
+
+  if (repliesPreviewBox) {
+    repliesPreviewBox.style.display = 'block';
+    repliesPreviewBox.innerHTML = `
+      <div style="text-align:center;padding:12px;color:#4f46e5;font-size:0.84rem;display:flex;align-items:center;justify-content:center;gap:6px;">
+        <i data-lucide="loader-2" class="spin" style="width:16px;height:16px;"></i> Analyzing Excel / CSV file & validating reply records...
+      </div>
+    `;
+    if (window.lucide) { try { lucide.createIcons({ root: repliesPreviewBox }); } catch(e) {} }
+  }
+
+  const formData = new FormData();
+  formData.append('repliesFile', file);
+
+  try {
+    const res = await fetch(`/api/campaigns/${campaignId}/replies-report/preview`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: formData
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to preview replies file');
+
+    if (repliesPreviewBox) {
+      let sampleRowsHtml = (data.sample || []).map((s) => `
+        <div style="padding:6px 10px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;font-size:0.78rem;display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px;">
+          <div>
+            <strong style="color:#0f172a;">${escapeHtml(s.phone_number)}</strong>: 
+            <span style="color:#334155;">${escapeHtml(s.message_text)}</span>
+          </div>
+          <span style="color:#64748b;font-size:0.72rem;white-space:nowrap;">${new Date(s.replied_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+        </div>
+      `).join('');
+
+      repliesPreviewBox.innerHTML = `
+        <div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <i data-lucide="check-circle-2" style="width:16px;height:16px;color:#16a34a;"></i>
+            <strong style="font-size:0.84rem;color:#1e293b;">Detected ${data.totalRows} WhatsApp Incoming Replies</strong>
+          </div>
+          <span style="font-size:0.75rem;background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:12px;font-weight:700;">Format Valid</span>
+        </div>
+        <div style="font-size:0.76rem;color:#64748b;margin-bottom:6px;">Sample of first ${(data.sample || []).length} reply records:</div>
+        <div style="max-height:140px;overflow-y:auto;border:1px solid #f1f5f9;border-radius:6px;padding:4px;">
+          ${sampleRowsHtml}
+        </div>
+      `;
+      if (window.lucide) { try { lucide.createIcons({ root: repliesPreviewBox }); } catch(e) {} }
+    }
+
+    if (btnModalProcessReplies) {
+      btnModalProcessReplies.disabled = false;
+    }
+  } catch (err) {
+    if (repliesPreviewBox) {
+      repliesPreviewBox.innerHTML = `
+        <div style="color:#dc2626;font-size:0.82rem;display:flex;align-items:flex-start;gap:6px;padding:8px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;">
+          <i data-lucide="alert-triangle" style="width:16px;height:16px;flex-shrink:0;"></i>
+          <span>${escapeHtml(err.message)}</span>
+        </div>
+      `;
+      if (window.lucide) { try { lucide.createIcons({ root: repliesPreviewBox }); } catch(e) {} }
+    }
+    if (btnModalProcessReplies) {
+      btnModalProcessReplies.disabled = true;
+    }
+  }
+}
+
+if (repliesDropzone && modalRepliesFile) {
+  repliesDropzone.addEventListener('click', () => modalRepliesFile.click());
+  repliesDropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    repliesDropzone.style.borderColor = '#15803d';
+    repliesDropzone.style.background = '#dcfce7';
+  });
+  repliesDropzone.addEventListener('dragleave', () => {
+    repliesDropzone.style.borderColor = '#86efac';
+    repliesDropzone.style.background = '#f0fdf4';
+  });
+  repliesDropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    repliesDropzone.style.borderColor = '#86efac';
+    repliesDropzone.style.background = '#f0fdf4';
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleRepliesFileSelection(e.dataTransfer.files[0]);
+    }
+  });
+  modalRepliesFile.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files[0]) {
+      handleRepliesFileSelection(e.target.files[0]);
+    }
+  });
+}
+
+if (btnModalProcessReplies) {
+  btnModalProcessReplies.addEventListener('click', async () => {
+    if (!currentRepliesFile) return;
+    const campaignId = modalRepliesCampaignId ? modalRepliesCampaignId.value : null;
+    if (!campaignId) return;
+
+    const mode = document.querySelector('input[name="replies-upload-mode"]:checked')?.value || 'replace';
+
+    btnModalProcessReplies.disabled = true;
+    btnModalProcessReplies.innerHTML = `<i data-lucide="loader-2" class="spin" style="width:14px;height:14px;"></i> Saving Replies...`;
+    if (window.lucide) { try { lucide.createIcons({ root: btnModalProcessReplies }); } catch(e) {} }
+
+    const formData = new FormData();
+    formData.append('repliesFile', currentRepliesFile);
+    formData.append('mode', mode);
+
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/replies-report`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to upload replies report');
+
+      showToast('success', 'Replies Report Updated!', data.message || 'WhatsApp replies report saved successfully.');
+      if (modalUploadRepliesReport) modalUploadRepliesReport.style.display = 'none';
+
+      // Refresh campaign detail modal if currently open
+      if (typeof openCampaignDetailModal === 'function') {
+        openCampaignDetailModal(campaignId);
+      }
+      // Refresh campaigns list
+      if (typeof loadCampaigns === 'function') {
+        loadCampaigns();
+      }
+    } catch (err) {
+      showToast('error', 'Upload Failed', err.message);
+      btnModalProcessReplies.disabled = false;
+      btnModalProcessReplies.innerHTML = 'Save & Update Replies Report';
     }
   });
 }

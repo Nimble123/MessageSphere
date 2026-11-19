@@ -112,6 +112,20 @@ async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_campaigns_created_at ON campaigns(created_at DESC);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_transactions_user ON credit_transactions(to_user_id, created_at DESC);`);
 
+    // 5b. Campaign Incoming Replies Table (for Dedicated SIM / Own WhatsApp Number incoming response reports)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS campaign_incoming_replies (
+        id BIGSERIAL PRIMARY KEY,
+        campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+        phone_number VARCHAR(30) NOT NULL,
+        message_text TEXT NOT NULL,
+        replied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_camp_replies_camp ON campaign_incoming_replies(campaign_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_camp_replies_phone ON campaign_incoming_replies(phone_number);`);
+
     // Schema migrations for enterprise features
     await client.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS title VARCHAR(255) DEFAULT 'Untitled Campaign';`);
     await client.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS channel_type VARCHAR(50) DEFAULT 'shared_gateway';`);
@@ -122,6 +136,9 @@ async function initDB() {
     await client.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS scheduled_triggered BOOLEAN DEFAULT FALSE;`);
     await client.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS report_processed_at TIMESTAMP WITH TIME ZONE;`);
     await client.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS report_processed_by INTEGER REFERENCES users(id) ON DELETE SET NULL;`);
+    await client.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS replies_count INTEGER DEFAULT 0;`);
+    await client.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS replies_updated_at TIMESTAMP WITH TIME ZONE;`);
+    await client.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS replies_updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL;`);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(120);`);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS company_name VARCHAR(160);`);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30);`);

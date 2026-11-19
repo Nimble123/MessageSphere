@@ -7391,6 +7391,72 @@
           </div>
         </div>
 
+        <!-- Dedicated SIM WhatsApp Incoming Replies / Response Report (2nd Report) -->
+        <div id="detail-camp-replies-section" style="display:none;background:#ffffff;border:1.5px solid #25d366;border-radius:10px;padding:16px;margin-bottom:16px;box-shadow:0 4px 12px -2px rgba(37,211,102,0.12);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="width:32px;height:32px;border-radius:8px;background:#dcfce7;color:#16a34a;display:flex;align-items:center;justify-content:center;">
+                <i data-lucide="message-circle-reply" style="width:18px;height:18px;"></i>
+              </div>
+              <div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span style="font-size:0.88rem;font-weight:700;color:#1e293b;">Incoming WhatsApp Replies (2nd Report)</span>
+                  <span style="font-size:0.7rem;font-weight:700;background:#dcfce7;color:#15803d;padding:2px 7px;border-radius:12px;border:1px solid #bbf7d0;">Own Number Gateway</span>
+                </div>
+                <div style="font-size:0.74rem;color:#64748b;margin-top:1px;">Recipient WhatsApp replies received on your dedicated virtual SIM</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <a class="btn-action btn-action-secondary" id="btn-export-replies-csv" href="#" style="padding:5px 10px;font-size:0.76rem;display:inline-flex;align-items:center;gap:4px;border-color:#bbf7d0;color:#166534;background:#f0fdf4;">
+                <i data-lucide="download" style="width:13px;height:13px;"></i> Download Replies (.CSV)
+              </a>
+              <button type="button" class="btn-action btn-action-primary" id="btn-admin-upload-replies" style="display:none;padding:5px 11px;font-size:0.76rem;background:#15803d;border-color:#15803d;color:white;align-items:center;gap:4px;">
+                <i data-lucide="upload" style="width:13px;height:13px;"></i> Upload Replies (Excel/CSV)
+              </button>
+            </div>
+          </div>
+
+          <!-- Quick KPI Cards for Replies -->
+          <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:10px;margin-bottom:12px;">
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:8px 12px;border-radius:8px;">
+              <div style="font-size:0.7rem;font-weight:600;color:#64748b;text-transform:uppercase;">Total Replies</div>
+              <div id="detail-replies-kpi-count" style="font-size:1.15rem;font-weight:800;color:#1e293b;margin-top:2px;">0</div>
+            </div>
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;padding:8px 12px;border-radius:8px;">
+              <div style="font-size:0.7rem;font-weight:600;color:#166534;text-transform:uppercase;">Response Rate</div>
+              <div id="detail-replies-kpi-rate" style="font-size:1.15rem;font-weight:800;color:#15803d;margin-top:2px;">0.0%</div>
+            </div>
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:8px 12px;border-radius:8px;">
+              <div style="font-size:0.7rem;font-weight:600;color:#64748b;text-transform:uppercase;">Last Updated</div>
+              <div id="detail-replies-kpi-updated" style="font-size:0.76rem;font-weight:700;color:#475569;margin-top:5px;">Not uploaded yet</div>
+            </div>
+          </div>
+
+          <!-- Search Filter -->
+          <div style="display:flex;gap:8px;margin-bottom:10px;">
+            <div style="position:relative;flex:1;">
+              <input type="text" id="detail-replies-search" class="form-input" placeholder="Search number or reply text..." style="height:32px;font-size:0.78rem;padding-left:28px;">
+              <i data-lucide="search" style="position:absolute;left:8px;top:8px;width:14px;height:14px;color:#94a3b8;"></i>
+            </div>
+          </div>
+
+          <!-- Replies Table -->
+          <div style="max-height:220px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:140px;">Recipient Number</th>
+                  <th>WhatsApp Reply Message</th>
+                  <th style="width:150px;">Received At</th>
+                </tr>
+              </thead>
+              <tbody id="detail-replies-tbody">
+                <tr><td colspan="3" style="text-align:center;padding:16px;color:#94a3b8;">No replies uploaded yet for this campaign.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <!-- Super Admin Operations & Dispatch Notes (Collapsible / Bottom) -->
         <div id="detail-camp-notes-section" style="display:none;background:#fffbeb;border:1px solid #fde68a;padding:14px 16px;border-radius:10px;">
           <div style="font-size:0.8rem;font-weight:700;color:#92400e;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
@@ -8378,6 +8444,65 @@
       <div class="modal-footer-saas" id="report-modal-done-footer" style="display:none;justify-content:flex-end;">
         <button type="button" class="btn-action btn-action-primary" id="btn-modal-done-report" style="background:#059669;min-width:140px;display:inline-flex;align-items:center;justify-content:center;gap:6px;">
           <i data-lucide="check" style="width:16px;height:16px;"></i> Done &amp; Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: UPLOAD WHATSAPP INCOMING REPLIES REPORT (2nd Report - Admin only) -->
+  <div id="modal-upload-replies-report" class="modal-overlay">
+    <div class="modal-card" style="max-width: 620px; width: 95%;">
+      <div class="modal-header-saas">
+        <h3 style="display:flex;align-items:center;gap:8px;">
+          <i data-lucide="message-circle-reply" style="width:20px;height:20px;color:#16a34a;"></i>
+          <span>Upload Incoming WhatsApp Replies (2nd Report)</span>
+        </h3>
+        <button class="btn-modal-close" id="btn-replies-modal-close" data-close="modal-upload-replies-report">&times;</button>
+      </div>
+      <div class="modal-body-saas">
+        <input type="hidden" id="modal-replies-campaign-id">
+
+        <p style="font-size:0.83rem;color:var(--slate-600);margin-bottom:12px;line-height:1.45;">
+          Upload recipient WhatsApp responses for Dedicated Virtual SIM campaign <strong id="modal-replies-camp-name">#0</strong>. The user and reseller can view and download this replies report.
+        </p>
+
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:0.78rem;color:#166534;">
+          <strong>Supported Formats:</strong> Excel (<code>.xlsx</code>, <code>.xls</code>) or CSV (<code>.csv</code>)<br>
+          <strong>Columns:</strong> <code>Phone Number</code>, <code>Reply Message</code>, <code>Replied At (optional)</code>
+        </div>
+
+        <div class="file-dropzone" id="replies-dropzone" style="cursor:pointer;border:2px dashed #86efac;background:#f0fdf4;padding:24px 16px;border-radius:10px;text-align:center;">
+          <input type="file" id="modal-replies-file" accept=".xlsx,.xls,.csv,.txt" style="display:none;">
+          <div style="margin-bottom:6px;display:flex;justify-content:center;">
+            <i data-lucide="file-spreadsheet" style="width:32px;height:32px;color:#16a34a;"></i>
+          </div>
+          <div style="font-weight:700;font-size:0.92rem;color:#1e293b;" id="replies-file-label">Select or Drag Excel / CSV File (.xlsx / .csv)</div>
+          <div style="font-size:0.75rem;color:#64748b;margin-top:3px;">Auto-detects phone number &amp; WhatsApp reply message columns</div>
+        </div>
+
+        <!-- Mode selector: Replace vs Append -->
+        <div style="margin-top:14px;background:#f8fafc;border:1px solid #e2e8f0;padding:10px 14px;border-radius:8px;display:flex;gap:18px;align-items:center;font-size:0.82rem;">
+          <span style="font-weight:700;color:var(--slate-700);">Upload Mode:</span>
+          <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;">
+            <input type="radio" name="replies-upload-mode" value="replace" checked>
+            <span>Replace Previous Replies</span>
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;">
+            <input type="radio" name="replies-upload-mode" value="append">
+            <span>Append to Existing Replies</span>
+          </label>
+        </div>
+
+        <!-- Live Preview Card -->
+        <div id="replies-preview-box" style="display:none;margin-top:14px;background:#ffffff;border:1.5px solid #cbd5e1;border-radius:10px;padding:14px;">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <div class="modal-footer-saas" id="replies-modal-footer">
+        <button type="button" class="btn-action btn-action-secondary" data-close="modal-upload-replies-report">Cancel</button>
+        <button type="button" class="btn-action btn-action-primary" id="btn-modal-process-replies" disabled style="background:#15803d;border-color:#15803d;">
+          Save &amp; Update Replies Report
         </button>
       </div>
     </div>

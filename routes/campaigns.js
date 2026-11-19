@@ -44,6 +44,9 @@ const upload = multer({
     cb(null, true);
   }
 });
+
+const XLSX = require('xlsx');
+
 const reportUpload = multer({
   storage,
   limits: { fileSize: 20 * 1024 * 1024, files: 1 },
@@ -52,6 +55,107 @@ const reportUpload = multer({
     cb(ext === '.csv' || ext === '.txt' ? null : new Error('Report must be a CSV or TXT file'), ext === '.csv' || ext === '.txt');
   }
 });
+
+// Multer parser for WhatsApp Incoming Replies reports (.xlsx, .xls, .csv, .txt)
+const repliesUpload = multer({
+  storage,
+  limits: { fileSize: 25 * 1024 * 1024, files: 1 },
+  fileFilter(req, file, cb) {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const allowed = ['.xlsx', '.xls', '.csv', '.txt'];
+    cb(allowed.includes(ext) ? null : new Error('Replies report must be an Excel (.xlsx, .xls) or CSV/TXT file'), allowed.includes(ext));
+  }
+});
+
+function parseRepliesRows(filePath, originalname) {
+  const ext = path.extname(originalname).toLowerCase();
+  let rawRows = [];
+
+  try {
+    const workbook = XLSX.readFile(filePath, { raw: false, cellDates: true });
+    const firstSheetName = workbook.SheetNames[0];
+    if (firstSheetName) {
+      rawRows = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheetName], { header: 1, defval: '' });
+    }
+  } catch (err) {
+    console.error('Error parsing replies file with XLSX:', err);
+    return [];
+  }
+
+  if (!rawRows || rawRows.length === 0) return [];
+
+  // Determine headers
+  let phoneCol = 0;
+  let messageCol = 1;
+  let timeCol = -1;
+
+  const firstRow = (rawRows[0] || []).map(c => String(c || '').trim().toLowerCase());
+  const phoneKeywords = ['phone', 'mobile', 'number', 'contact', 'recipient', 'sender', 'from', 'wa_number', 'whatsapp'];
+  const msgKeywords = ['message', 'reply', 'text', 'content', 'response', 'msg', 'incoming', 'body', 'user_reply'];
+  const timeKeywords = ['date', 'time', 'timestamp', 'replied_at', 'received', 'created'];
+
+  let foundPhone = firstRow.findIndex(c => phoneKeywords.some(k => c === k || c.includes(k)));
+  let foundMsg = firstRow.findIndex(c => msgKeywords.some(k => c === k || c.includes(k)));
+  let foundTime = firstRow.findIndex(c => timeKeywords.some(k => c === k || c.includes(k)));
+
+  let startIndex = 0;
+  if (foundPhone !== -1 || foundMsg !== -1) {
+    startIndex = 1;
+    if (foundPhone !== -1) phoneCol = foundPhone;
+    if (foundMsg !== -1) messageCol = foundMsg;
+    if (foundTime !== -1) timeCol = foundTime;
+  } else {
+    // If first row has non-digit text in phone column, treat as header
+    const samplePhoneDigits = String(rawRows[0][phoneCol] || '').replace(/[^0-9]/g, '');
+    if (samplePhoneDigits.length < 5) {
+      startIndex = 1;
+    }
+  }
+
+  if (timeCol === -1 && rawRows[0] && rawRows[0].length >= 3) {
+    timeCol = 2;
+  }
+
+  const parsed = [];
+  for (let i = startIndex; i < rawRows.length; i++) {
+    const row = rawRows[i];
+    if (!row || row.length === 0) continue;
+
+    const rawPhone = String(row[phoneCol] || '').trim();
+    const rawMessage = String(row[messageCol] || '').trim();
+    const rawTime = (timeCol !== -1 && timeCol < row.length) ? row[timeCol] : null;
+
+    if (!rawPhone && !rawMessage) continue;
+
+    const cleanDigits = rawPhone.replace(/[^0-9]/g, '');
+    if (cleanDigits.length < 7) continue;
+
+    const normalized = normalizePhoneNumber(rawPhone);
+    if (!normalized) continue;
+
+    if (!rawMessage) continue;
+
+    let repliedAt = new Date();
+    if (rawTime) {
+      if (rawTime instanceof Date && !isNaN(rawTime.getTime())) {
+        repliedAt = rawTime;
+      } else {
+        const d = new Date(rawTime);
+        if (!isNaN(d.getTime())) {
+          repliedAt = d;
+        }
+      }
+    }
+
+    parsed.push({
+      phone_number: normalized,
+      message_text: rawMessage.slice(0, 5000),
+      replied_at: repliedAt
+    });
+  }
+
+  return parsed;
+}
 
 const uploadFields = upload.fields([
   { name: 'dp_file', maxCount: 1 },
@@ -983,10 +1087,24 @@ router.get('/:id', authenticate, async (req, res) => {
     const statusCounts = {};
     statsResult.rows.forEach(r => { statusCounts[r.status] = parseInt(r.count, 10); });
 
+    // WhatsApp Incoming Replies (for Dedicated SIM / Own Number campaigns)
+    let sampleReplies = [];
+    if (campaign.channel_type === 'own_number' || campaign.campaign_type === 'own_number' || (campaign.replies_count && campaign.replies_count > 0)) {
+      const repRes = await query(`
+        SELECT id, phone_number, message_text, replied_at, created_at
+        FROM campaign_incoming_replies
+        WHERE campaign_id = $1
+        ORDER BY replied_at DESC, id DESC
+        LIMIT 100
+      `, [campaignId]);
+      sampleReplies = repRes.rows;
+    }
+
     return res.json({
       campaign,
       statusCounts,
-      recipients: recipientsResult.rows
+      recipients: recipientsResult.rows,
+      sampleReplies
     });
   } catch (err) {
     console.error('Get campaign details error:', err);
@@ -1818,6 +1936,248 @@ router.post('/:id/report', authenticate, requireRoles('admin'), reportUpload.sin
   } finally {
     client.release();
     if (reportFile && reportFile.path) fs.unlink(reportFile.path, () => {});
+  }
+});
+
+// POST /api/campaigns/:id/replies-report/preview - Dry-run validation of WhatsApp incoming replies report (Admin only)
+router.post('/:id/replies-report/preview', authenticate, requireRoles('admin'), repliesUpload.single('repliesFile'), async (req, res) => {
+  const campaignId = parseInt(req.params.id, 10);
+  const repliesFile = req.file;
+
+  if (isNaN(campaignId)) {
+    if (repliesFile && repliesFile.path) fs.unlink(repliesFile.path, () => {});
+    return res.status(400).json({ error: 'Invalid campaign ID' });
+  }
+
+  if (!repliesFile) {
+    return res.status(400).json({ error: 'Replies file (.xlsx, .xls, .csv, .txt) is required' });
+  }
+
+  try {
+    const campResult = await query('SELECT id, title, channel_type, campaign_type, total_numbers, status, replies_count FROM campaigns WHERE id = $1', [campaignId]);
+    if (campResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+    const campaign = campResult.rows[0];
+
+    const parsed = parseRepliesRows(repliesFile.path, repliesFile.originalname);
+    if (parsed.length === 0) {
+      return res.status(400).json({
+        error: 'No valid reply records found. Please ensure the file contains columns for Phone Number and Reply Message.'
+      });
+    }
+
+    return res.json({
+      success: true,
+      campaignId,
+      campaignTitle: campaign.title,
+      channelType: campaign.channel_type,
+      campaignType: campaign.campaign_type,
+      fileName: repliesFile.originalname,
+      totalRows: parsed.length,
+      currentRepliesCount: campaign.replies_count || 0,
+      sample: parsed.slice(0, 8)
+    });
+  } catch (err) {
+    console.error('Replies preview error:', err);
+    return res.status(500).json({ error: 'Failed to parse replies report: ' + err.message });
+  } finally {
+    if (repliesFile && repliesFile.path) fs.unlink(repliesFile.path, () => {});
+  }
+});
+
+// POST /api/campaigns/:id/replies-report - Upload & Save WhatsApp Incoming Replies Report (Excel / CSV) - Admin only
+router.post('/:id/replies-report', authenticate, requireRoles('admin'), repliesUpload.single('repliesFile'), async (req, res) => {
+  const campaignId = parseInt(req.params.id, 10);
+  const repliesFile = req.file;
+  const mode = req.body.mode === 'append' ? 'append' : 'replace';
+
+  if (isNaN(campaignId)) {
+    if (repliesFile && repliesFile.path) fs.unlink(repliesFile.path, () => {});
+    return res.status(400).json({ error: 'Invalid campaign ID' });
+  }
+
+  if (!repliesFile) {
+    return res.status(400).json({ error: 'Replies file (.xlsx, .xls, .csv, .txt) is required' });
+  }
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    const campResult = await client.query('SELECT * FROM campaigns WHERE id = $1 FOR UPDATE', [campaignId]);
+    if (campResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+    const campaign = campResult.rows[0];
+
+    const parsed = parseRepliesRows(repliesFile.path, repliesFile.originalname);
+    if (parsed.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error: 'No valid reply records found in file. Please ensure valid Phone Number and Reply Message data.'
+      });
+    }
+
+    if (mode === 'replace') {
+      await client.query('DELETE FROM campaign_incoming_replies WHERE campaign_id = $1', [campaignId]);
+    }
+
+    // Insert in chunks of 500
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < parsed.length; i += BATCH_SIZE) {
+      const batch = parsed.slice(i, i + BATCH_SIZE);
+      const values = [];
+      const placeholders = [];
+      let paramIdx = 1;
+
+      for (const row of batch) {
+        placeholders.push(`($${paramIdx++}, $${paramIdx++}, $${paramIdx++}, $${paramIdx++})`);
+        values.push(campaignId, row.phone_number, row.message_text, row.replied_at);
+      }
+
+      await client.query(`
+        INSERT INTO campaign_incoming_replies (campaign_id, phone_number, message_text, replied_at)
+        VALUES ${placeholders.join(', ')}
+      `, values);
+    }
+
+    // Update campaign replies summary
+    const countRes = await client.query('SELECT COUNT(*) as cnt FROM campaign_incoming_replies WHERE campaign_id = $1', [campaignId]);
+    const totalReplies = parseInt(countRes.rows[0].cnt, 10);
+
+    await client.query(`
+      UPDATE campaigns
+      SET replies_count = $1,
+          replies_updated_at = NOW(),
+          replies_updated_by = $2
+      WHERE id = $3
+    `, [totalReplies, req.user.id, campaignId]);
+
+    await logAudit(client, {
+      actorId: req.user.id,
+      entityType: 'campaign',
+      entityId: campaignId,
+      action: 'campaign_replies_report_uploaded',
+      details: {
+        mode,
+        parsedCount: parsed.length,
+        totalReplies,
+        fileName: repliesFile.originalname
+      }
+    });
+
+    await client.query('COMMIT');
+
+    return res.json({
+      success: true,
+      message: `Successfully processed ${parsed.length} incoming replies! Total responses: ${totalReplies}`,
+      replies_count: totalReplies,
+      parsed_count: parsed.length,
+      mode
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Upload replies report error:', err);
+    return res.status(500).json({ error: 'Failed to process replies report: ' + err.message });
+  } finally {
+    client.release();
+    if (repliesFile && repliesFile.path) fs.unlink(repliesFile.path, () => {});
+  }
+});
+
+// GET /api/campaigns/:id/replies - Retrieve paginated WhatsApp incoming replies (Owner, Reseller, Admin)
+router.get('/:id/replies', authenticate, async (req, res) => {
+  const campaignId = parseInt(req.params.id, 10);
+  if (isNaN(campaignId)) return res.status(400).json({ error: 'Invalid campaign ID' });
+
+  try {
+    const campResult = await query('SELECT * FROM campaigns WHERE id = $1', [campaignId]);
+    if (campResult.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+    const campaign = campResult.rows[0];
+
+    if (!(await canAccessCampaign(req, campaign))) {
+      return res.status(403).json({ error: 'Permission denied: Cannot view replies for another account\'s campaign' });
+    }
+
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    const offset = (page - 1) * limit;
+    const search = String(req.query.search || '').trim();
+
+    let whereClause = 'WHERE campaign_id = $1';
+    const params = [campaignId];
+
+    if (search) {
+      whereClause += ' AND (phone_number ILIKE $2 OR message_text ILIKE $2)';
+      params.push(`%${search}%`);
+    }
+
+    const countRes = await query(`SELECT COUNT(*) as cnt FROM campaign_incoming_replies ${whereClause}`, params);
+    const totalFiltered = parseInt(countRes.rows[0].cnt, 10);
+
+    const repliesRes = await query(`
+      SELECT id, phone_number, message_text, replied_at, created_at
+      FROM campaign_incoming_replies
+      ${whereClause}
+      ORDER BY replied_at DESC, id DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `, params);
+
+    return res.json({
+      replies: repliesRes.rows,
+      totalCount: totalFiltered,
+      totalReplies: campaign.replies_count || 0,
+      replies_updated_at: campaign.replies_updated_at,
+      page,
+      limit
+    });
+  } catch (err) {
+    console.error('Fetch replies error:', err);
+    return res.status(500).json({ error: 'Failed to retrieve replies' });
+  }
+});
+
+// GET /api/campaigns/:id/replies/export - Download WhatsApp Incoming Replies CSV (Owner, Reseller, Admin)
+router.get('/:id/replies/export', authenticate, async (req, res) => {
+  const campaignId = parseInt(req.params.id, 10);
+  if (isNaN(campaignId)) return res.status(400).json({ error: 'Invalid campaign ID' });
+
+  try {
+    const campResult = await query('SELECT * FROM campaigns WHERE id = $1', [campaignId]);
+    if (campResult.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+    const campaign = campResult.rows[0];
+
+    if (!(await canAccessCampaign(req, campaign))) {
+      return res.status(403).json({ error: 'Permission denied: Cannot export replies for another account\'s campaign' });
+    }
+
+    const repliesRes = await query(`
+      SELECT phone_number, message_text, replied_at, created_at
+      FROM campaign_incoming_replies
+      WHERE campaign_id = $1
+      ORDER BY replied_at ASC, id ASC
+    `, [campaignId]);
+
+    const shouldMaskNumbers = req.user.is_team_member && !req.user.permissions?.can_export_contacts;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="campaign_${campaignId}_incoming_replies.csv"`);
+
+    let csvContent = 'Phone Number,Incoming WhatsApp Reply,Replied At\n';
+    repliesRes.rows.forEach(r => {
+      let exportPhone = r.phone_number;
+      if (shouldMaskNumbers && exportPhone && exportPhone.length >= 7) {
+        exportPhone = exportPhone.slice(0, 4) + '******' + exportPhone.slice(-2);
+      }
+      csvContent += `${sanitizeCsvCell(exportPhone)},${sanitizeCsvCell(r.message_text)},${sanitizeCsvCell(new Date(r.replied_at).toLocaleString('en-IN'))}\n`;
+    });
+
+    return res.send(csvContent);
+  } catch (err) {
+    console.error('Export replies error:', err);
+    return res.status(500).json({ error: 'Failed to export incoming replies' });
   }
 });
 

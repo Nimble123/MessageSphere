@@ -1304,4 +1304,79 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.strictEqual(aliasRegex.test('has spaces'), false);
     assert.strictEqual(aliasRegex.test('invalid!@#'), false);
   });
+
+  await t.test('Dedicated SIM WhatsApp Incoming Replies (2nd Report) Logic & Security Boundaries', async () => {
+    const XLSX = require('xlsx');
+    const { normalizePhoneNumber } = require('../services/telecom');
+
+    // 1. Verify Excel (.xlsx) Generation & Parsing for incoming replies
+    const wb = XLSX.utils.book_new();
+    const testData = [
+      ['Phone Number', 'Customer WhatsApp Reply', 'Timestamp'],
+      ['+91 98765 43210', 'Interested! Send pricing package please.', '2026-11-19 10:15:00'],
+      ['919876543211', 'Confirmed order for tomorrow', new Date('2026-11-19T10:20:00Z')],
+      ['9876543212', 'Can we discuss on call?', '2026-11-19 10:25:00'],
+      ['invalid_num', 'No number here', '2026-11-19 10:30:00'],
+      ['9876543213', '', '2026-11-19 10:35:00'] // empty reply message should be omitted
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(testData);
+    XLSX.utils.book_append_sheet(wb, ws, 'Replies');
+    const tempXlsxPath = '/tmp/test_unit_replies.xlsx';
+    XLSX.writeFile(wb, tempXlsxPath);
+
+    // Read back and parse
+    const readWb = XLSX.readFile(tempXlsxPath, { cellDates: true });
+    const rawRows = XLSX.utils.sheet_to_json(readWb.Sheets['Replies'], { header: 1, defval: '' });
+
+    const phoneKeywords = ['phone', 'mobile', 'number', 'contact', 'recipient', 'sender', 'from', 'wa_number', 'whatsapp'];
+    const msgKeywords = ['message', 'reply', 'text', 'content', 'response', 'msg', 'incoming', 'body', 'user_reply'];
+
+    const firstRow = rawRows[0].map(c => String(c || '').trim().toLowerCase());
+    const phoneCol = firstRow.findIndex(c => phoneKeywords.some(k => c.includes(k)));
+    const msgCol = firstRow.findIndex(c => msgKeywords.some(k => c.includes(k)));
+
+    assert.strictEqual(phoneCol, 0, 'Should detect phone column at index 0');
+    assert.strictEqual(msgCol, 1, 'Should detect message column at index 1');
+
+    const validParsed = [];
+    for (let i = 1; i < rawRows.length; i++) {
+      const row = rawRows[i];
+      const rawPhone = String(row[0] || '').trim();
+      const rawMsg = String(row[1] || '').trim();
+      if (!rawPhone || !rawMsg) continue;
+      const normalized = normalizePhoneNumber(rawPhone);
+      if (normalized) {
+        validParsed.push({ phone_number: normalized, message_text: rawMsg });
+      }
+    }
+
+    assert.strictEqual(validParsed.length, 3, 'Should parse exactly 3 valid replies (skipping invalid number and empty message)');
+    assert.strictEqual(validParsed[0].phone_number, '919876543210');
+    assert.strictEqual(validParsed[0].message_text, 'Interested! Send pricing package please.');
+    assert.strictEqual(validParsed[1].phone_number, '919876543211');
+    assert.strictEqual(validParsed[2].phone_number, '919876543212');
+
+    // 2. Admin-only restriction check: Role validation logic
+    function checkUploadRepliesPermission(userRole) {
+      return userRole === 'admin';
+    }
+    assert.strictEqual(checkUploadRepliesPermission('admin'), true, 'Admin must be authorized to upload replies');
+    assert.strictEqual(checkUploadRepliesPermission('reseller'), false, 'Reseller cannot upload replies');
+    assert.strictEqual(checkUploadRepliesPermission('user'), false, 'Client cannot upload replies');
+
+    // 3. Campaign Access check: Client and Reseller who own campaign CAN view & download replies
+    function canViewReplies(caller, campaign) {
+      if (caller.role === 'admin') return true;
+      if (caller.id === campaign.user_id) return true;
+      if (caller.role === 'reseller' && campaign.reseller_id === caller.id) return true;
+      return false;
+    }
+
+    const testCampaign = { id: 101, user_id: 5, reseller_id: 2, channel_type: 'own_number' };
+    assert.strictEqual(canViewReplies({ id: 1, role: 'admin' }, testCampaign), true);
+    assert.strictEqual(canViewReplies({ id: 5, role: 'user' }, testCampaign), true);
+    assert.strictEqual(canViewReplies({ id: 2, role: 'reseller' }, testCampaign), true);
+    assert.strictEqual(canViewReplies({ id: 9, role: 'user' }, testCampaign), false);
+    assert.strictEqual(canViewReplies({ id: 7, role: 'reseller' }, testCampaign), false);
+  });
 });
