@@ -342,7 +342,7 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
   }
 
   const requestedCampaignType = req.body.campaign_type || 'normal';
-  const isCtaCampaignType = (requestedCampaignType === 'cta' || requestedCampaignType === 'dp_cta');
+  const isCtaCampaignType = (requestedCampaignType === 'cta' || requestedCampaignType === 'dp_cta' || requestedCampaignType === 'own_number');
 
   // 1. DP: Strictly JPEG or PNG, Max 3 MB (Allowed for DP, DP+CTA, and Own Number)
   if (requestedCampaignType !== 'cta' && files['dp_file'] && files['dp_file'][0]) {

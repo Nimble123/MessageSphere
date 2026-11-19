@@ -2539,14 +2539,17 @@ function setCampaignType(type) {
     updateCtaPreview();
     updatePreviewMedia();
   } else if (type === 'own_number') {
-    // Dedicated SIM route: can send normal text, DP media, or CTA
+    // Dedicated SIM / Own Number: Profile Picture (DP Avatar) in top box ONLY;
+    // Single message media (Image, PDF, or Video) is chosen inside the CTA section below!
     if (composerAttachmentGroup) composerAttachmentGroup.style.display = 'block';
     if (boxDpUpload) boxDpUpload.style.display = 'block';
-    if (boxImagesUpload) boxImagesUpload.style.display = 'block';
-    if (boxVideoUpload) boxVideoUpload.style.display = 'block';
-    if (boxPdfUpload) boxPdfUpload.style.display = 'block';
-    if (composerAttachmentTitle) composerAttachmentTitle.textContent = 'Campaign Media Attachments';
-    if (composerAttachmentSubtitle) composerAttachmentSubtitle.textContent = 'Upload optional media attachments for your Dedicated SIM broadcast.';
+    if (boxImagesUpload) boxImagesUpload.style.display = 'none';
+    if (boxVideoUpload) boxVideoUpload.style.display = 'none';
+    if (boxPdfUpload) boxPdfUpload.style.display = 'none';
+    if (composerAttachmentTitle) composerAttachmentTitle.textContent = '1. Profile Picture / Display Picture (DP)';
+    if (composerAttachmentSubtitle) composerAttachmentSubtitle.textContent = 'Upload sender avatar image for your Dedicated SIM. Choose your 1 media attachment (Image, PDF, or Video) in the section below.';
+
+    resetGalleryVideoPdfMedia();
 
     if (composerCtaGroup) composerCtaGroup.style.display = 'block';
     if (composerCtaToggle) { composerCtaToggle.checked = true; composerCtaBox.style.display = 'block'; }
@@ -3515,8 +3518,8 @@ btnSubmitCampaignSaas.addEventListener('click', async () => {
   if (uploadedDP && uploadedDP.file) {
     formData.append('dp_file', uploadedDP.file);
   }
-  // Only append gallery images, video, or PDF for DP or Dedicated SIM routes
-  if (selectedCampaignType === 'dp' || selectedCampaignType === 'own_number') {
+  // Only append gallery images, video, or PDF for regular DP broadcast routes
+  if (selectedCampaignType === 'dp') {
     for (let i = 0; i < 4; i++) {
       if (uploadedImages[i] && uploadedImages[i].file) {
         formData.append(`image_${i + 1}`, uploadedImages[i].file);
