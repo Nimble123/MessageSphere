@@ -13,7 +13,7 @@ const { calculateSmsMetrics, normalizePhoneNumber, SMPP_DELIVERED_STATUSES, sani
 const MAX_CAMPAIGN_RECIPIENTS = Number(process.env.MAX_CAMPAIGN_RECIPIENTS || 50000);
 
 // Setup multer storage for campaign attachments and reports (supports persistent volumes)
-const { ROOT_UPLOADS_DIR } = require('../services/storage');
+const { ROOT_UPLOADS_DIR, persistUploadedFile, retrieveStoredFile } = require('../services/storage');
 const uploadDir = ROOT_UPLOADS_DIR;
 
 const storage = multer.diskStorage({
@@ -826,6 +826,12 @@ router.post('/', authenticate, uploadFields, async (req, res) => {
 
     await client.query('COMMIT');
 
+    // Persist all attached campaign media files into PostgreSQL binary store to survive container restarts
+    const uploadedFileList = Object.values(files).flat().filter(Boolean);
+    for (const file of uploadedFileList) {
+      persistUploadedFile(file).catch(e => console.warn('[PERSISTENCE WARNING]:', e.message));
+    }
+
     // Trigger Admin Real-time Campaign Intent Alert (In-portal live feed, Telegram, Webhooks)
     recordAndDispatchCampaignAlert({
       campaignId,
@@ -1133,8 +1139,12 @@ router.get('/files/:filename', authenticate, async (req, res) => {
   const filename = path.basename(req.params.filename);
   if (!filename || filename !== req.params.filename) return res.status(400).json({ error: 'Invalid file name' });
   try {
-    const filePath = path.join(uploadDir, filename);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+    const retrieved = await retrieveStoredFile(filename);
+    if (!retrieved || (!retrieved.path && !retrieved.buffer)) {
+      return res.status(404).json({
+        error: 'File not found on server disk. Because the server restarted, this uploaded file was cleared from ephemeral storage. Please re-upload or re-create the campaign.'
+      });
+    }
 
     let hasAccess = req.user.role === 'admin';
 
@@ -1190,8 +1200,13 @@ router.get('/files/:filename', authenticate, async (req, res) => {
     }
 
     res.setHeader('Content-Disposition', `attachment; filename="${filename.replace(/[\r\n"]/g, '_')}"`);
-    res.setHeader('Content-Type', 'application/octet-stream');
-    return res.sendFile(filePath);
+    res.setHeader('Content-Type', retrieved.mimetype || 'application/octet-stream');
+
+    if (retrieved.path) {
+      return res.sendFile(retrieved.path);
+    } else {
+      return res.send(retrieved.buffer);
+    }
   } catch (err) {
     console.error('Download asset error:', err);
     return res.status(500).json({ error: 'Failed to download file' });

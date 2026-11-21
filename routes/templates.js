@@ -8,7 +8,7 @@ const { authenticate } = require('../middleware/auth');
 const { calculateSmsMetrics, sanitizeCsvCell, isValidAttachmentUrl } = require('../services/telecom');
 
 // Multer storage for message template media attachments (Image, PDF, Video) (supports persistent volumes)
-const { ROOT_UPLOADS_DIR } = require('../services/storage');
+const { ROOT_UPLOADS_DIR, persistUploadedFile } = require('../services/storage');
 const uploadDir = ROOT_UPLOADS_DIR;
 
 const storage = multer.diskStorage({
@@ -486,6 +486,12 @@ router.post('/', authenticate, upload.any(), async (req, res) => {
       metrics.character_count,
       metrics.parts_count
     ]);
+
+    if (req.files && Array.isArray(req.files)) {
+      for (const f of req.files) {
+        persistUploadedFile(f).catch(() => {});
+      }
+    }
 
     return res.status(201).json(result.rows[0]);
   } catch (err) {

@@ -113,6 +113,9 @@ async function downloadApiFile(endpoint, filename) {
     return;
   }
   let pathOnly = endpoint.startsWith('/api') ? endpoint.replace(/^\/api/, '') : endpoint;
+  if (pathOnly.startsWith('/uploads/')) {
+    pathOnly = `/campaigns/files/${encodeURIComponent(pathOnly.replace(/^\/uploads\//, ''))}`;
+  }
   if ((!pathOnly.startsWith('/campaigns/') && !pathOnly.startsWith('/credits/')) || endpoint.includes('?token=')) {
     throw new Error('Invalid download request');
   }

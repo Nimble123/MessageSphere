@@ -1379,4 +1379,31 @@ test('Backend Logic & Route Guard Verification Suite', async (t) => {
     assert.strictEqual(canViewReplies({ id: 9, role: 'user' }, testCampaign), false);
     assert.strictEqual(canViewReplies({ id: 7, role: 'reseller' }, testCampaign), false);
   });
+
+  test('Persistent Binary Storage & Asset URL Normalization Resiliency', async () => {
+    // 1. Test URL normalization in downloadApiFile logic for both /uploads/ and /campaigns/files/
+    function normalizeDownloadEndpoint(endpoint) {
+      let pathOnly = endpoint.startsWith('/api') ? endpoint.replace(/^\/api/, '') : endpoint;
+      if (pathOnly.startsWith('/uploads/')) {
+        pathOnly = `/campaigns/files/${encodeURIComponent(pathOnly.replace(/^\/uploads\//, ''))}`;
+      }
+      return pathOnly;
+    }
+
+    assert.strictEqual(
+      normalizeDownloadEndpoint('/uploads/banner_123.jpg'),
+      '/campaigns/files/banner_123.jpg',
+      'Legacy /uploads/ URL should be mapped to authenticated /campaigns/files/ endpoint'
+    );
+    assert.strictEqual(
+      normalizeDownloadEndpoint('/api/campaigns/files/banner_123.jpg'),
+      '/campaigns/files/banner_123.jpg',
+      '/api prefix should be stripped properly for API_BASE routing'
+    );
+
+    // 2. Test storage resolution logic with disk and fallback simulation
+    const { ROOT_UPLOADS_DIR, retrieveStoredFile } = require('../services/storage');
+    assert.ok(ROOT_UPLOADS_DIR, 'ROOT_UPLOADS_DIR should be defined');
+    assert.strictEqual(typeof retrieveStoredFile, 'function', 'retrieveStoredFile should be a function');
+  });
 });

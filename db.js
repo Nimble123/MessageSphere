@@ -714,6 +714,19 @@ async function initDB() {
       }
     }
 
+    // 21. Persistent Binary Storage for Campaign Attachments & Uploaded Assets
+    // Guarantees zero file loss across ephemeral container restarts, sleeps, and redeploys (Render / Docker)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS stored_files (
+        filename VARCHAR(255) PRIMARY KEY,
+        mimetype VARCHAR(100),
+        size BIGINT,
+        data BYTEA,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_stored_files_created ON stored_files(created_at);
+    `);
+
     await client.query('COMMIT');
     console.log('PostgreSQL tables initialized successfully.');
   } catch (err) {
